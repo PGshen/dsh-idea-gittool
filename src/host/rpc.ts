@@ -12,6 +12,8 @@ import type {
 import type { BootstrapValue, LogValue, StatusValue, WritePolicyValue } from '../shared/protocol.ts'
 import type { GitRunner } from './git-executor.ts'
 import { GitCommandFailure, messageOf } from './git-executor.ts'
+import type { SandboxGateDeps, SandboxLike, SandboxPolicySource } from './sandbox-gate.ts'
+import { evaluateWritePolicy } from './sandbox-gate.ts'
 import type { LogQuery } from './git/log.ts'
 import { readLog } from './git/log.ts'
 import { readStatus } from './git/status.ts'
@@ -21,19 +23,14 @@ import { resolveRepository } from './repo-resolver.ts'
 /** Longest accepted sessionId; keeps a pathological payload out of every git call. */
 const MAX_SESSION_ID_LENGTH = 200
 
-/**
- * Fail-closed placeholder used until the sandbox gate (M0 T4) is wired:
- * a missing gate must never enable writes.
- */
-const UNAVAILABLE_WRITE_POLICY: WritePolicyValue = {
-  mode: 'read-only',
-  reason: '写能力门禁尚未接线（fail closed）；沙箱边界判定接入前不可写',
-}
-
 /** Everything the handler needs; all session services are lazy and optional. */
 export interface RpcDeps extends SessionSources {
   runner: GitRunner
-  /** Write-capability decision for one resolved repository (M0 T4). */
+  /** Sandbox policy source; the write gate fails closed without it (M0 T4). */
+  sandboxPolicy?: (() => SandboxPolicySource | undefined) | undefined
+  /** Confinement provider used for the write-gate probe (M0 T4). */
+  sandbox?: (() => SandboxLike | undefined) | undefined
+  /** Test seam: an explicit gate overrides {@link evaluateWritePolicy}. */
   writePolicy?:
     | ((input: { repoRoot: string; sessionId: string }) => WritePolicyValue | Promise<WritePolicyValue>)
     | undefined
@@ -93,7 +90,7 @@ async function handleBootstrap(
 
   const status = await readStatus(deps.runner, resolution.root, { signal })
   const log = await readLog(deps.runner, resolution.root, {}, { signal })
-  const writePolicy = await resolveWritePolicy(deps, resolution.root, sessionId)
+  const writePolicy = await resolveWritePolicy(deps, resolution.root, sessionId, signal)
   return ok<BootstrapValue>({
     sessionId,
     repoRoot: resolution.root,
@@ -147,9 +144,15 @@ async function resolveWritePolicy(
   deps: RpcDeps,
   repoRoot: string,
   sessionId: string,
+  signal: AbortSignal,
 ): Promise<WritePolicyValue> {
-  if (deps.writePolicy === undefined) return { ...UNAVAILABLE_WRITE_POLICY }
-  return await deps.writePolicy({ repoRoot, sessionId })
+  if (deps.writePolicy !== undefined) return await deps.writePolicy({ repoRoot, sessionId })
+  const gateDeps: SandboxGateDeps = {
+    sessions: deps.sessions,
+    sandboxPolicy: deps.sandboxPolicy,
+    sandbox: deps.sandbox,
+  }
+  return await evaluateWritePolicy({ repoRoot, sessionId }, gateDeps, { signal })
 }
 
 function currentVersion(deps: RpcDeps): number {

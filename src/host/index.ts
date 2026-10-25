@@ -3,6 +3,7 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-connection'
+import type {} from '@deepseek-ai/dsh-sandbox'
 import type {} from '@deepseek-ai/dsh-sandbox-policy'
 import type {} from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-session-persistence'
@@ -32,6 +33,7 @@ export function apply(ctx: Context): void {
     workingDirectory: () => ctx.get('workingDirectory'),
     sessionPersistence: () => ctx.get('sessionPersistence'),
     sandboxPolicy: () => ctx.get('sandboxPolicy'),
+    sandbox: () => ctx.get('sandbox'),
   }
   const handler = createRpcHandler(deps)
   ctx.effect(() => ctx.connection.rpc.handle(RPC_CHANNEL, handler), 'dsh-idea-gittool: rpc')

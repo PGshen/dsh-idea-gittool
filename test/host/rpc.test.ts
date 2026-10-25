@@ -3,9 +3,11 @@ import type {
   ConnectionRpcFailure,
   ConnectionRpcHandlerResult,
 } from '@deepseek-ai/dsh-client-connection'
+import type { SandboxMode } from '@deepseek-ai/dsh-sandbox'
 
 import type { BootstrapValue, LogValue, StatusValue, WritePolicyValue } from '../../src/shared/protocol.ts'
 import { GitCommandFailure, createGitRunner } from '../../src/host/git-executor.ts'
+import type { SandboxPolicySource } from '../../src/host/sandbox-gate.ts'
 import type { GitRpcHandler, RpcDeps } from '../../src/host/rpc.ts'
 import { createRpcHandler } from '../../src/host/rpc.ts'
 import { createTempDir, createTempRepo, removeTempDir } from './fixtures.ts'
@@ -29,6 +31,10 @@ function makeOutsideDir(): string {
   return dir
 }
 
+function policySource(workspaceRoot: string, mode: SandboxMode = 'read-only'): SandboxPolicySource {
+  return { workspaceRoot, resolve: () => ({ mode, workspaceRoot }) }
+}
+
 function makeHandler(overrides: Partial<RpcDeps> = {}): {
   handler: GitRpcHandler
   repo: ReturnType<typeof createTempRepo>
@@ -38,7 +44,7 @@ function makeHandler(overrides: Partial<RpcDeps> = {}): {
   const fake = createFakeSubprocess()
   const handler = createRpcHandler({
     runner: createGitRunner(fake),
-    sandboxPolicy: () => ({ workspaceRoot: repo.root }),
+    sandboxPolicy: () => policySource(repo.root),
     ...overrides,
   })
   return { handler, repo, fake }
@@ -86,7 +92,7 @@ describe('createRpcHandler / status', () => {
 
   it('maps a directory outside any repository to git/not-a-repository', async () => {
     const outside = makeOutsideDir()
-    const { handler } = makeHandler({ sandboxPolicy: () => ({ workspaceRoot: outside }) })
+    const { handler } = makeHandler({ sandboxPolicy: () => policySource(outside) })
 
     const result = await handler('status', { sessionId: 'session-1' }, SIGNAL)
 
@@ -174,7 +180,7 @@ describe('createRpcHandler / bootstrap', () => {
 
   it('returns an empty state when the session is outside any repository', async () => {
     const outside = makeOutsideDir()
-    const { handler } = makeHandler({ sandboxPolicy: () => ({ workspaceRoot: outside }) })
+    const { handler } = makeHandler({ sandboxPolicy: () => policySource(outside) })
 
     const bootstrap = okValue<BootstrapValue>(
       await handler('bootstrap', { sessionId: 'session-1' }, SIGNAL),

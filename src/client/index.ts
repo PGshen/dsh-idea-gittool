@@ -10,6 +10,7 @@ import { GIT_ID, GIT_KIND, gitDefinition } from './definition.tsx'
 import { GitBody } from './GitBody.tsx'
 import { GitTitle } from './GitTitle.tsx'
 import { en, zh } from './locales.ts'
+import { registerBlameTab, registerDocumentActions } from './register-document-actions.ts'
 
 export const name = 'dsh-idea-gittool'
 
@@ -51,4 +52,8 @@ export function apply(ctx: ClientContext): void {
     { name: 'sidebar.right.pane.tab.title', key: GIT_ID },
     GitTitle,
   )), 'git: tab title')
+
+  // M0 T6：文档预览头部动作 + git.blame 空页（状态字母待 T3 客户端数据接入）。
+  registerBlameTab(ctx)
+  registerDocumentActions(ctx)
 }

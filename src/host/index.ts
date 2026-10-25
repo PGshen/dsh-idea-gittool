@@ -12,7 +12,8 @@ import type {} from '@deepseek-ai/dsh-working-directory'
 
 import type { SessionsLike } from './repo-resolver.ts'
 import type { RpcDeps } from './rpc.ts'
-import type { FsWatch } from './watch.ts'
+import type { FsServiceLike, FsWatch } from './watch.ts'
+import { fsWatchFromService } from './watch.ts'
 import { createGitConsole } from './console.ts'
 import { createGitRunner, instrumentGitRunner } from './git-executor.ts'
 import { createRpcRuntime } from './rpc.ts'
@@ -27,11 +28,6 @@ export const name = 'dsh-idea-gittool'
  * 与 `ui-open-in-app` 的先例一致（原因见 http.ts 顶部注释）。
  */
 export const inject = ['connection', 'subprocess']
-
-/** `ctx.fs.watch` 的最小结构：目标变化时回调，返回异步关闭函数（可行性调研 §9.1）。 */
-interface FsServiceLike {
-  watch(target: string, changed: () => void, signal?: AbortSignal): Promise<() => void | Promise<void>>
-}
 
 export function apply(ctx: Context): void {
   // 插件卸载时统一取消所有 watch（watch 的 AbortSignal 与 runtime.dispose 都挂在这里）。
@@ -50,12 +46,12 @@ export function apply(ctx: Context): void {
     sessionPersistence: () => ctx.get('sessionPersistence'),
     sandboxPolicy: () => ctx.get('sandboxPolicy'),
     sandbox: () => ctx.get('sandbox'),
-    // 缺失 fs 服务时返回 undefined，watchRepo 会给出降级信号，客户端退回轮询。
+    // web 组合由 fs-sandbox 提供 `fs`；缺失时返回 undefined，watchRepo 降级，客户端退回轮询。
+    // TD-4：fs.watch 只接受 resolve() 出的目标，旧适配器传字符串导致 watch 一直失败。
     fsWatch: (): FsWatch | undefined => {
       const fs = ctx.get('fs') as unknown as FsServiceLike | undefined
       if (fs === undefined) return undefined
-      return (target, onEvent) =>
-        fs.watch(target, () => onEvent(), watchLifetime.signal).then((close) => ({ close }))
+      return fsWatchFromService(fs, watchLifetime.signal)
     },
   }
   const runtime = createRpcRuntime(deps)

@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createRepoCache } from '../../src/host/cache.ts'
 import {
   DEFAULT_DEBOUNCE_MS,
+  fsWatchFromService,
   gitWatchTargets,
   watchRepo,
   type FsWatch,
@@ -345,5 +346,67 @@ describe('仓库缓存（cache.ts）', () => {
 
     expect(cache.get('/a', 'status')).toBeUndefined()
     expect(cache.versionOf('/a')).toBe(0)
+  })
+})
+
+describe('fsWatchFromService（ctx.fs 适配）', () => {
+  interface FakeTarget { targetKey: string; displayPath: string }
+
+  function fakeFs() {
+    const resolved: string[] = []
+    const watched: FakeTarget[] = []
+    const listeners: Array<(error?: Error) => void> = []
+    let closed = 0
+    return {
+      resolved, watched, listeners, closed: () => closed,
+      service: {
+        resolve: async (path: string): Promise<FakeTarget> => {
+          resolved.push(path)
+          return { targetKey: `key:${path}`, displayPath: path }
+        },
+        watch: async (target: FakeTarget, changed: (error?: Error) => void, signal: AbortSignal) => {
+          signal.throwIfAborted()
+          watched.push(target)
+          listeners.push(changed)
+          return async () => { closed += 1 }
+        },
+      },
+    }
+  }
+
+  it('先 resolve 成 FsTarget 再 watch，变化回调转成 onEvent，close 透传', async () => {
+    const fs = fakeFs()
+    const watch = fsWatchFromService(fs.service, new AbortController().signal)
+    const events: number[] = []
+
+    const handle = await watch('/repo/.git/HEAD', () => events.push(1))
+
+    expect(fs.resolved).toEqual(['/repo/.git/HEAD'])
+    expect(fs.watched).toEqual([{ targetKey: 'key:/repo/.git/HEAD', displayPath: '/repo/.git/HEAD' }])
+    at(fs.listeners, 0)()
+    expect(events).toEqual([1])
+    await (typeof handle === 'function' ? handle() : handle.close())
+    expect(fs.closed()).toBe(1)
+  })
+
+  it('watcher 报错时也当作一次变化（宁可多刷新一次）', async () => {
+    const fs = fakeFs()
+    const watch = fsWatchFromService(fs.service, new AbortController().signal)
+    const events: number[] = []
+    await watch('/repo/.git/index', () => events.push(1))
+
+    at(fs.listeners, 0)(new Error('overflow'))
+
+    expect(events).toEqual([1])
+  })
+
+  it('provider 不支持 watch 时 reject，交给 watchRepo 降级', async () => {
+    const service = {
+      resolve: async (path: string) => ({ targetKey: path, displayPath: path }),
+      watch: async () => { throw new Error('Filesystem watching is not supported by this provider.') },
+    }
+    const watch = fsWatchFromService(service, new AbortController().signal)
+
+    await expect(watch('/repo/.git/HEAD', () => {})).rejects.toThrow('not supported')
   })
 })

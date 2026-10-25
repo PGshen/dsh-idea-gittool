@@ -67,6 +67,28 @@ export interface WatchRepoOptions {
   onDegraded?: (failures: readonly WatchFailure[]) => void
 }
 
+/**
+ * `ctx.fs` 的最小结构（DSH `FileSystem`）：watch 只接受 `resolve()` 产出的目标对象，
+ * 不接受路径字符串；变化回调可能带 Error（watcher 失效/溢出）。
+ */
+export interface FsServiceLike<T = unknown> {
+  resolve(path: string, opts?: { signal?: AbortSignal }): Promise<T>
+  watch(target: T, changed: (error?: Error) => void, signal: AbortSignal): Promise<() => void | Promise<void>>
+}
+
+/**
+ * 把 `ctx.fs` 适配成 {@link FsWatch}：先 resolve 再 watch。
+ * watcher 报错也按一次变化处理（多刷新一次无害，漏刷新才是问题）。
+ * provider 不支持 watch 时 Promise reject，由 watchRepo 记为降级。
+ */
+export function fsWatchFromService<T>(fs: FsServiceLike<T>, signal: AbortSignal): FsWatch {
+  return async (target, onEvent) => {
+    const resolved = await fs.resolve(target, { signal })
+    const close = await fs.watch(resolved, () => { onEvent() }, signal)
+    return { close }
+  }
+}
+
 /** 一次 git 操作会连续改多个文件，250ms 能合并成一次刷新（调研 §9.3）。 */
 export const DEFAULT_DEBOUNCE_MS = 250
 

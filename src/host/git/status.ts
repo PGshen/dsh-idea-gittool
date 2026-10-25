@@ -55,10 +55,34 @@ export async function readStatus(
   const operation = await detectOperation(run, cwd, options.signal)
   const result = await run(buildStatusArgv(), { cwd, signal: options.signal })
   if (result.exitCode !== 0) throw failureFromExit(result, 'git status')
-  return parseStatusPorcelainV2Z(result.stdout, {
+  const status = parseStatusPorcelainV2Z(result.stdout, {
     entryLimit: options.entryLimit,
     operation,
   })
+  const stashCount = await readStashCount(run, cwd, options.signal)
+  if (stashCount !== undefined) status.stashCount = stashCount
+  return status
+}
+
+/**
+ * Number of stash entries via `git stash list`, which exits 0 with empty output when there
+ * is no stash. (`rev-list --walk-reflogs refs/stash` exits 128 without a stash: polled every
+ * 3s, that expected miss flooded the Git console with red failures — A1 acceptance demo.)
+ * Any failure omits the count rather than failing the whole status read.
+ */
+async function readStashCount(
+  run: GitRunner,
+  cwd: string,
+  signal: AbortSignal | undefined,
+): Promise<number | undefined> {
+  let result: GitRunResult
+  try {
+    result = await run([...GIT_BASE_ARGV, 'stash', 'list', '--format=%H'], { cwd, signal })
+  } catch {
+    return undefined
+  }
+  if (result.exitCode !== 0) return undefined
+  return result.stdout.split('\n').filter((line) => line.trim() !== '').length
 }
 
 /**
@@ -255,7 +279,7 @@ async function detectOperation(
 ): Promise<RepoOperation> {
   let resolved: GitRunResult
   try {
-    resolved = await run(['rev-parse', '--absolute-git-dir'], { cwd, signal })
+    resolved = await run([...GIT_BASE_ARGV, 'rev-parse', '--absolute-git-dir'], { cwd, signal })
   } catch {
     // The status read that follows reports the authoritative failure.
     return null
@@ -270,6 +294,8 @@ async function detectOperation(
   if (await pathExists(join(gitDir, 'MERGE_HEAD'))) return 'merge'
   if (await pathExists(join(gitDir, 'CHERRY_PICK_HEAD'))) return 'cherry-pick'
   if (await pathExists(join(gitDir, 'REVERT_HEAD'))) return 'revert'
+  // `git bisect` keeps BISECT_START for the whole session (removed by `bisect reset`).
+  if (await pathExists(join(gitDir, 'BISECT_START'))) return 'bisect'
   return null
 }
 

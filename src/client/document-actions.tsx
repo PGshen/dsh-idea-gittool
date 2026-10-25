@@ -5,10 +5,11 @@
  * are pure so the mapping is testable without a slot runtime.
  */
 import { useState } from 'react'
-import type { CSSProperties, ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 // Loads the SlotMap declaration for 'sidebar.right.tab.document.actions'.
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-documentpreview/client'
+import css from './document-actions.module.css'
 
 /** The one-letter git state a document header can show. */
 export type FileStatusLetter = 'M' | 'A' | 'D' | 'U'
@@ -67,43 +68,12 @@ const NO_STATUS = (): FileStatusLetter | null => null
 export type DocumentActionsProps =
   PropsRuntime<'sidebar.right.tab.document.actions'> & DocumentActionsInjected
 
-const STATUS_COLOR: Record<FileStatusLetter, string> = {
-  M: 'var(--dsw-alias-state-warn)',
-  A: 'var(--dsw-alias-state-success)',
-  D: 'var(--dsw-alias-state-error-primary)',
-  U: 'var(--dsw-alias-label-tertiary)',
-}
-
-const ROW_STYLE: CSSProperties = {
-  display: 'inline-flex',
-  alignItems: 'center',
-  gap: '4px',
-}
-
-const BADGE_STYLE: CSSProperties = {
-  minWidth: '14px',
-  textAlign: 'center',
-  fontFamily: 'var(--dsw-font-mono, monospace)',
-  fontSize: '11px',
-  fontWeight: 600,
-}
-
-const BUTTON_STYLE: CSSProperties = {
-  padding: '0 6px',
-  border: '0.5px solid var(--dsw-alias-border-l2)',
-  borderRadius: '4px',
-  background: 'transparent',
-  color: 'var(--dsw-alias-label-primary)',
-  font: 'inherit',
-  fontSize: '12px',
-  lineHeight: 1.5,
-  cursor: 'pointer',
-}
-
-const DISABLED_BUTTON_STYLE: CSSProperties = {
-  ...BUTTON_STYLE,
-  color: 'var(--dsw-alias-label-tertiary)',
-  cursor: 'not-allowed',
+/** 状态字母 → 语义色类。 */
+const STATUS_CLASS: Record<FileStatusLetter, string> = {
+  M: css.statusM ?? '',
+  A: css.statusA ?? '',
+  D: css.statusD ?? '',
+  U: css.statusU ?? '',
 }
 
 function normalizeSeparators(path: string): string {
@@ -131,16 +101,14 @@ export function DocumentActions(props: DocumentActionsProps): ReactNode {
   }
   return (
     <div
-      className="git-document-actions"
-      style={ROW_STYLE}
+      className={`git-document-actions ${css.row}`}
       data-repo-path={repoRelativePath ?? undefined}
     >
       {status === null
         ? (
           <span
-            className="git-document-actions__status"
+            className={`git-document-actions__status ${css.badge} ${css.unknown}`}
             data-status="unknown"
-            style={{ ...BADGE_STYLE, color: 'var(--dsw-alias-label-tertiary)' }}
             title="Git 状态待接入"
           >
             ·
@@ -148,9 +116,8 @@ export function DocumentActions(props: DocumentActionsProps): ReactNode {
         )
         : (
           <span
-            className="git-document-actions__status"
+            className={`git-document-actions__status ${css.badge} ${STATUS_CLASS[status]}`}
             data-status={status}
-            style={{ ...BADGE_STYLE, color: STATUS_COLOR[status] }}
             title={`Git 状态：${status}`}
           >
             {status}
@@ -158,8 +125,7 @@ export function DocumentActions(props: DocumentActionsProps): ReactNode {
         )}
       <button
         type="button"
-        className="git-document-actions__action"
-        style={openBlame === undefined ? DISABLED_BUTTON_STYLE : BUTTON_STYLE}
+        className={openBlame === undefined ? `git-document-actions__action ${css.action} ${css.actionDisabled}` : `git-document-actions__action ${css.action}`}
         onClick={handleBlame}
         disabled={openBlame === undefined}
       >
@@ -167,8 +133,7 @@ export function DocumentActions(props: DocumentActionsProps): ReactNode {
       </button>
       <button
         type="button"
-        className="git-document-actions__action"
-        style={DISABLED_BUTTON_STYLE}
+        className={`git-document-actions__action ${css.action} ${css.actionDisabled}`}
         disabled
         title="历史视图将在 B2 实现"
       >
@@ -176,8 +141,7 @@ export function DocumentActions(props: DocumentActionsProps): ReactNode {
       </button>
       <button
         type="button"
-        className="git-document-actions__action"
-        style={DISABLED_BUTTON_STYLE}
+        className={`git-document-actions__action ${css.action} ${css.actionDisabled}`}
         disabled
         title="Diff 视图将在 B2 实现"
       >
@@ -187,9 +151,8 @@ export function DocumentActions(props: DocumentActionsProps): ReactNode {
         ? null
         : (
           <span
-            className="git-document-actions__failure"
+            className={`git-document-actions__failure ${css.failure}`}
             role="alert"
-            style={{ color: 'var(--dsw-alias-state-error-primary)', fontSize: '11px' }}
           >
             {failure}
           </span>

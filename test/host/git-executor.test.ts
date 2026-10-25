@@ -7,7 +7,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 // 真实 git 仓库 + 进程 spawn 在并发 worker 下偶尔超过默认 5s，这里按文件放宽。
 vi.setConfig({ testTimeout: 30_000 })
 
-import { GitCommandFailure, createGitRunner } from '../../src/host/git-executor.ts'
+import { GitCommandFailure, createGitRunner, instrumentGitRunner } from '../../src/host/git-executor.ts'
+import { createGitConsole } from '../../src/host/console.ts'
 import {
   canonicalPath,
   createTempRepo,
@@ -150,5 +151,88 @@ describe('createGitRunner', () => {
     await delay(60)
     controller.abort()
     await assertion
+  })
+})
+
+describe('instrumentGitRunner', () => {
+  const fixedNow = () => Date.parse('2026-10-25T10:00:00.000Z')
+
+  it('records one successful call with argv, duration, exit code and output', async () => {
+    const repo = makeRepo()
+    const gitConsole = createGitConsole({ now: fixedNow })
+    const run = instrumentGitRunner(createGitRunner(createFakeSubprocess()), gitConsole)
+
+    const result = await run(['rev-parse', '--show-toplevel'], { cwd: repo.root })
+
+    expect(result.exitCode).toBe(0)
+    const [record] = gitConsole.recent().records
+    expect(record?.argv).toEqual(['rev-parse', '--show-toplevel'])
+    expect(record?.exitCode).toBe(0)
+    expect(typeof record?.durationMs).toBe('number')
+    expect(record?.stdout.trim().length).toBeGreaterThan(0)
+    expect(record?.at).toBe('2026-10-25T10:00:00.000Z')
+  })
+
+  it('records non-zero exits as data instead of throwing', async () => {
+    const repo = makeRepo()
+    const gitConsole = createGitConsole({ now: fixedNow })
+    const run = instrumentGitRunner(createGitRunner(createFakeSubprocess()), gitConsole)
+
+    const result = await run(['rev-parse', '--verify', 'no-such-rev'], { cwd: repo.root })
+
+    expect(result.exitCode).not.toBe(0)
+    const [record] = gitConsole.recent().records
+    expect(record?.exitCode).not.toBe(0)
+    expect(record?.stderr.length).toBeGreaterThan(0)
+  })
+
+  it('records a timeout and rethrows the structured failure', async () => {
+    const dir = makeTempDir()
+    const gitConsole = createGitConsole({ now: fixedNow })
+    const run = instrumentGitRunner(
+      createGitRunner(createFakeSubprocess({ executable: makeSlowExecutable(dir) })),
+      gitConsole,
+    )
+
+    await expect(run(['status'], { cwd: dir, timeoutMs: 50 })).rejects.toMatchObject({
+      code: 'git/timeout',
+    })
+
+    const [record] = gitConsole.recent().records
+    expect(record).toMatchObject({ exitCode: null, timedOut: true, argv: ['status'] })
+  })
+
+  it('records caller cancellation', async () => {
+    const dir = makeTempDir()
+    const gitConsole = createGitConsole({ now: fixedNow })
+    const run = instrumentGitRunner(
+      createGitRunner(createFakeSubprocess({ executable: makeSlowExecutable(dir) })),
+      gitConsole,
+    )
+    const controller = new AbortController()
+
+    const assertion = expect(
+      run(['status'], { cwd: dir, timeoutMs: 5000, signal: controller.signal }),
+    ).rejects.toMatchObject({ code: 'git/exec-failed', details: { cancelled: true } })
+    await delay(60)
+    controller.abort()
+    await assertion
+
+    const [record] = gitConsole.recent().records
+    expect(record).toMatchObject({ cancelled: true, exitCode: null })
+    expect(record?.timedOut).not.toBe(true)
+  })
+
+  it('marks a lossy stdout failure as truncated output', async () => {
+    const repo = makeRepo()
+    const gitConsole = createGitConsole({ now: fixedNow })
+    const run = instrumentGitRunner(createGitRunner(createFakeSubprocess()), gitConsole)
+
+    await expect(
+      run(['status', '--porcelain=v2', '--branch', '-z'], { cwd: repo.root, stdoutMaxBytes: 8 }),
+    ).rejects.toMatchObject({ code: 'git/output-too-large' })
+
+    const [record] = gitConsole.recent().records
+    expect(record).toMatchObject({ stdoutTruncated: true, exitCode: null })
   })
 })

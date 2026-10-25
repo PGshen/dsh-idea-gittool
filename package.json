@@ -61,6 +61,7 @@
     "@deepseek-ai/dsh-subprocess": "link:/Users/peng/Me/Ai/deepseek-harness/packages/subprocess/subprocess",
     "@deepseek-ai/dsh-working-directory": "link:/Users/peng/Me/Ai/deepseek-harness/packages/session/working-directory",
     "@eslint/js": "^10.0.1",
+    "@tanstack/react-virtual": "^3.14.22",
     "@types/node": "^26.6.5",
     "@types/react": "^18.3.31",
     "@types/react-dom": "^18.3.7",

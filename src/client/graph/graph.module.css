@@ -1,0 +1,52 @@
+/*
+ * 提交图配色（设计 §15.3）：6 个静态色系与 label-primary 混色，随主题自动调整明暗。
+ * 只在插件自己的 `.graph` 作用域里定义 `--git-lane-*`，不动全局主题，也不写主题选择器。
+ */
+.graph {
+  display: block;
+  flex: none;
+  overflow: hidden;
+
+  --git-lane-1: color-mix(in oklab, var(--dsw-static-blue-500) 68%, var(--dsw-alias-label-primary));
+  --git-lane-2: color-mix(in oklab, var(--dsw-static-green-500) 68%, var(--dsw-alias-label-primary));
+  --git-lane-3: color-mix(in oklab, var(--dsw-static-amber-500) 68%, var(--dsw-alias-label-primary));
+  --git-lane-4: color-mix(in oklab, var(--dsw-static-red-600) 68%, var(--dsw-alias-label-primary));
+  --git-lane-5: color-mix(in oklab, var(--dsw-static-deepseek-500) 68%, var(--dsw-alias-label-primary));
+  --git-lane-6: color-mix(in oklab, var(--dsw-static-blue-400) 55%, var(--dsw-alias-label-primary));
+}
+
+.edge {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.node {
+  stroke: var(--dsw-alias-bg-base);
+  stroke-width: 1.5px;
+}
+
+.headNode {
+  fill: var(--dsw-alias-bg-base);
+  stroke: var(--dsw-alias-brand-primary);
+  stroke-width: 1.8px;
+}
+
+.currentRing {
+  fill: none;
+  stroke: var(--dsw-alias-brand-primary);
+  stroke-width: 1px;
+  opacity: 0.55;
+}
+
+/* 真实 lane 超出上限、被挤到最后一条可见 lane 的节点：虚线描边提示「不在此列」。 */
+.clippedNode {
+  stroke: var(--dsw-alias-label-tertiary);
+  stroke-width: 1px;
+  stroke-dasharray: 1.5 1.5;
+}
+
+.overflow {
+  fill: var(--dsw-alias-label-tertiary);
+  font-size: 9px;
+}

@@ -6,7 +6,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 vi.setConfig({ testTimeout: 30_000 })
 
 import type { GitRunner } from '../../src/host/git-executor.ts'
-import { GitCommandFailure, createGitRunner } from '../../src/host/git-executor.ts'
+import { GitCommandFailure, createGitRunner, instrumentGitRunner } from '../../src/host/git-executor.ts'
+import { createGitConsole } from '../../src/host/console.ts'
 import { parseStatusPorcelainV2Z, readStatus } from '../../src/host/git/status.ts'
 import { canonicalPath, createTempRepo } from './fixtures.ts'
 import { createFakeSubprocess } from './fake-subprocess.ts'
@@ -260,7 +261,8 @@ describe('readStatus', () => {
 
     await readStatus(run, repo.root)
 
-    const last = fake.spawns.at(-1)
+    // status is no longer the last spawn (the stash count follows it); find it by subcommand.
+    const last = fake.spawns.find(spawn => spawn.spec.argv.includes('status'))
     expect(last?.spec.cwd).toBe(repo.root)
     expect(last?.spec.argv[0]).toBe('git')
     expect(last?.spec.argv).toContain('--porcelain=v2')
@@ -277,5 +279,57 @@ describe('readStatus', () => {
     const status = await readStatus(run, canonicalPath(join(repo.root, 'sub')))
 
     expect(status.branch).toBe('main')
+  })
+})
+
+describe('readStatus A1 additions', () => {
+  const { run } = makeRunner()
+
+  it('counts stash entries and reports zero without a stash ref', async () => {
+    const repo = makeRepo()
+    repo.write('a.txt', 'one\n')
+    repo.commit('base')
+
+    expect((await readStatus(run, repo.root)).stashCount).toBe(0)
+
+    repo.write('a.txt', 'two\n')
+    repo.git('stash')
+    repo.write('a.txt', 'three\n')
+    repo.git('stash')
+
+    expect((await readStatus(run, repo.root)).stashCount).toBe(2)
+  })
+
+  it('reading status of a repository without stashes leaves no failed command in the console', async () => {
+    const repo = makeRepo()
+    const gitConsole = createGitConsole()
+    const instrumented = instrumentGitRunner(run, gitConsole)
+
+    const status = await readStatus(instrumented, repo.root)
+
+    expect(status.stashCount).toBe(0)
+    // 每 3s 轮询一次：预期中的「没有贮藏」不能在控制台里刷成红色失败（A1 验收演示发现）。
+    expect(gitConsole.recent().records.filter((record) => record.exitCode !== 0)).toEqual([])
+  })
+
+  it('reports an in-progress bisect', async () => {
+    const repo = makeRepo()
+    repo.commit('one')
+    repo.git('bisect', 'start')
+
+    expect((await readStatus(run, repo.root)).operation).toBe('bisect')
+  })
+
+  it('omits stashCount when the count read fails instead of failing status', async () => {
+    const repo = makeRepo()
+    const failing: GitRunner = async (argv, options) => {
+      if (argv.includes('stash')) throw new GitCommandFailure('git/timeout', 'slow', {})
+      return run(argv, options)
+    }
+
+    const status = await readStatus(failing, repo.root)
+
+    expect(status.branch).toBe('main')
+    expect(status.stashCount).toBeUndefined()
   })
 })

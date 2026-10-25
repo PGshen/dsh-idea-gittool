@@ -23,7 +23,8 @@ export const inject = ['slots', 'locale', 'sidebarRightTabs', 'sidebarRight', 's
 
 export function apply(ctx: ClientContext): void {
   const t = ctx.locale.bind(NS)
-  const bootstrapCache = createBootstrapCache(createGitClient(ctx))
+  const gitClient = createGitClient(ctx)
+  const bootstrapCache = createBootstrapCache(gitClient)
 
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'git: dictionaries')
   ctx.effect(() => ctx.sidebarRightTabs.register(gitDefinition(t)), 'git: tab type')
@@ -48,7 +49,7 @@ export function apply(ctx: ClientContext): void {
   }), 'git: shortcut')
 
   ctx.effect(() => ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register(
-    { name: 'sidebar.right.pane.tab', key: GIT_ID, locale: NS, inject: () => ({ bootstrapCache }) },
+    { name: 'sidebar.right.pane.tab', key: GIT_ID, locale: NS, inject: () => ({ bootstrapCache, gitClient }) },
     GitBody,
   )), 'git: tab body')
 

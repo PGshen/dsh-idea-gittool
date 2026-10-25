@@ -1,0 +1,120 @@
+/* 仓库栏（设计 §7.1）：紧凑一行，颜色只用 --dsw-* token。 */
+.bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  box-sizing: border-box;
+  min-width: 0;
+  height: 32px;
+  padding: 0 8px;
+  border-bottom: 0.5px solid var(--dsw-alias-border-l2);
+  color: var(--dsw-alias-label-primary);
+  font-size: 12px;
+}
+
+.repoIcon {
+  flex: none;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.repo {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.name {
+  flex: none;
+  font-weight: 600;
+}
+
+.path {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 11px;
+  text-overflow: ellipsis;
+}
+
+.placeholder {
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.spacer {
+  flex: 1;
+}
+
+.button {
+  position: relative;
+  flex: none;
+  padding: 2px 6px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font: inherit;
+  cursor: pointer;
+}
+
+.button:hover,
+.button[aria-pressed='true'],
+.button[aria-expanded='true'] {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
+}
+
+.dot {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--dsw-alias-state-error-primary);
+}
+
+.menuAnchor {
+  position: relative;
+  flex: none;
+}
+
+.menu {
+  position: absolute;
+  top: calc(100% + 2px);
+  right: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  min-width: 140px;
+  padding: 4px 0;
+  /* DSH 菜单材质（web-styling：elevation 阴影 + specific-menu 底色，不配边框）。 */
+  border: 0;
+  border-radius: 6px;
+  background: var(--dsw-specific-menu);
+  box-shadow: var(--dsw-elevation-panel);
+  backdrop-filter: var(--dsw-menu-backdrop-filter);
+}
+
+.menuItem {
+  padding: 4px 12px;
+  border: none;
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.menuItem:hover:not(:disabled),
+.menuItem:focus-visible {
+  background: var(--dsw-alias-interactive-bg-hover);
+  outline: none;
+}
+
+.menuItem:disabled {
+  color: var(--dsw-alias-label-tertiary);
+  cursor: default;
+}

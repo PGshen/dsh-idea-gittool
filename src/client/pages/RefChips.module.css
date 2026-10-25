@@ -1,0 +1,8 @@
+.refs {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 3px;
+  max-width: 50%;
+  overflow: hidden;
+}

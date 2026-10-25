@@ -1,0 +1,101 @@
+/* 日志行（设计 §8.1.3）：26px 行高；图列按 lane 计算、最大 160px；<720px 隐藏作者/日期。 */
+.row {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  box-sizing: border-box;
+  width: 100%;
+  height: 26px;
+  padding: 0 8px 0 4px;
+  color: var(--dsw-alias-label-primary);
+  font-size: 13px;
+  cursor: default;
+  user-select: none;
+}
+
+.row:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.selected,
+.selected:hover {
+  background: var(--dsw-alias-interactive-bg-active);
+}
+
+.multi,
+.multi:hover {
+  background: var(--dsw-alias-bg-multi-select);
+}
+
+/* 键盘焦点环：只在表格获得焦点时显示（:focus-within 由 LogTable 的 grid 容器提供）。 */
+.active {
+  box-shadow: inset 2px 0 0 var(--dsw-alias-brand-primary);
+}
+
+.graph {
+  display: flex;
+  flex: none;
+  align-items: center;
+  max-width: 160px;
+  overflow: hidden;
+}
+
+.subject {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.subjectText {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.author {
+  flex: none;
+  width: 110px;
+  overflow: hidden;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.date {
+  flex: none;
+  width: 96px;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.hash {
+  flex: none;
+  width: 64px;
+  color: var(--dsw-alias-label-tertiary);
+  font-family: var(--dsw-font-mono, monospace);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+@container (max-width: 719px) {
+  .author,
+  .date {
+    display: none;
+  }
+}
+
+@container (max-width: 479px) {
+  .hash {
+    display: none;
+  }
+}

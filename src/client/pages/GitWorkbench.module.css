@@ -1,0 +1,25 @@
+.root {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  box-sizing: border-box;
+  color: var(--dsw-alias-label-primary);
+  font-size: 12px;
+}
+
+/* DiffViewer 覆盖层与 Standard/Compact 分支抽屉都以这里为定位容器。 */
+.content {
+  position: relative;
+  display: flex;
+  /* basis 0：剩余空间全部给内容区，固定高度的横幅/控制台/状态栏不被压缩。 */
+  flex: 1 1 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.content > * {
+  flex: 1 1 auto;
+  min-width: 0;
+}

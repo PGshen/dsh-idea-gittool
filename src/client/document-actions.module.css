@@ -1,0 +1,45 @@
+.row {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.badge {
+  min-width: 14px;
+  text-align: center;
+  font-family: var(--dsw-font-mono, monospace);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.unknown { color: var(--dsw-alias-label-tertiary); }
+.statusM { color: var(--dsw-alias-state-warn); }
+.statusA { color: var(--dsw-alias-state-success); }
+.statusD { color: var(--dsw-alias-state-error-primary); }
+.statusU { color: var(--dsw-alias-label-tertiary); }
+
+.action {
+  padding: 0 6px;
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.5;
+  cursor: pointer;
+}
+
+.action:hover:not(:disabled) {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.actionDisabled {
+  color: var(--dsw-alias-label-tertiary);
+  cursor: not-allowed;
+}
+
+.failure {
+  color: var(--dsw-alias-state-error-primary);
+  font-size: 11px;
+}

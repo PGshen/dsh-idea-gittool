@@ -1,0 +1,89 @@
+/* 状态栏（设计 §7.4）：固定 24px 一行，颜色只用 --dsw-* token。 */
+.bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  box-sizing: border-box;
+  min-width: 0;
+  height: 24px;
+  padding: 0 8px;
+  overflow: hidden;
+  border-top: 0.5px solid var(--dsw-alias-border-l2);
+  color: var(--dsw-alias-label-secondary);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.item {
+  flex: none;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.branch {
+  flex: 0 1 auto;
+  color: var(--dsw-alias-label-primary);
+}
+
+.danger,
+.conflict {
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.warn {
+  color: var(--dsw-alias-state-warn);
+}
+
+.clean {
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.changes {
+  color: var(--dsw-alias-label-secondary);
+}
+
+.muted {
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.mono {
+  font-family: var(--dsw-font-mono);
+}
+
+.link {
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.link:hover {
+  color: var(--dsw-alias-label-primary);
+  text-decoration: underline;
+}
+
+.spacer {
+  flex: 1;
+}
+
+.toggle {
+  flex: none;
+  padding: 0 4px;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary);
+  font: inherit;
+  cursor: pointer;
+}
+
+.toggle[aria-pressed='true'] {
+  color: var(--dsw-alias-state-success);
+}
+
+.toggle:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}

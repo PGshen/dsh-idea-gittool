@@ -978,6 +978,23 @@ dsh-idea-gittool/
 | 浏览器端同源 `fetch` + Cookie 即可调通；`/dsh-git/bootstrap` 返回结构化数据 | ✅ | 真实会话返回 repoRoot/branch/17 改动/7 提交 |
 | 未知 sessionId 不能退化为 `sandboxPolicy.workspaceRoot`（那是 dsh 进程 cwd）；持久化无记录即 `git/no-session` | ✅ | `src/host/repo-resolver.ts`；curl 实测 |
 | 文档预览头部历史/Diff 与 Blame 页属产品后续里程碑（B2） | ⏳ | M0 只做空页与 disabled 占位 |
-| 重建 `lib/client.js` 触发 HMR、终端改动后 ≤3s 刷新 | ⚠️ | 只有单测（poller/watch），待手动走查 |
+| 重建 `lib/client.js` 触发 HMR：按内容 rev 判断，只 `touch` 不触发；内容变化约 0.5s 内热替换，页面不整页刷新，factory 会**再次执行** | ✅ 2026-10-25 | A1 T9 走查（3081）：探针属性与 CSS 描边热生效/热撤销；`build.mjs` 因此改为复用并替换 `<style data-plugin-css>`，smoke 覆盖 |
+| 终端改动后刷新：新建标签 1.3s、新建未跟踪文件 1.2s 反映到 Git tab（watch 递增 version + 1s TTL/3s 轮询） | ✅ 2026-10-25 | A1 T9 走查，见 [A1 计划](../plans/completed/a1-只读日志.md) 验证记录 |
+| **web 组合没有 `fs` 服务**（M0 结论） | ❌ 2026-10-25 | `pnpm dsh --profile web --dump-config` 第 403 行有 `fs-sandbox`（base bundle 提供 `fs`）；M0 的 watch 失败实为适配器传错参数（下一行） |
+| `ctx.fs.watch(target, changed, signal)` 的 target 是 `fs.resolve(path)` 产出的 `FsTarget`，不接受路径字符串；`changed` 可能带 Error；目录只监听直接子项 | ✅ 2026-10-25 | `packages/fs/fs/src/index.ts:100`、`types.ts:60`；`src/host/watch.ts` `fsWatchFromService` + 实测 version 0→1 |
+| 插件已经 `link:` 安装进 web profile 时，再加 `--patch dev.patch.yml` 启动会报 `resolves from multiple active Loader sources`；此时直接不带 patch 启动即可（安装态就指向本仓库 `lib/`） | ✅ 2026-10-25 | A1 走查启动 3081 |
+| Host 半边可以用 `new Worker(source, { eval: true })`（`node:worker_threads`）隔离不可信计算；超时后 `terminate()` 能打断死循环，主线程不受影响 | ✅ 2026-10-25 | 评审 I2：3081 上病态正则搜索返回 `git/timeout`，期间其它请求 3ms 返回 |
+| 浏览器面板在会话窗口不可见时是后台页：`requestAnimationFrame` 不运行，无法测真实 fps | ✅ 2026-10-25 | A1 AC3 测量记录 |
+
+Git 与构建行为（A1 实测，git 2.50.1）：
+
+| 结论 | 状态 | 证据 |
+|---|---|---|
+| 贮藏数用 `git stash list --format=%H` 数行：没有贮藏时退出码 0、输出为空。**不要**用 `rev-list --walk-reflogs --count refs/stash`——无贮藏时退出 128，3s 轮询会把控制台刷满红色失败 | ✅ 2026-10-25 | `src/host/git/status.ts` `readStashCount` + `test/host/status.test.ts`（A1 验收演示发现） |
+| bisect 进行中以 `.git/BISECT_START` 判定（`bisect reset` 删除） | ✅ 2026-10-25 | 同上 |
+| `git --grep` 与 `--author` 是 AND 关系，表达不了「消息或作者或哈希」，搜索改在 Host 内匹配 | ✅ 2026-10-25 | `src/host/git/log.ts` + `test/host/log.test.ts` |
+| 凭据脱敏不要用一条全局正则：`/([a-z][a-z0-9+.-]*:\/\/)([^\s/@]+)@/` 在长串字母上是平方复杂度（64KB 约 2.1s、2MB 数十分钟），单纯限长后 2MB 仍约 190ms。改为 `indexOf('://')` 定位、只在每处附近的小窗口里检查协议名（≤32）与 userinfo（≤512），2MB 降到毫秒级；超过 512 字符的 userinfo 不脱敏 | ✅ 2026-10-25 | A1 合并前关口：合并树上 `make check` 超时暴露；`src/host/console.ts`、`src/client/console/console-store.ts` 及对应 2MB 性能测试 |
+| esbuild local-css 会给 `@container` 名加文件前缀，跨文件容器查询需用匿名 `container-type` | ✅ 2026-10-25 | A1 T4 |
+| 单测里 `@deepseek-ai/dsh-client-ui-primitives` 经 `link:` 解析到 DSH 仓库自带的 React 副本，直接调用其 hook 报 invalid hook call；运行时 React 是 external，不受影响 | ✅ 2026-10-25 | A1 T6（DiffViewer 留 `useHighlighter` 注入点） |
 
 依赖与类型：DSH 类型用 `link:` 指向本机 checkout；`webServer` 服务的类型包是 **`@deepseek-ai/dsh-host-webserver`**（不是 `dsh-webserver`）；`ctx.connection` 的 Host 半边类型来自 `@deepseek-ai/dsh-client-connection`。

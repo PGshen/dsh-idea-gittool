@@ -1,0 +1,26 @@
+.page {
+  height: 100%;
+  overflow: auto;
+  padding: 16px;
+  color: var(--dsw-alias-label-primary);
+}
+
+.title {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.body {
+  margin: 0 0 6px;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.muted {
+  margin: 12px 0 0;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 11px;
+  line-height: 1.5;
+}

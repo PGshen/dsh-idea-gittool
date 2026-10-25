@@ -8,8 +8,19 @@ import type {
 } from '@deepseek-ai/dsh-client-connection'
 import type { SandboxMode } from '@deepseek-ai/dsh-sandbox'
 
-import type { BootstrapValue, LogValue, StatusValue, WritePolicyValue } from '../../src/shared/protocol.ts'
-import { GitCommandFailure, createGitRunner } from '../../src/host/git-executor.ts'
+import type {
+  BootstrapValue,
+  BranchesValue,
+  CommitDetailValue,
+  ConsoleValue,
+  DiffFileValue,
+  LogValue,
+  RefsValue,
+  StatusValue,
+  WritePolicyValue,
+} from '../../src/shared/protocol.ts'
+import { GitCommandFailure, createGitRunner, instrumentGitRunner } from '../../src/host/git-executor.ts'
+import { createGitConsole } from '../../src/host/console.ts'
 import { createRepoCache } from '../../src/host/cache.ts'
 import type { SandboxPolicySource } from '../../src/host/sandbox-gate.ts'
 import type { GitRpcHandler, RpcDeps } from '../../src/host/rpc.ts'
@@ -114,12 +125,13 @@ describe('createRpcHandler / status', () => {
 })
 
 describe('createRpcHandler / bootstrap', () => {
-  it('aggregates repo root, first status page, log page, write policy and version', async () => {
+  it('aggregates repo root, status, write policy and version without reading the log', async () => {
     const repo = makeRepo()
     const cache = createRepoCache()
     for (let index = 0; index < 7; index += 1) cache.bumpVersion(repo.root)
+    const fake = createFakeSubprocess()
     const handler = createRpcHandler({
-      runner: createGitRunner(createFakeSubprocess()),
+      runner: createGitRunner(fake),
       sandboxPolicy: () => policySource(repo.root),
       cache: () => cache,
     })
@@ -130,10 +142,45 @@ describe('createRpcHandler / bootstrap', () => {
     expect(bootstrap.sessionId).toBe('session-1')
     expect(bootstrap.repoRoot).toBe(repo.root)
     expect(bootstrap.status?.branch).toBe('main')
-    expect(bootstrap.log?.commits).toHaveLength(1)
-    expect(bootstrap.log?.commits[0]?.subject).toBe('initial commit')
+    // 日志页自己分页拉取；bootstrap 每 3s 轮询一次，不再白跑 git log（评审 I5）。
+    expect('log' in bootstrap).toBe(false)
+    expect(fake.spawns.some((spawn) => spawn.spec.argv.includes('log'))).toBe(false)
     expect(bootstrap.writePolicy.mode).toBe('read-only')
     expect(bootstrap.version).toBe(7)
+  })
+
+  it('reports the git version once per runtime', async () => {
+    const repo = makeRepo()
+    const fake = createFakeSubprocess()
+    const handler = createRpcHandler({
+      runner: createGitRunner(fake),
+      sandboxPolicy: () => policySource(repo.root),
+    })
+
+    const first = okValue<BootstrapValue>(await handler('bootstrap', { sessionId: 'session-1' }, SIGNAL))
+    const second = okValue<BootstrapValue>(await handler('bootstrap', { sessionId: 'session-1' }, SIGNAL))
+
+    expect(first.gitVersion).toMatch(/^\d+\.\d+/)
+    expect(second.gitVersion).toBe(first.gitVersion)
+    const probes = fake.spawns.filter(spawn => spawn.spec.argv.includes('--version'))
+    expect(probes).toHaveLength(1)
+  })
+
+  it('omits gitVersion when the probe fails without failing bootstrap', async () => {
+    const repo = makeRepo()
+    const real = createGitRunner(createFakeSubprocess())
+    const handler = createRpcHandler({
+      runner: async (argv, options) => {
+        if (argv.includes('--version')) throw new GitCommandFailure('git/exec-failed', 'boom', {})
+        return real(argv, options)
+      },
+      sandboxPolicy: () => policySource(repo.root),
+    })
+
+    const bootstrap = okValue<BootstrapValue>(await handler('bootstrap', { sessionId: 'session-1' }, SIGNAL))
+
+    expect(bootstrap.repoRoot).toBe(repo.root)
+    expect(bootstrap.gitVersion).toBeUndefined()
   })
 
   it('defaults the write policy to fail-closed read-only', async () => {
@@ -199,7 +246,6 @@ describe('createRpcHandler / bootstrap', () => {
 
     expect(bootstrap.repoRoot).toBeNull()
     expect(bootstrap.status).toBeNull()
-    expect(bootstrap.log).toBeNull()
     expect(bootstrap.writePolicy.mode).toBe('read-only')
   })
 
@@ -321,5 +367,146 @@ describe('createRpcHandler / envelope', () => {
 
     expect(error.code).toBe('git/output-too-large')
     expect(error.details).toMatchObject({ stdoutMaxBytes: 2097152 })
+  })
+})
+
+describe('createRpcHandler / A1 read endpoints', () => {
+  it('serves branches and refs for the resolved repository', async () => {
+    const { handler, repo } = makeHandler()
+    const head = repo.git('rev-parse', 'HEAD').trim()
+    repo.git('tag', 'v1')
+
+    const branches = okValue<BranchesValue>(await handler('branches', { sessionId: 'session-1' }, SIGNAL))
+    expect(branches.head).toEqual({ branch: 'main', detached: false, sha: head })
+    expect(branches.local.map((entry) => entry.name)).toEqual(['main'])
+    expect(branches.tags.map((entry) => entry.name)).toEqual(['v1'])
+    expect(typeof branches.version).toBe('number')
+
+    const refs = okValue<RefsValue>(await handler('refs', { sessionId: 'session-1' }, SIGNAL))
+    expect(refs.bySha[head]?.map((entry) => entry.name)).toEqual(['main', 'v1'])
+  })
+
+  it('serves commit details and caches them per sha', async () => {
+    const { handler, repo, fake } = makeHandler()
+    const head = repo.git('rev-parse', 'HEAD').trim()
+
+    const first = okValue<CommitDetailValue>(await handler('commit', { sessionId: 'session-1', sha: head }, SIGNAL))
+    expect(first.sha).toBe(head)
+    expect(first.subject).toBe('initial commit')
+    expect(first.files.map((file) => file.path)).toEqual(['README.md'])
+
+    const spawned = fake.spawns.length
+    const second = okValue<CommitDetailValue>(await handler('commit', { sessionId: 'session-1', sha: head }, SIGNAL))
+    expect(second).toEqual(first)
+    // Only repository resolution may spawn again; the commit read itself is cached.
+    expect(fake.spawns.slice(spawned).some((spawn) => spawn.spec.argv.includes('diff-tree'))).toBe(false)
+  })
+
+  it('serves single-file diffs', async () => {
+    const { handler, repo } = makeHandler()
+    repo.write('README.md', '# fixture\nmore\n')
+
+    const value = okValue<DiffFileValue>(
+      await handler('diff', { sessionId: 'session-1', path: 'README.md', scope: 'worktree' }, SIGNAL),
+    )
+
+    expect(value.status).toBe('M')
+    expect(value.hunks[0]?.lines.at(-1)).toEqual({ type: 'add', newLine: 2, text: 'more' })
+  })
+
+  it('applies log filters and keys the cache by them', async () => {
+    const { handler, repo } = makeHandler()
+    repo.write('x.txt', 'x\n')
+    repo.commit('feature: add x')
+
+    const all = okValue<LogValue>(await handler('log', { sessionId: 'session-1' }, SIGNAL))
+    const filtered = okValue<LogValue>(await handler('log', { sessionId: 'session-1', query: 'feature' }, SIGNAL))
+
+    expect(all.commits).toHaveLength(2)
+    expect(filtered.commits.map((commit) => commit.subject)).toEqual(['feature: add x'])
+  })
+
+  it('returns the console records of the instrumented runner, uncached', async () => {
+    const gitConsole = createGitConsole()
+    const fake = createFakeSubprocess()
+    const repo = makeRepo()
+    const handler = createRpcHandler({
+      runner: instrumentGitRunner(createGitRunner(fake), gitConsole),
+      sandboxPolicy: () => policySource(repo.root),
+      console: gitConsole,
+    })
+
+    await handler('status', { sessionId: 'session-1' }, SIGNAL)
+    const value = okValue<ConsoleValue>(await handler('console', { sessionId: 'session-1' }, SIGNAL))
+
+    expect(value.records.length).toBeGreaterThan(0)
+    expect(value.records.some((record) => record.argv.includes('status'))).toBe(true)
+    expect(value.records.every((record) => typeof record.durationMs === 'number')).toBe(true)
+  })
+
+  it('returns only console records from the session repository (评审 I5)', async () => {
+    const gitConsole = createGitConsole()
+    const repo = makeRepo()
+    const handler = createRpcHandler({
+      runner: instrumentGitRunner(createGitRunner(createFakeSubprocess()), gitConsole),
+      sandboxPolicy: () => policySource(repo.root),
+      console: gitConsole,
+    })
+    // Another session's repository shares the process-wide console.
+    gitConsole.record({ argv: ['status'], cwd: '/somewhere/else', durationMs: 1, exitCode: 0, stdout: '', stderr: '' })
+
+    await handler('status', { sessionId: 'session-1' }, SIGNAL)
+    const value = okValue<ConsoleValue>(await handler('console', { sessionId: 'session-1' }, SIGNAL))
+
+    expect(value.records.length).toBeGreaterThan(0)
+    expect(value.records.every((record) => record.cwd?.startsWith(repo.root) === true)).toBe(true)
+  })
+
+  it('returns an empty console without a console dependency', async () => {
+    const { handler } = makeHandler()
+
+    const value = okValue<ConsoleValue>(await handler('console', { sessionId: 'session-1' }, SIGNAL))
+
+    expect(value).toEqual({ records: [], truncated: false })
+  })
+
+  it.each([
+    ['branches', {}],
+    ['refs', {}],
+    ['commit', { sha: 'deadbeef' }],
+    ['diff', { path: 'README.md', scope: 'worktree' }],
+  ])('maps %s outside any repository to git/not-a-repository', async (endpoint, extra) => {
+    const outside = makeOutsideDir()
+    const { handler } = makeHandler({ sandboxPolicy: () => policySource(outside) })
+
+    const result = await handler(endpoint, { sessionId: 'session-1', ...extra }, SIGNAL)
+
+    expect(errorOf(result).code).toBe('git/not-a-repository')
+  })
+
+  it.each([
+    ['commit', {}],
+    ['commit', { sha: 'HEAD' }],
+    ['commit', { sha: 'deadbeefdeadbeef' }],
+    ['diff', { scope: 'worktree' }],
+    ['diff', { path: '../etc/passwd', scope: 'worktree' }],
+    ['diff', { path: '/etc/passwd', scope: 'worktree' }],
+    ['diff', { path: 'README.md', scope: 'nope' }],
+    ['diff', { path: 'README.md', scope: 'commit' }],
+    ['diff', { path: 'README.md', scope: 'commit', sha: 7 }],
+    ['log', { query: 1 }],
+    ['log', { branches: 'main' }],
+    ['log', { authors: [1] }],
+    ['log', { order: 'sideways' }],
+    ['log', { firstParent: 'yes' }],
+    ['log', { branches: ['--all'] }],
+    ['console', {}],
+  ])('rejects invalid %s payload %j with git/invalid-payload', async (endpoint, extra) => {
+    const { handler } = makeHandler()
+    const payload = endpoint === 'console' ? { sessionId: 42 } : { sessionId: 'session-1', ...extra }
+
+    const result = await handler(endpoint, payload, SIGNAL)
+
+    expect(errorOf(result).code).toBe('git/invalid-payload')
   })
 })

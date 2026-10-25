@@ -202,3 +202,205 @@ describe('readLog', () => {
     expect(argv).toContain('--')
   })
 })
+
+describe('readLog filters', () => {
+  /**
+   * main: m1 (Alice) → m2 (Bob, "Fix parser bug") → merge(side) → m3 (Alice)
+   * side: s1 (Carol, "side feature") from m1
+   */
+  function seedGraph(): {
+    repo: ReturnType<typeof createTempRepo>
+    m1: string
+    m2: string
+    s1: string
+    merge: string
+    m3: string
+  } {
+    const repo = makeRepo({ initialCommit: false })
+    const as = (name: string, email: string, ...args: string[]): string => {
+      repo.git('-c', `user.name=${name}`, '-c', `user.email=${email}`, ...args)
+      return repo.git('rev-parse', 'HEAD').trim()
+    }
+    repo.write('a.txt', '1\n')
+    repo.git('add', '-A')
+    const m1 = as('Alice', 'alice@example.com', 'commit', '-q', '-m', 'Initial import')
+    repo.git('checkout', '-q', '-b', 'side')
+    repo.write('s.txt', 's\n')
+    repo.git('add', '-A')
+    const s1 = as('Carol', 'carol@example.org', 'commit', '-q', '-m', 'side feature\n\nmentions Parser in body')
+    repo.git('checkout', '-q', 'main')
+    repo.write('a.txt', '2\n')
+    repo.git('add', '-A')
+    const m2 = as('Bob', 'bob@example.com', 'commit', '-q', '-m', 'Fix parser bug')
+    const merge = as('Alice', 'alice@example.com', 'merge', '-q', '--no-ff', '-m', 'Merge side', 'side')
+    repo.write('a.txt', '3\n')
+    repo.git('add', '-A')
+    const m3 = as('Alice', 'alice@example.com', 'commit', '-q', '-m', 'Release a+b (v1)')
+    return { repo, m1, m2, s1, merge, m3 }
+  }
+
+  const shasOf = (page: { commits: { sha: string }[] }): string[] => page.commits.map((commit) => commit.sha)
+
+  it('matches query text in message, author name or email, case-insensitively by default', async () => {
+    const { repo, m2, s1 } = seedGraph()
+    const { run } = makeRunner()
+
+    expect(shasOf(await readLog(run, repo.root, { query: 'parser' }))).toEqual([m2, s1])
+    expect(shasOf(await readLog(run, repo.root, { query: 'Parser', caseSensitive: true }))).toEqual([s1])
+    expect(shasOf(await readLog(run, repo.root, { query: 'carol' }))).toEqual([s1])
+    expect(shasOf(await readLog(run, repo.root, { query: 'bob@example' }))).toEqual([m2])
+  })
+
+  it('treats the query literally unless regex is set', async () => {
+    const { repo, m3, m2 } = seedGraph()
+    const { run } = makeRunner()
+
+    expect(shasOf(await readLog(run, repo.root, { query: 'a+b (v1)' }))).toEqual([m3])
+    expect(shasOf(await readLog(run, repo.root, { query: '^fix .* bug$', regex: true }))).toEqual([m2])
+    await expect(readLog(run, repo.root, { query: '(', regex: true })).rejects.toMatchObject({
+      code: 'git/invalid-payload',
+    })
+  })
+
+  it('matches a hash-shaped query as a sha prefix', async () => {
+    const { repo, m2 } = seedGraph()
+    const { run } = makeRunner()
+
+    const page = await readLog(run, repo.root, { query: m2.slice(0, 8) })
+
+    expect(shasOf(page)).toEqual([m2])
+  })
+
+  it('filters by authors (OR), branches, first parent and merges', async () => {
+    const { repo, m1, m2, s1, merge, m3 } = seedGraph()
+    const { run } = makeRunner()
+
+    expect(shasOf(await readLog(run, repo.root, { authors: ['Bob', 'carol@example.org'] }))).toEqual([m2, s1])
+    expect(shasOf(await readLog(run, repo.root, { branches: ['side'] }))).toEqual([s1, m1])
+    expect(shasOf(await readLog(run, repo.root, { firstParent: true }))).toEqual([m3, merge, m2, m1])
+    expect(shasOf(await readLog(run, repo.root, { noMerges: true }))).not.toContain(merge)
+    const topo = shasOf(await readLog(run, repo.root, { order: 'topo' }))
+    expect(topo[0]).toBe(m3)
+    expect(topo).toHaveLength(5)
+  })
+
+  it('paginates filtered results with a v2 cursor pinned to the filters', async () => {
+    const { repo, m1 } = seedGraph()
+    const { run, fake } = makeRunner()
+
+    const first = await readLog(run, repo.root, { branches: ['side', 'main'], noMerges: true, limit: 2 })
+    expect(first.next).toMatch(/^v2:/)
+    expect(first.commits).toHaveLength(2)
+    const second = await readLog(run, repo.root, {
+      branches: ['side', 'main'],
+      noMerges: true,
+      limit: 2,
+      cursor: first.next,
+    })
+    expect([...shasOf(first), ...shasOf(second)]).toContain(m1)
+    expect(new Set([...shasOf(first), ...shasOf(second)]).size).toBe(4)
+    expect(second.next).toBeUndefined()
+
+    // Same cursor with different filters is rejected.
+    await expect(readLog(run, repo.root, { limit: 2, cursor: first.next })).rejects.toMatchObject({
+      code: 'git/invalid-payload',
+    })
+    const argv = fake.spawns.find((spawn) => spawn.spec.argv.includes('log'))?.spec.argv ?? []
+    expect(argv).toContain('--no-merges')
+    expect(argv).toContain('--date-order')
+  })
+
+  it('continues a search page by page in raw-stream positions', async () => {
+    const repo = makeRepo({ initialCommit: false })
+    for (let index = 1; index <= 12; index += 1) {
+      repo.write('n.txt', `${index}\n`)
+      repo.commit(index % 3 === 0 ? `hit ${index}` : `miss ${index}`)
+    }
+    const { run } = makeRunner()
+    const options = { searchChunk: 4, searchBudget: 4 }
+
+    const subjects: string[] = []
+    let cursor: string | undefined
+    for (let guard = 0; guard < 10; guard += 1) {
+      const page = await readLog(run, repo.root, { query: 'hit', limit: 2, cursor }, options)
+      subjects.push(...page.commits.map((commit) => commit.subject))
+      cursor = page.next
+      if (cursor === undefined) break
+    }
+
+    expect(subjects).toEqual(['hit 12', 'hit 9', 'hit 6', 'hit 3'])
+  })
+
+  it('rejects malformed filters and unknown branches', async () => {
+    const repo = makeRepo()
+    const { run } = makeRunner()
+    const bad: LogQuery[] = [
+      { query: 42 as never },
+      { regex: 'yes' as never },
+      { order: 'random' as never },
+      { branches: 'main' as never },
+      { branches: ['--all'] },
+      { branches: ['main..side'] },
+      { branches: ['nope'] },
+      { authors: [''] },
+      { query: 'x'.repeat(500) },
+    ]
+    for (const query of bad) {
+      await expect(readLog(run, repo.root, query), JSON.stringify(query)).rejects.toMatchObject({
+        code: 'git/invalid-payload',
+      })
+    }
+  })
+})
+
+describe('readLog search chunking', () => {
+  it('halves the search chunk when a chunk overflows the output cap', async () => {
+    const repo = makeRepo({ initialCommit: false })
+    commitSeries(repo, 6)
+    const fake = createFakeSubprocess()
+    const run = createGitRunner(fake, { stdoutMaxBytes: 700 })
+
+    const page = await readLog(run, repo.root, { query: 'commit', limit: 1 }, { searchChunk: 6 })
+
+    expect(page.commits.map((commit) => commit.subject)).toEqual(['commit 6'])
+    expect(fake.spawns.filter((spawn) => spawn.spec.argv.includes('log')).length).toBeGreaterThan(1)
+  })
+})
+
+describe('readLog regex search isolation', () => {
+  const shasOf = (page: { commits: { sha: string }[] }): string[] => page.commits.map((commit) => commit.sha)
+
+  it('times out a catastrophic regex without blocking the Host event loop', async () => {
+    const repo = makeRepo()
+    repo.write('a.txt', 'x\n')
+    repo.commit(`${'a'.repeat(32)}!`)
+    const { run } = makeRunner()
+
+    let ticks = 0
+    const ticker = setInterval(() => { ticks += 1 }, 20)
+    const startedAt = Date.now()
+    try {
+      await expect(
+        readLog(run, repo.root, { query: '^(a+)+$', regex: true }, { regexTimeoutMs: 300 }),
+      ).rejects.toMatchObject({ code: 'git/timeout' })
+    } finally {
+      clearInterval(ticker)
+    }
+    expect(Date.now() - startedAt).toBeLessThan(5_000)
+    // The main thread kept running timers while the pattern spun in the worker.
+    expect(ticks).toBeGreaterThan(3)
+  })
+
+  it('still matches ordinary regexes across message, author and email', async () => {
+    const repo = makeRepo()
+    repo.write('a.txt', 'one\n')
+    const target = repo.commit('feat: Worker isolation')
+    repo.write('a.txt', 'two\n')
+    repo.commit('chore: unrelated')
+    const { run } = makeRunner()
+
+    expect(shasOf(await readLog(run, repo.root, { query: 'worker\\s+iso', regex: true }))).toEqual([target])
+    expect(shasOf(await readLog(run, repo.root, { query: 'Worker', regex: true, caseSensitive: true }))).toEqual([target])
+    expect(await readLog(run, repo.root, { query: 'worker', regex: true, caseSensitive: true })).toMatchObject({ commits: [] })
+  })
+})

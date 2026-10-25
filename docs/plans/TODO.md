@@ -15,9 +15,9 @@
 
 | 优先级 | 事项 | 来源 | 备注 |
 |---|---|---|---|
-| P1 | 执行 A1 核心只读（日志/提交图/详情/diff/分支/控制台） | M0 验收，2026-10-25 | 计划：[a1-只读日志.md](active/a1-只读日志.md)，待批准 |
-| P1 | A1 之后按 A2 → A3 → B1 → B2 → B3 → B4 拆分计划 | [设计决策 v0.2](../design/2026-10-25-产品设计决策-v0.2.md) §4 | 每个里程碑一份计划，执行前批准 |
-| P1 | 把产品设计 §16 的最终技术结构回写 [ARCHITECTURE.md](../ARCHITECTURE.md) | M0 验证后 | 以 spike 实测结论为准，产品文档不替代架构文档 |
+| P1 | 起草 A2 计划，之后按 A3 → B1 → B2 → B3 → B4 依次拆分 | [设计决策 v0.2](../design/2026-10-25-产品设计决策-v0.2.md) §4 | 每个里程碑一份计划，执行前批准；A2 计划需带上 A1 遗留：AC3 前台 fps 录制、TD-6 文案国际化 |
+| P2 | 筛选/仓库栏/分支右键菜单改用 ui-primitives `MenuSurface`/`Menu` | A1 走查，2026-10-25 | 当前按 [ADR 0006](../decisions/0006-浮层菜单材质例外.md) 手写菜单材质，迁移后废弃该 ADR |
+| P2 | TD-5 嵌套 refs（`feature/x`）监听缺口 | [tech-debt](../quality/tech-debt.md) | A3 分支写操作之前处理 |
 | P2 | 接入远程 CI（GitHub Actions 调用 `make check`） | [ADR 0002](../decisions/0002-技术栈与质量工具链.md) | 当前只用本地关口；仓库推到 GitHub 后再做 |
 | P2 | 复核参考项目的 Apache-2.0 复用边界，补 `NOTICE` 与致谢 | [参考项目调研](../references/reference-feature-inventory.md) | 只在确实复用算法/图标时做 |
 
@@ -25,6 +25,8 @@
 
 | 完成日期 | 事项 | 计划 |
 |---|---|---|
+| 2026-10-25 | A1 核心只读：日志/提交图/详情/diff/分支/状态栏/控制台、`.git` watch 刷新、CSS Modules 管线；AI 评审与负责人验收通过 | [a1-只读日志](completed/a1-只读日志.md) |
+| 2026-10-25 | ARCHITECTURE 模块地图按 A1 实际代码回写（pages/store/graph/console/ui、host/git、watch） | [a1-只读日志](completed/a1-只读日志.md) |
 | 2026-10-25 | 初始化 harness 工程：入口地图、SOP、计划/ADR/质量/技术债/references 结构、`make check`、pre-commit | — |
 | 2026-10-25 | M0 集成 spike：双面 bundle 挂载、产物契约、`/dsh-git` RPC、写门禁、文档动作、刷新兜底 | [m0-集成-spike](../plans/completed/m0-集成-spike.md) |
 | 2026-10-25 | 归置既有产品设计文档到 `docs/design/`，调研文档到 `docs/references/` | — |

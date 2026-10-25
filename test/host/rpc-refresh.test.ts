@@ -10,6 +10,7 @@ import type { RpcDeps, RpcRuntime } from '../../src/host/rpc.ts'
 import { createRpcRuntime } from '../../src/host/rpc.ts'
 import type { SandboxPolicySource } from '../../src/host/sandbox-gate.ts'
 import type { FsWatch } from '../../src/host/watch.ts'
+import { gitWatchTargets } from '../../src/host/watch.ts'
 import type { BootstrapValue, LogValue, StatusValue } from '../../src/shared/protocol.ts'
 import type { ConnectionRpcHandlerResult } from '@deepseek-ai/dsh-client-connection'
 import type { Session } from '@deepseek-ai/dsh-session'
@@ -212,7 +213,7 @@ describe('rpc cache', () => {
 })
 
 describe('rpc watch wiring', () => {
-  it('starts six .git watches on first read and bumps the version on change', async () => {
+  it('starts one watch per .git target on first read and bumps the version on change', async () => {
     const fs = makeFakeFsWatch()
     const { runtime, fake } = makeEnvironment({ fsWatch: () => fs.fsWatch, watchDebounceMs: 0 })
 
@@ -220,7 +221,7 @@ describe('rpc watch wiring', () => {
       await runtime.handler('status', { sessionId: 's-1' }, SIGNAL),
     )
     expect(first.version).toBe(0)
-    expect(fs.watched()).toHaveLength(6)
+    expect(fs.watched()).toHaveLength(gitWatchTargets('/r').length)
 
     fs.emit()
     await delay(10)
@@ -279,7 +280,7 @@ describe('rpc watch wiring', () => {
     await runtime.handler('status', { sessionId: 's-1' }, SIGNAL)
 
     await runtime.dispose()
-    expect(fs.closed).toHaveLength(6)
+    expect(fs.closed).toHaveLength(gitWatchTargets('/r').length)
     await expect(runtime.dispose()).resolves.toBeUndefined()
 
     // Reads still work after dispose (no watch is recreated).
@@ -287,7 +288,7 @@ describe('rpc watch wiring', () => {
       await runtime.handler('status', { sessionId: 's-1' }, SIGNAL),
     )
     expect(status.branch).toBe('main')
-    expect(fs.watched()).toHaveLength(6)
+    expect(fs.watched()).toHaveLength(gitWatchTargets('/r').length)
   })
 })
 

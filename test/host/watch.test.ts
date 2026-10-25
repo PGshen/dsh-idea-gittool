@@ -71,16 +71,19 @@ function createFakeWatch(options: FakeWatchOptions = {}): FakeWatch {
 }
 
 describe('gitWatchTargets', () => {
-  it('返回 .git 下六个固定目标，全部位于仓库根的 .git 内', () => {
+  it('返回 .git 下八个固定目标，全部位于仓库根的 .git 内', () => {
     const targets = gitWatchTargets(ROOT)
 
     expect(targets).toEqual([
       join(ROOT, '.git', 'HEAD'),
       join(ROOT, '.git', 'index'),
       join(ROOT, '.git', 'packed-refs'),
+      // fetch 总会写 FETCH_HEAD；远程分支落在 refs/remotes/<remote>/ 子目录，目录监听看不到。
+      join(ROOT, '.git', 'FETCH_HEAD'),
       join(ROOT, '.git', 'refs'),
       join(ROOT, '.git', 'refs', 'heads'),
       join(ROOT, '.git', 'refs', 'remotes'),
+      join(ROOT, '.git', 'refs', 'tags'),
     ])
     expect(new Set(targets).size).toBe(targets.length)
     for (const target of targets) {

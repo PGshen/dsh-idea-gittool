@@ -3,7 +3,7 @@
 // docs/references/dsh-integration-feasibility.md §5.3–5.4（TD-1 需要持续盯住）。
 //
 // CSS Modules（ADR 0005）：esbuild 的 local-css 处理 *.module.css，样式文本在构建期
-// 收集并内联进单个 client.js；factory 首次执行时注入一个 <style data-plugin-css>。
+// 收集并内联进单个 client.js；factory 执行时注入/更新一个 <style data-plugin-css>（HMR 重跑会替换内容）。
 import { readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
 import { build, context } from 'esbuild'
 
@@ -78,11 +78,15 @@ const client = {
       `window.__ModuleLoader__.load({ id: ${JSON.stringify(ID)}, factory: (require) => {`,
       'var module = { exports: {} }; var exports = module.exports;',
       `var __dshGitCss = ${JSON.stringify(CSS_TOKEN)};`,
-      "if (typeof document !== 'undefined' && __dshGitCss.length > 0 && !document.querySelector('style[data-plugin-css=\"dsh-idea-gittool\"]')) {",
-      "  var __style = document.createElement('style');",
-      "  __style.setAttribute('data-plugin-css', 'dsh-idea-gittool');",
+      // HMR 会再次执行 factory：复用已有 <style> 并替换内容，既不重复注入也不留旧样式。
+      "if (typeof document !== 'undefined' && __dshGitCss.length > 0) {",
+      "  var __style = document.querySelector('style[data-plugin-css=\"dsh-idea-gittool\"]');",
+      '  if (__style === null) {',
+      "    __style = document.createElement('style');",
+      "    __style.setAttribute('data-plugin-css', 'dsh-idea-gittool');",
+      '    document.head.appendChild(__style);',
+      '  }',
       '  __style.textContent = __dshGitCss;',
-      '  document.head.appendChild(__style);',
       '}',
     ].join('\n'),
   },

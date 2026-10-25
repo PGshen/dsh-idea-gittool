@@ -95,8 +95,9 @@ export const DEFAULT_DEBOUNCE_MS = 250
 /**
  * 计算需要 watch 的 .git 目标（调研 §9.2）。纯函数，不读文件系统。
  *
- * 目录目标只监听直接子项，所以 `refs`、`refs/heads`、`refs/remotes` 都要显式挂上，
- * 才能覆盖「分支指针更新」与 `git pack-refs` / fetch 写入的 packed-refs。
+ * 目录目标只监听直接子项，所以 `refs`、`refs/heads`、`refs/remotes`、`refs/tags` 都要显式挂上，
+ * 才能覆盖「分支指针更新」、新建标签与 `git pack-refs` / fetch 写入的 packed-refs。
+ * 已知缺口：带 `/` 的分支名（refs/heads/feature/x）落在更深的子目录，只能靠手动刷新。
  */
 export function gitWatchTargets(repoRoot: string): string[] {
   const gitDir = join(repoRoot, '.git')
@@ -104,9 +105,12 @@ export function gitWatchTargets(repoRoot: string): string[] {
     join(gitDir, 'HEAD'),
     join(gitDir, 'index'),
     join(gitDir, 'packed-refs'),
+    // fetch 总会写 FETCH_HEAD；它更新的远程分支在 refs/remotes/<remote>/ 下，目录监听看不到。
+    join(gitDir, 'FETCH_HEAD'),
     join(gitDir, 'refs'),
     join(gitDir, 'refs', 'heads'),
     join(gitDir, 'refs', 'remotes'),
+    join(gitDir, 'refs', 'tags'),
   ]
 }
 

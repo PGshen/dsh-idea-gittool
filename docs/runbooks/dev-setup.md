@@ -44,7 +44,9 @@ pnpm dsh web --patch /Users/peng/Me/Ai/dsh-idea-gittool/dev.patch.yml
 ```
 
 - `dev.patch.yml` 用**绝对路径**行把本包挂进 client 图；改它需要重启，不省重启。
-- 修改 `lib/client.js` 后由 `dsh-client-hmr` 轮询热换；Host 改动、首次安装、`engines.dsh` 变化需要重启 `dsh web`。
+- **插件已经 `link:` 安装进 web profile 时不要再加 `--patch`**：会报 `resolves from multiple active Loader sources`。直接 `pnpm dsh web --no-open --port 3081` 即可，安装态就指向本仓库的 `lib/`（2026-10-25 实测）。
+- 不要占用负责人正在用的 3080；走查另起 3081 等端口，用完停掉。
+- 修改 `lib/client.js` 后由 `dsh-client-hmr` 轮询热换（按内容 rev，只 `touch` 不触发；约 0.5s 生效，CSS 同步替换）；Host 改动、首次安装、`engines.dsh` 变化需要重启 `dsh web`。
 - **不要修改 DSH checkout**；需要对照实验时用临时目录或本仓库内的副本。
 
 ## 安装态复验（仅负责人在场时执行）

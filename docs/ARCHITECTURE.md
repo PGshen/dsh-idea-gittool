@@ -2,7 +2,7 @@
 
 本文件只描述**代码结构**和**依赖方向**，内容必须和代码保持一致（SOP §10）。产品与页面设计见 [产品设计 v0.2](design/2026-10-25-产品设计-v0.2.md)；技术方案见其中 §16 与 [DSH 集成可行性调研](references/dsh-integration-feasibility.md)。
 
-> 状态：2026-10-25，M0 spike 已落地（骨架 + `/dsh-git` HTTP RPC + Git tab 数据 + 文档动作 + 只读门禁）；HMR/刷新走查待补。
+> 状态：2026-10-25，A1 核心只读已落地（日志/提交图/详情/diff/分支/状态栏/控制台 + `.git` watch 刷新）；HMR 与终端刷新已实机走查。
 > 分层规则 R1–R5 已写入 [`.dependency-cruiser.cjs`](../.dependency-cruiser.cjs)，由 `make check` 强制执行。
 
 ## 1. 仓库顶层
@@ -30,8 +30,16 @@ dsh-idea-gittool/
 | 模块 | 职责 | 可以依赖 |
 |---|---|---|
 | `src/client/` | 右侧栏 Git tab、四个平级页、覆盖页栈、UI store、`git-client.ts`（fetch RPC）、`bootstrap-cache.ts`（每会话快照/去重/丢旧 version）、`use-bootstrap.ts`（快照与状态字母 hook）、`polling.ts`（可见时轮询）、文档预览头部动作与 `git.blame` 页 | `src/shared/`；DSH baseline external（React、`@deepseek-ai/dsh-client-*`、`@tanstack/react-virtual`） |
+| `src/client/pages/` | `GitWorkbench.tsx` 组装工作台；`LogPage`/`FilterBar`/`LogTable`/`LogRow`/`RefChips`（日志）、`CommitDetail`/`ChangedFilesTree`（详情）、`DiffViewer`/`DiffHunks`/`DiffFileList`（统一 diff 覆盖层）、`BranchPanel`+`branch-store`、`RepoBar`/`StatusBar`/`OperationBanner` | 同 `src/client/`；页面只接收注入的 store/回调，不直接发 RPC（`GitWorkbench` 除外） |
+| `src/client/store/` | React-free 的 `log-store`（分页/筛选/选择/键盘）、`detail-store`、`diff-store`；`useSyncExternalStore` 订阅 | `src/shared/`、`src/client/graph/` |
+| `src/client/graph/` | 提交图增量布局（lane/颜色/边，纯函数）与 `GraphCell` 渲染 | `src/shared/` |
+| `src/client/console/` | Git 控制台抽屉与 store（轮询 `console` 端点、客户端兜底脱敏） | `src/shared/`、`src/client/polling.ts` |
+| `src/client/ui/` | A1 基础组件：Button/Chip/StatusLetter/EmptyState（CSS Modules，ADR 0005） | React |
 | `src/host/` | `/dsh-git` HTTP 路由（webServer prefix + `requestRejection` 鉴权，**不用** `connection.rpc.handle`）、RPC 处理器、sessionId → 仓库根解析、git 进程执行与解析、写能力门禁、缓存与刷新 | `src/shared/`；`node:*`；DSH 能力只从 `ctx` 取 |
 | `src/host/http.ts` | 自注册 `/dsh-git/<endpoint>` 前缀路由、JSON 信封与错误映射；原因见 references §13 | 同上 |
+| `src/host/git/` | 每个端点一个读取器：`status`（含贮藏数/操作状态）、`log`（Host 侧筛选与 v1/v2 游标）、`refs`、`branches`、`commit`、`diff`（结构化 hunk、截断规则） | `src/shared/`、`git-executor.ts` |
+| `src/host/{git-executor,console}.ts` | `ctx.subprocess` 执行 git（固定环境、超时、输出上限）；`instrumentGitRunner` 把每次调用写进控制台环形缓冲（脱敏/截断） | `src/shared/` |
+| `src/host/{watch,cache}.ts` | `.git` 关键目标经 `ctx.fs`（先 `resolve()` 再 `watch()`）防抖监听，递增每仓库 version 使缓存失效；无 `fs` 时降级为 1s TTL + 客户端 3s 轮询 | `node:path` |
 | `src/shared/` | RPC 方法与 payload 类型、文件状态与 diff 数据结构、错误码 | 无（只放两端都能内联的类型与常量） |
 | `build.mjs` | 产出 `lib/host.js` / `lib/client.js`，复刻 `window.__ModuleLoader__` 契约与 baseline externals | `package.json`；以 `src/` 为构建输入 |
 | `scripts/check_docs.py` | 文档链接、计划/ADR 章节、技术债编号、AGENTS.md 行数检查 | 无（仅 Python 标准库） |

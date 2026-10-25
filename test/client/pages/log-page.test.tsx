@@ -5,7 +5,7 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
 
-import { FilterBar, filterChips, hasActiveFilter, toggleValue } from '../../../src/client/pages/FilterBar.tsx'
+import { FilterBar, closeOpenMenus, filterChips, hasActiveFilter, menuContaining, toggleValue } from '../../../src/client/pages/FilterBar.tsx'
 import type { FilterBarProps } from '../../../src/client/pages/FilterBar.tsx'
 import { LogPage, branchOptionsFromRefs, selectionOf } from '../../../src/client/pages/LogPage.tsx'
 import type { LogPageProps } from '../../../src/client/pages/LogPage.tsx'
@@ -387,3 +387,29 @@ async function loadedStore(commits: CommitSummary[]): Promise<LogStore> {
 async function flush(): Promise<void> {
   for (let index = 0; index < 5; index += 1) await Promise.resolve()
 }
+
+describe('FilterBar 菜单关闭', () => {
+  function fakeMenu(open: boolean): { open: boolean; contains: (node: unknown) => boolean } {
+    const menu = { open, contains: (node: unknown) => node === menu }
+    return menu
+  }
+
+  it('关闭除 keep 之外所有已展开的菜单，返回关闭数', () => {
+    const a = fakeMenu(true)
+    const b = fakeMenu(true)
+    const c = fakeMenu(false)
+    const root = { querySelectorAll: () => [a, b, c] }
+    expect(closeOpenMenus(root, b)).toBe(1)
+    expect([a.open, b.open, c.open]).toEqual([false, true, false])
+    expect(closeOpenMenus(root)).toBe(1)
+    expect(b.open).toBe(false)
+  })
+
+  it('点击落在某个菜单内部时保留它', () => {
+    const a = fakeMenu(true)
+    const root = { querySelectorAll: () => [a] }
+    expect(menuContaining([a], a)).toBe(a)
+    expect(menuContaining([a], {})).toBeNull()
+    expect(closeOpenMenus(root, menuContaining([a], {}))).toBe(1)
+  })
+})

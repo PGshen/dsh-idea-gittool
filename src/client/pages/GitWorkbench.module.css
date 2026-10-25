@@ -13,7 +13,8 @@
 .content {
   position: relative;
   display: flex;
-  flex: 1 1 auto;
+  /* basis 0：剩余空间全部给内容区，固定高度的横幅/控制台/状态栏不被压缩。 */
+  flex: 1 1 0;
   min-height: 0;
   overflow: hidden;
 }

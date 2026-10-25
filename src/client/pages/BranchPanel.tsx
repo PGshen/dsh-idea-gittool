@@ -69,6 +69,11 @@ function rowIcon(group: BranchGroupKind, row: BranchRow): string {
 
 interface MenuState { entry: BranchEntry; x: number; y: number }
 
+/** 抽屉内 Esc：有搜索词先清空（同 input[type=search] 习惯），否则关闭抽屉/覆盖页。 */
+export function drawerEscapeAction(search: string): 'clear-search' | 'close' {
+  return search.trim() === '' ? 'close' : 'clear-search'
+}
+
 export function BranchPanel(props: BranchPanelProps): ReactNode {
   const { mode, open, collapsed = false } = props
   if (mode !== 'wide' && !open) return null
@@ -96,10 +101,11 @@ export function BranchPanel(props: BranchPanelProps): ReactNode {
     )
   }
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
-    if (event.key === 'Escape') {
-      event.stopPropagation()
-      props.onClose?.()
-    }
+    if (event.key !== 'Escape') return
+    event.preventDefault()
+    event.stopPropagation()
+    if (drawerEscapeAction(props.search) === 'clear-search') props.onSearchChange?.('')
+    else props.onClose?.()
   }
   return (
     <div className={css.overlay} data-mode={mode}>
@@ -124,6 +130,12 @@ function BranchPanelBody(props: BranchPanelProps): ReactNode {
     value, mode, search, collapsedGroups, collapsedDirs, flat, loading = false, error = null,
   } = props
   const [menu, setMenu] = useState<MenuState | null>(null)
+  // 抽屉/覆盖页打开即把焦点移进来，Esc 与键盘操作才落在面板内（Wide 档常驻，不抢焦点）。
+  const autofocus = mode !== 'wide'
+  const searchRef = useRef<HTMLInputElement>(null)
+  useEffect(() => {
+    if (autofocus) searchRef.current?.focus()
+  }, [autofocus])
   // 回调总取最新 props，activator 只建一次。
   const latest = useRef(props)
   latest.current = props
@@ -188,7 +200,9 @@ function BranchPanelBody(props: BranchPanelProps): ReactNode {
     <>
       <div className={css.header}>
         <input
+          ref={searchRef}
           type="search"
+          {...(autofocus ? { 'data-autofocus': 'true' } : {})}
           className={css.search}
           placeholder="搜索分支"
           aria-label="搜索分支"

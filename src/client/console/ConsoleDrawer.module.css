@@ -2,6 +2,8 @@
 .drawer {
   position: relative;
   display: flex;
+  /* 作为纵向 flex 子项时保持自身高度，不被日志区按比例压缩。 */
+  flex: 0 0 auto;
   flex-direction: column;
   box-sizing: border-box;
   min-height: 0;

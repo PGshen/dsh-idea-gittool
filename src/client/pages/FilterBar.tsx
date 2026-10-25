@@ -1,13 +1,39 @@
 // 日志筛选栏（设计 §8.1.2）：搜索（.* / Aa）、分支多选、用户多选、图选项、跳转、刷新。
 // 纯展示组件：防抖与请求都在 log-store 里，这里只把输入翻译成 store 调用。
 // 菜单用原生 <details>，不引入弹层依赖；已生效的条件在第二行显示成可移除的胶囊。
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { KeyboardEvent, ReactNode, Ref } from 'react'
 import type { RefKind } from '../../shared/protocol.ts'
 import type { LogFilterState, LogOrder } from '../store/log-store.ts'
 import { Button } from '../ui/Button.tsx'
 import { Chip } from '../ui/Chip.tsx'
 import css from './FilterBar.module.css'
+
+/** 原生 <details> 菜单的最小接口（便于无 DOM 测试）。 */
+interface MenuLike {
+  open: boolean
+  contains(node: unknown): boolean
+}
+
+/** 找到包含 target 的菜单；不在任何菜单内时返回 null。 */
+export function menuContaining<T extends MenuLike>(menus: Iterable<T>, target: unknown): T | null {
+  for (const menu of menus) if (menu.contains(target)) return menu
+  return null
+}
+
+/** 关闭 root 下所有展开的菜单（keep 除外），返回关闭数。<details> 本身不响应 Esc/外部点击。 */
+export function closeOpenMenus(
+  root: { querySelectorAll(selector: string): Iterable<MenuLike> },
+  keep: MenuLike | null = null,
+): number {
+  let closed = 0
+  for (const menu of root.querySelectorAll('details[open]')) {
+    if (menu === keep || !menu.open) continue
+    menu.open = false
+    closed += 1
+  }
+  return closed
+}
 
 export interface BranchOption {
   /** 传给 Host `branches` 的名字（短名，如 `main` / `origin/main` / `v1`）。 */
@@ -102,6 +128,31 @@ export function FilterBar({
 }: FilterBarProps): ReactNode {
   const [jump, setJump] = useState('')
   const chips = filterChips(filter)
+  const barRef = useRef<HTMLDivElement>(null)
+
+  // 菜单：点外部关闭、同时只开一个；Esc 关闭并把焦点还给 summary。
+  useEffect(() => {
+    const bar = barRef.current
+    if (bar === null) return
+    const onPointerDown = (event: PointerEvent): void => {
+      closeOpenMenus(bar, menuContaining(bar.querySelectorAll('details'), event.target))
+    }
+    const onKeyDown = (event: globalThis.KeyboardEvent): void => {
+      if (event.key !== 'Escape') return
+      const menu = menuContaining(bar.querySelectorAll<HTMLDetailsElement>('details[open]'), event.target)
+      if (menu === null) return
+      event.preventDefault()
+      event.stopPropagation()
+      menu.open = false
+      menu.querySelector('summary')?.focus()
+    }
+    document.addEventListener('pointerdown', onPointerDown, true)
+    bar.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown, true)
+      bar.removeEventListener('keydown', onKeyDown)
+    }
+  }, [])
 
   function onSearchKey(event: KeyboardEvent<HTMLInputElement>): void {
     if (event.key === 'Enter') {
@@ -129,7 +180,7 @@ export function FilterBar({
   }
 
   return (
-    <div className={css.bar} role="toolbar" aria-label="日志筛选">
+    <div ref={barRef} className={css.bar} role="toolbar" aria-label="日志筛选">
       <div className={css.controls}>
         <div className={css.search}>
           <input

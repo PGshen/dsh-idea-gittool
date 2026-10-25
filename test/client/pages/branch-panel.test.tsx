@@ -1,7 +1,7 @@
 // T7 分支面板：分组建模、当前分支标记、响应式三档、空态/错误态、右键只读菜单。
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
-import { BranchContextMenu, BranchPanel } from '../../../src/client/pages/BranchPanel.tsx'
+import { BranchContextMenu, BranchPanel, drawerEscapeAction } from '../../../src/client/pages/BranchPanel.tsx'
 import type { BranchPanelProps } from '../../../src/client/pages/BranchPanel.tsx'
 import { DEFAULT_COLLAPSED_GROUPS } from '../../../src/client/pages/branch-store.ts'
 import { branchesFixture, detachedBranchesFixture } from './branch-fixtures.ts'
@@ -164,5 +164,19 @@ describe('BranchContextMenu', () => {
     for (const writeAction of ['签出', '删除', '合并', '变基']) {
       expect(html).not.toContain(writeAction)
     }
+  })
+})
+
+describe('BranchPanel 抽屉 Esc', () => {
+  it('有搜索词时 Esc 先清空搜索，否则关闭抽屉', () => {
+    expect(drawerEscapeAction('main')).toBe('clear-search')
+    expect(drawerEscapeAction('  ')).toBe('close')
+    expect(drawerEscapeAction('')).toBe('close')
+  })
+
+  it('Standard/Compact 打开时搜索框自动获得焦点，Wide 档不抢焦点', () => {
+    expect(render({ mode: 'standard', open: true })).toContain('data-autofocus="true"')
+    expect(render({ mode: 'compact', open: true })).toContain('data-autofocus="true"')
+    expect(render({ mode: 'wide' })).not.toContain('data-autofocus')
   })
 })

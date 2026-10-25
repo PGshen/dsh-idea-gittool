@@ -52,6 +52,19 @@ export function diffFilesOf(detail: CommitDetailValue): CommitFileEntry[] {
   return detail.parentGroups.flatMap(group => group.files.map(file => ({ ...file, parentSha: group.parentSha })))
 }
 
+export type DetailAction = { kind: 'select'; sha: string } | { kind: 'clear' } | { kind: 'keep' }
+
+/**
+ * 日志选择 → 详情动作。多选时详情跟随焦点行；选中被筛选/重建清空时清掉详情，
+ * 否则详情会停留在已不在列表里的提交上。
+ */
+export function detailActionFor(selection: LogSelection, currentSha: string | null): DetailAction {
+  const sha = selection.commit?.sha
+  if (sha !== undefined) return sha === currentSha ? { kind: 'keep' } : { kind: 'select', sha }
+  if (selection.shas.length === 0 && currentSha !== null) return { kind: 'clear' }
+  return { kind: 'keep' }
+}
+
 export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
   const { sessionId, client, value, onRefresh } = props
   const status = value.status
@@ -120,10 +133,15 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
   const rootRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
     const element = rootRef.current
-    if (element === null || typeof ResizeObserver === 'undefined') return
+    if (element === null) return
+    // 挂载时先同步量一次：ResizeObserver 的首次通知在后台/隐藏页可能迟迟不到，档位会卡在初值。
+    const initial = element.getBoundingClientRect().width
+    if (initial > 0) branchesStore.setWidth(initial)
+    if (typeof ResizeObserver === 'undefined') return
     const observer = new ResizeObserver(entries => {
       const width = entries[0]?.contentRect.width
-      if (width !== undefined) branchesStore.setWidth(width)
+      // 隐藏时宽度为 0，保持上一个档位，等重新可见再更新。
+      if (width !== undefined && width > 0) branchesStore.setWidth(width)
     })
     observer.observe(element)
     return () => { observer.disconnect() }
@@ -136,11 +154,11 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
   }, [consoleOpen, consoleStore])
 
   const onSelect = useCallback((selection: LogSelection) => {
-    // 多选时详情只跟随焦点行；没有焦点行时保持原样。
-    const sha = selection.commit?.sha
-    if (sha === undefined || sha === detailStore.getState().sha) return
+    const action = detailActionFor(selection, detailStore.getState().sha)
+    if (action.kind === 'keep') return
     setSelectedFile(undefined)
-    void detailStore.select(sha)
+    if (action.kind === 'clear') detailStore.cancel()
+    else void detailStore.select(action.sha)
   }, [detailStore])
 
   const openFile = useCallback((commit: CommitDetailValue, file: CommitFileEntry, parentSha?: string) => {

@@ -113,8 +113,12 @@
   max-height: 320px;
   padding: 4px;
   overflow: auto;
+  /* DSH 菜单材质（web-styling：elevation 阴影 + specific-menu 底色，不配边框）。 */
+  border: 0;
   border-radius: 6px;
-  background: var(--dsw-elevation-panel);
+  background: var(--dsw-specific-menu);
+  box-shadow: var(--dsw-elevation-panel);
+  backdrop-filter: var(--dsw-menu-backdrop-filter);
 }
 
 .menuGroup {

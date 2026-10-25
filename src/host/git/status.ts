@@ -55,10 +55,34 @@ export async function readStatus(
   const operation = await detectOperation(run, cwd, options.signal)
   const result = await run(buildStatusArgv(), { cwd, signal: options.signal })
   if (result.exitCode !== 0) throw failureFromExit(result, 'git status')
-  return parseStatusPorcelainV2Z(result.stdout, {
+  const status = parseStatusPorcelainV2Z(result.stdout, {
     entryLimit: options.entryLimit,
     operation,
   })
+  const stashCount = await readStashCount(run, cwd, options.signal)
+  if (stashCount !== undefined) status.stashCount = stashCount
+  return status
+}
+
+/**
+ * Number of stash entries: the length of the `refs/stash` reflog.
+ * A missing ref (exit 128) means no stash; any other failure omits the count
+ * rather than failing the whole status read.
+ */
+async function readStashCount(
+  run: GitRunner,
+  cwd: string,
+  signal: AbortSignal | undefined,
+): Promise<number | undefined> {
+  let result: GitRunResult
+  try {
+    result = await run(['rev-list', '--walk-reflogs', '--count', 'refs/stash', '--'], { cwd, signal })
+  } catch {
+    return undefined
+  }
+  if (result.exitCode !== 0) return 0
+  const count = Number(result.stdout.trim())
+  return Number.isSafeInteger(count) && count >= 0 ? count : undefined
 }
 
 /**
@@ -270,6 +294,8 @@ async function detectOperation(
   if (await pathExists(join(gitDir, 'MERGE_HEAD'))) return 'merge'
   if (await pathExists(join(gitDir, 'CHERRY_PICK_HEAD'))) return 'cherry-pick'
   if (await pathExists(join(gitDir, 'REVERT_HEAD'))) return 'revert'
+  // `git bisect` keeps BISECT_START for the whole session (removed by `bisect reset`).
+  if (await pathExists(join(gitDir, 'BISECT_START'))) return 'bisect'
   return null
 }
 

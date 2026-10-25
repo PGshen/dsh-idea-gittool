@@ -5,8 +5,8 @@ import type { RepoOperation, StatusValue } from '../../shared/protocol.ts'
 import { Button } from '../ui/Button.tsx'
 import css from './OperationBanner.module.css'
 
-/** 协议的 RepoOperation 暂不含 bisect；横幅先按扩展集合实现。 */
-export type BannerOperation = Exclude<RepoOperation, null> | 'bisect'
+/** 横幅展示的进行中操作（协议 RepoOperation 去掉 null；bisect 已由 Host 返回）。 */
+export type BannerOperation = Exclude<RepoOperation, null>
 
 export const OPERATION_LABEL: Record<BannerOperation, string> = {
   merge: '合并',

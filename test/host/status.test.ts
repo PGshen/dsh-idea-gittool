@@ -260,7 +260,8 @@ describe('readStatus', () => {
 
     await readStatus(run, repo.root)
 
-    const last = fake.spawns.at(-1)
+    // status is no longer the last spawn (the stash count follows it); find it by subcommand.
+    const last = fake.spawns.find(spawn => spawn.spec.argv.includes('status'))
     expect(last?.spec.cwd).toBe(repo.root)
     expect(last?.spec.argv[0]).toBe('git')
     expect(last?.spec.argv).toContain('--porcelain=v2')
@@ -277,5 +278,45 @@ describe('readStatus', () => {
     const status = await readStatus(run, canonicalPath(join(repo.root, 'sub')))
 
     expect(status.branch).toBe('main')
+  })
+})
+
+describe('readStatus A1 additions', () => {
+  const { run } = makeRunner()
+
+  it('counts stash entries and reports zero without a stash ref', async () => {
+    const repo = makeRepo()
+    repo.write('a.txt', 'one\n')
+    repo.commit('base')
+
+    expect((await readStatus(run, repo.root)).stashCount).toBe(0)
+
+    repo.write('a.txt', 'two\n')
+    repo.git('stash')
+    repo.write('a.txt', 'three\n')
+    repo.git('stash')
+
+    expect((await readStatus(run, repo.root)).stashCount).toBe(2)
+  })
+
+  it('reports an in-progress bisect', async () => {
+    const repo = makeRepo()
+    repo.commit('one')
+    repo.git('bisect', 'start')
+
+    expect((await readStatus(run, repo.root)).operation).toBe('bisect')
+  })
+
+  it('omits stashCount when the count read fails instead of failing status', async () => {
+    const repo = makeRepo()
+    const failing: GitRunner = async (argv, options) => {
+      if (argv.includes('--walk-reflogs')) throw new GitCommandFailure('git/timeout', 'slow', {})
+      return run(argv, options)
+    }
+
+    const status = await readStatus(failing, repo.root)
+
+    expect(status.branch).toBe('main')
+    expect(status.stashCount).toBeUndefined()
   })
 })

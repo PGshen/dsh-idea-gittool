@@ -93,6 +93,13 @@ export interface RpcRuntime {
 interface HandlerRuntime {
   cache: () => RepoCache
   ensureWatch: (repoRoot: string) => RepoWatch | undefined
+  /** Git version, probed once per runtime; undefined when the probe failed. */
+  gitVersion: (cwd: string, signal: AbortSignal) => Promise<string | undefined>
+}
+
+/** `git version 2.50.1 (Apple Git-155)` → `2.50.1`. */
+export function parseGitVersion(stdout: string): string | undefined {
+  return /git version (\d+(?:\.\d+)+)/.exec(stdout)?.[1]
 }
 
 /** Build the handler registered on {@link RPC_CHANNEL}; the runtime stays undisposed. */
@@ -134,7 +141,18 @@ export function createRpcRuntime(deps: RpcDeps): RpcRuntime {
     }
   }
 
-  const runtime: HandlerRuntime = { cache: cacheOf, ensureWatch }
+  // Only a successful probe is memoized; a failed one is retried on the next bootstrap.
+  let gitVersionProbe: Promise<string | undefined> | undefined
+  const gitVersion = async (cwd: string, signal: AbortSignal): Promise<string | undefined> => {
+    gitVersionProbe ??= deps.runner(['--version'], { cwd, signal })
+      .then(result => (result.exitCode === 0 ? parseGitVersion(result.stdout) : undefined))
+      .catch(() => undefined)
+    const version = await gitVersionProbe
+    if (version === undefined) gitVersionProbe = undefined
+    return version
+  }
+
+  const runtime: HandlerRuntime = { cache: cacheOf, ensureWatch, gitVersion }
 
   const handler: GitRpcHandler = async (endpoint, payload, signal) => {
     try {
@@ -227,6 +245,7 @@ async function handleBootstrap(
   const status = await cachedStatus(deps, runtime, resolution.root, signal, version)
   const log = await cachedLog(deps, runtime, resolution.root, {}, signal, version)
   const writePolicy = await resolveWritePolicy(deps, resolution.root, sessionId, signal)
+  const gitVersion = await runtime.gitVersion(resolution.root, signal)
   return ok<BootstrapValue>({
     sessionId,
     repoRoot: resolution.root,
@@ -234,6 +253,7 @@ async function handleBootstrap(
     log,
     writePolicy,
     version,
+    ...(gitVersion === undefined ? {} : { gitVersion }),
   })
 }
 

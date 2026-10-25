@@ -291,6 +291,8 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
       ) : null}
       <StatusBar
         status={status}
+        stashCount={status?.stashCount ?? null}
+        gitVersion={value.gitVersion ?? null}
         lastRefreshAt={props.lastRefreshAt}
         autoRefresh={props.autoRefresh}
         onToggleAutoRefresh={props.onToggleAutoRefresh}

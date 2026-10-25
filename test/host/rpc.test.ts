@@ -147,6 +147,40 @@ describe('createRpcHandler / bootstrap', () => {
     expect(bootstrap.version).toBe(7)
   })
 
+  it('reports the git version once per runtime', async () => {
+    const repo = makeRepo()
+    const fake = createFakeSubprocess()
+    const handler = createRpcHandler({
+      runner: createGitRunner(fake),
+      sandboxPolicy: () => policySource(repo.root),
+    })
+
+    const first = okValue<BootstrapValue>(await handler('bootstrap', { sessionId: 'session-1' }, SIGNAL))
+    const second = okValue<BootstrapValue>(await handler('bootstrap', { sessionId: 'session-1' }, SIGNAL))
+
+    expect(first.gitVersion).toMatch(/^\d+\.\d+/)
+    expect(second.gitVersion).toBe(first.gitVersion)
+    const probes = fake.spawns.filter(spawn => spawn.spec.argv.includes('--version'))
+    expect(probes).toHaveLength(1)
+  })
+
+  it('omits gitVersion when the probe fails without failing bootstrap', async () => {
+    const repo = makeRepo()
+    const real = createGitRunner(createFakeSubprocess())
+    const handler = createRpcHandler({
+      runner: async (argv, options) => {
+        if (argv.includes('--version')) throw new GitCommandFailure('git/exec-failed', 'boom', {})
+        return real(argv, options)
+      },
+      sandboxPolicy: () => policySource(repo.root),
+    })
+
+    const bootstrap = okValue<BootstrapValue>(await handler('bootstrap', { sessionId: 'session-1' }, SIGNAL))
+
+    expect(bootstrap.repoRoot).toBe(repo.root)
+    expect(bootstrap.gitVersion).toBeUndefined()
+  })
+
   it('defaults the write policy to fail-closed read-only', async () => {
     const { handler } = makeHandler()
 

@@ -109,7 +109,8 @@ export interface FileEntry {
   deletions?: number
 }
 
-export type RepoOperation = 'merge' | 'rebase' | 'cherry-pick' | 'revert' | null
+/** 进行中的仓库操作；bisect 于 A1 追加（设计 §7.3）。 */
+export type RepoOperation = 'merge' | 'rebase' | 'cherry-pick' | 'revert' | 'bisect' | null
 
 export interface StatusValue {
   branch: string | null
@@ -124,6 +125,8 @@ export interface StatusValue {
   conflicts: FileEntry[]
   operation: RepoOperation
   truncated: boolean
+  /** 贮藏条数（`refs/stash` reflog 长度；A1 追加）。读取失败时省略。 */
+  stashCount?: number
   /** 读取该值时的仓库 version（M0 T5b 追加）；客户端用它丢弃过期响应。 */
   version?: number
 }
@@ -163,6 +166,8 @@ export interface BootstrapValue {
   log: LogValue | null
   writePolicy: WritePolicyValue
   version: number
+  /** Host 侧 git 版本号（如 `2.50.1`），进程内只探测一次；探测失败时省略（A1 追加）。 */
+  gitVersion?: string
 }
 
 // ---------------------------------------------------------------------------

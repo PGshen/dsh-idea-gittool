@@ -983,6 +983,7 @@ dsh-idea-gittool/
 | **web 组合没有 `fs` 服务**（M0 结论） | ❌ 2026-10-25 | `pnpm dsh --profile web --dump-config` 第 403 行有 `fs-sandbox`（base bundle 提供 `fs`）；M0 的 watch 失败实为适配器传错参数（下一行） |
 | `ctx.fs.watch(target, changed, signal)` 的 target 是 `fs.resolve(path)` 产出的 `FsTarget`，不接受路径字符串；`changed` 可能带 Error；目录只监听直接子项 | ✅ 2026-10-25 | `packages/fs/fs/src/index.ts:100`、`types.ts:60`；`src/host/watch.ts` `fsWatchFromService` + 实测 version 0→1 |
 | 插件已经 `link:` 安装进 web profile 时，再加 `--patch dev.patch.yml` 启动会报 `resolves from multiple active Loader sources`；此时直接不带 patch 启动即可（安装态就指向本仓库 `lib/`） | ✅ 2026-10-25 | A1 走查启动 3081 |
+| Host 半边可以用 `new Worker(source, { eval: true })`（`node:worker_threads`）隔离不可信计算；超时后 `terminate()` 能打断死循环，主线程不受影响 | ✅ 2026-10-25 | 评审 I2：3081 上病态正则搜索返回 `git/timeout`，期间其它请求 3ms 返回 |
 | 浏览器面板在会话窗口不可见时是后台页：`requestAnimationFrame` 不运行，无法测真实 fps | ✅ 2026-10-25 | A1 AC3 测量记录 |
 
 Git 与构建行为（A1 实测，git 2.50.1）：

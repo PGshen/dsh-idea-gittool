@@ -52,6 +52,26 @@ export interface RpcRequest {
   sessionId: string
 }
 
+/** log 分页游标（M0 T3 追加）：不透明字符串，形如 `v1:<headSha>:<offset>`。 */
+export type LogCursor = string
+
+/**
+ * log 分页参数（M0 T3 追加）。
+ * 客户端只把上一页的 `next` 原样回传；`headSha` 把翻页序列钉在第一页的提交图上，
+ * 避免翻页途中新提交插入导致重复或漏项。游标失效时 Host 返回 `git/invalid-payload`。
+ */
+export interface LogRequest extends RpcRequest {
+  cursor?: LogCursor
+  limit?: number
+}
+
+/** log 每页条数的缺省值与上限（M0 T3 追加）。 */
+export const LOG_PAGE_DEFAULT_LIMIT = 50
+export const LOG_PAGE_MAX_LIMIT = 200
+
+/** status 单次返回的最大文件条目数；超出时 `StatusValue.truncated` 为 true（M0 T3 追加）。 */
+export const STATUS_ENTRY_LIMIT = 500
+
 export type FileStatusCode = 'M' | 'A' | 'D' | 'R' | 'C' | 'T' | 'U' | '?'
 
 export interface FileEntry {

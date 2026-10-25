@@ -1,4 +1,4 @@
-// Host 半边入口：把 /dsh-git 的 RPC 处理器挂到 connection 上（可行性调研 §6、§7）。
+// Host 半边入口：注册 /dsh-git 的 HTTP 路由并装配 git RPC 运行时（可行性调研 §6–§9）。
 // 运行时零依赖（ARCHITECTURE.md R4）：能力一律从 ctx 取，node_modules 只允许 import type。
 
 import type { Context } from '@deepseek-ai/cordis'
@@ -10,19 +10,31 @@ import type {} from '@deepseek-ai/dsh-session-persistence'
 import type {} from '@deepseek-ai/dsh-subprocess'
 import type {} from '@deepseek-ai/dsh-working-directory'
 
-import { RPC_CHANNEL } from '../shared/protocol.ts'
 import type { SessionsLike } from './repo-resolver.ts'
 import type { RpcDeps } from './rpc.ts'
+import type { FsWatch } from './watch.ts'
 import { createGitRunner } from './git-executor.ts'
-import { createRpcHandler } from './rpc.ts'
+import { createRpcRuntime } from './rpc.ts'
+import { registerRpcRoutes } from './http.ts'
 
 /** Cordis 插件名，用于日志与生命周期诊断。 */
 export const name = 'dsh-idea-gittool'
 
-/** 必需服务：通道载体与 git 执行世界；会话相关服务可选（ctx.get 惰性读取）。 */
+/**
+ * 必需服务：浏览器鉴权（connection）与 git 执行世界（subprocess）。
+ * `webServer` 不在模块级 inject 里：路由注册在 `ctx.inject(['webServer'])` 的子作用域中完成，
+ * 与 `ui-open-in-app` 的先例一致（原因见 http.ts 顶部注释）。
+ */
 export const inject = ['connection', 'subprocess']
 
+/** `ctx.fs.watch` 的最小结构：目标变化时回调，返回异步关闭函数（可行性调研 §9.1）。 */
+interface FsServiceLike {
+  watch(target: string, changed: () => void, signal?: AbortSignal): Promise<() => void | Promise<void>>
+}
+
 export function apply(ctx: Context): void {
+  // 插件卸载时统一取消所有 watch（watch 的 AbortSignal 与 runtime.dispose 都挂在这里）。
+  const watchLifetime = new AbortController()
   const deps: RpcDeps = {
     runner: createGitRunner(ctx.subprocess),
     // 惰性读取：composition 可能在本插件之后加载这些服务；缺失服务不等于错误。
@@ -34,7 +46,19 @@ export function apply(ctx: Context): void {
     sessionPersistence: () => ctx.get('sessionPersistence'),
     sandboxPolicy: () => ctx.get('sandboxPolicy'),
     sandbox: () => ctx.get('sandbox'),
+    // 缺失 fs 服务时返回 undefined，watchRepo 会给出降级信号，客户端退回轮询。
+    fsWatch: (): FsWatch | undefined => {
+      const fs = ctx.get('fs') as unknown as FsServiceLike | undefined
+      if (fs === undefined) return undefined
+      return (target, onEvent) =>
+        fs.watch(target, () => onEvent(), watchLifetime.signal).then((close) => ({ close }))
+    },
   }
-  const handler = createRpcHandler(deps)
-  ctx.effect(() => ctx.connection.rpc.handle(RPC_CHANNEL, handler), 'dsh-idea-gittool: rpc')
+  const runtime = createRpcRuntime(deps)
+  // 注册 /dsh-git 前缀路由并管理生命周期（见 http.ts 顶部关于 rpc.handle 的说明）。
+  registerRpcRoutes(ctx, runtime.handler)
+  ctx.effect(() => () => {
+    watchLifetime.abort()
+    void runtime.dispose()
+  }, 'dsh-idea-gittool: dispose')
 }

@@ -84,6 +84,8 @@ export async function readLog(
     [
       ...GIT_BASE_ARGV,
       'log',
+      // Repository config must not spawn external diff drivers (可行性调研 §8.3).
+      '--no-ext-diff',
       `--max-count=${String(limit + 1)}`,
       `--skip=${String(offset)}`,
       `--pretty=format:${PRETTY_FORMAT}`,

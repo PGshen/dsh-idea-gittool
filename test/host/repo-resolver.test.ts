@@ -1,7 +1,10 @@
 import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+
+// 真实 git 仓库 + 进程 spawn 在并发 worker 下偶尔超过默认 5s，这里按文件放宽。
+vi.setConfig({ testTimeout: 30_000 })
 import type { Session } from '@deepseek-ai/dsh-session'
 
 import { createGitRunner } from '../../src/host/git-executor.ts'

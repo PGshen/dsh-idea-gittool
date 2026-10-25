@@ -99,6 +99,8 @@ export interface StatusValue {
   conflicts: FileEntry[]
   operation: RepoOperation
   truncated: boolean
+  /** 读取该值时的仓库 version（M0 T5b 追加）；客户端用它丢弃过期响应。 */
+  version?: number
 }
 
 export interface CommitSummary {
@@ -117,6 +119,8 @@ export interface LogValue {
   /** 下一页游标；没有更多时省略。 */
   next?: string
   truncated: boolean
+  /** 读取该页时的仓库 version（M0 T5b 追加）；客户端用它丢弃过期响应。 */
+  version?: number
 }
 
 /** 写能力判定结果；read-only 时 UI 顶部横幅并禁用写操作（调研 §8.3）。 */

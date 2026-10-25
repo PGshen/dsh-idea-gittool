@@ -1,8 +1,11 @@
-// /dsh-git 的 RPC 处理器（可行性调研 §6.3）。
+// /dsh-git 的 RPC 处理器（可行性调研 §6.3、§9）。
 // 三条铁律：
 // 1. handler 永不 throw —— 任何失败都变成 { ok:false, error:{ code, message, details } }；
 // 2. payload 是 unknown —— 只接受对象 + 字符串 sessionId，其余一律 git/invalid-payload；
 // 3. cwd 永不来自客户端 —— sessionId 只在 Host 侧解析（见 repo-resolver）。
+//
+// T5b 起每个仓库根都有缓存与 watch：版本号单调递增，watch 信号到达即 bump 版本，
+// 旧条目因 version 不匹配自动失效；响应带读取时的 version，客户端据此丢弃过期响应。
 
 import type {
   ConnectionRpcFailure,
@@ -10,18 +13,25 @@ import type {
 } from '@deepseek-ai/dsh-client-connection'
 
 import type { BootstrapValue, LogValue, StatusValue, WritePolicyValue } from '../shared/protocol.ts'
+import type { RepoCache } from './cache.ts'
+import { createRepoCache } from './cache.ts'
+import type { FsWatch, RepoWatch } from './watch.ts'
+import { watchRepo } from './watch.ts'
 import type { GitRunner } from './git-executor.ts'
 import { GitCommandFailure, messageOf } from './git-executor.ts'
-import type { SandboxGateDeps, SandboxLike, SandboxPolicySource } from './sandbox-gate.ts'
-import { evaluateWritePolicy } from './sandbox-gate.ts'
 import type { LogQuery } from './git/log.ts'
 import { readLog } from './git/log.ts'
 import { readStatus } from './git/status.ts'
+import type { SandboxGateDeps, SandboxLike, SandboxPolicySource } from './sandbox-gate.ts'
+import { evaluateWritePolicy } from './sandbox-gate.ts'
 import type { SessionSources } from './repo-resolver.ts'
 import { resolveRepository } from './repo-resolver.ts'
 
 /** Longest accepted sessionId; keeps a pathological payload out of every git call. */
 const MAX_SESSION_ID_LENGTH = 200
+
+const STATUS_CACHE_KEY = 'status'
+const LOG_CACHE_PREFIX = 'log'
 
 /** Everything the handler needs; all session services are lazy and optional. */
 export interface RpcDeps extends SessionSources {
@@ -34,8 +44,14 @@ export interface RpcDeps extends SessionSources {
   writePolicy?:
     | ((input: { repoRoot: string; sessionId: string }) => WritePolicyValue | Promise<WritePolicyValue>)
     | undefined
-  /** Monotonic repository version; M0 T5b binds it to the watch/cache layer. */
-  version?: (() => number) | undefined
+  /** Per-repository refresh state; the runtime creates one when omitted (M0 T5b). */
+  cache?: (() => RepoCache | undefined) | undefined
+  /** watch implementation factory (`ctx.fs.watch` adapter); absent → polling fallback. */
+  fsWatch?: (() => FsWatch | undefined) | undefined
+  /** Debounce override for tests; watch.ts's default is 250ms. */
+  watchDebounceMs?: number | undefined
+  /** Injectable clock for cache/watch timestamps. */
+  now?: (() => number) | undefined
 }
 
 /** The RPC handler shape used by `ctx.connection.rpc.handle` (peer unused today). */
@@ -45,17 +61,65 @@ export type GitRpcHandler = (
   signal: AbortSignal,
 ) => Promise<ConnectionRpcHandlerResult>
 
-/** Build the handler registered on {@link RPC_CHANNEL}. */
+/** A handler bound to its per-repository cache and watches. */
+export interface RpcRuntime {
+  handler: GitRpcHandler
+  /** Stop every watch; idempotent, never rejects. */
+  dispose: () => Promise<void>
+}
+
+interface HandlerRuntime {
+  cache: () => RepoCache
+  ensureWatch: (repoRoot: string) => RepoWatch | undefined
+}
+
+/** Build the handler registered on {@link RPC_CHANNEL}; the runtime stays undisposed. */
 export function createRpcHandler(deps: RpcDeps): GitRpcHandler {
-  return async (endpoint, payload, signal) => {
+  return createRpcRuntime(deps).handler
+}
+
+/** Build the handler together with its lifecycle owner (index.ts disposes it on unload). */
+export function createRpcRuntime(deps: RpcDeps): RpcRuntime {
+  const fallbackCache = createRepoCache(deps.now === undefined ? {} : { now: deps.now })
+  const cacheOf = (): RepoCache => deps.cache?.() ?? fallbackCache
+  const watches = new Map<string, RepoWatch>()
+  let disposed = false
+
+  const ensureWatch = (repoRoot: string): RepoWatch | undefined => {
+    if (disposed) return undefined
+    const existing = watches.get(repoRoot)
+    if (existing !== undefined) return existing
+    try {
+      const fsWatch = deps.fsWatch?.()
+      const watch = watchRepo({
+        root: repoRoot,
+        // A change signal invalidates every cached value for that repository.
+        onChange: () => {
+          cacheOf().bumpVersion(repoRoot)
+        },
+        ...(fsWatch === undefined ? {} : { fsWatch }),
+        ...(deps.watchDebounceMs === undefined ? {} : { debounceMs: deps.watchDebounceMs }),
+        ...(deps.now === undefined ? {} : { now: deps.now }),
+      })
+      watches.set(repoRoot, watch)
+      return watch
+    } catch {
+      // Watch is an optimization; a broken provider must never break reads.
+      return undefined
+    }
+  }
+
+  const runtime: HandlerRuntime = { cache: cacheOf, ensureWatch }
+
+  const handler: GitRpcHandler = async (endpoint, payload, signal) => {
     try {
       switch (endpoint) {
         case 'bootstrap':
-          return await handleBootstrap(deps, payload, signal)
+          return await handleBootstrap(deps, runtime, payload, signal)
         case 'status':
-          return await handleStatus(deps, payload, signal)
+          return await handleStatus(deps, runtime, payload, signal)
         case 'log':
-          return await handleLog(deps, payload, signal)
+          return await handleLog(deps, runtime, payload, signal)
         default:
           throw invalidPayload('unknown RPC endpoint', { endpoint })
       }
@@ -63,10 +127,22 @@ export function createRpcHandler(deps: RpcDeps): GitRpcHandler {
       return toFailure(error)
     }
   }
+
+  const dispose = async (): Promise<void> => {
+    disposed = true
+    const closing = [...watches.values()].map(async (watch) => {
+      await watch.close()
+    })
+    watches.clear()
+    await Promise.allSettled(closing)
+  }
+
+  return { handler, dispose }
 }
 
 async function handleBootstrap(
   deps: RpcDeps,
+  runtime: HandlerRuntime,
   payload: unknown,
   signal: AbortSignal,
 ): Promise<ConnectionRpcHandlerResult> {
@@ -84,12 +160,15 @@ async function handleBootstrap(
         mode: 'read-only',
         reason: '当前会话目录不在 Git 仓库中',
       },
-      version: currentVersion(deps),
+      version: 0,
     })
   }
 
-  const status = await readStatus(deps.runner, resolution.root, { signal })
-  const log = await readLog(deps.runner, resolution.root, {}, { signal })
+  // One version for the whole snapshot: a reader that races a watch bump keeps
+  // the older version, so the client treats that data as stale and polls again.
+  const version = runtime.cache().versionOf(resolution.root)
+  const status = await cachedStatus(deps, runtime, resolution.root, signal, version)
+  const log = await cachedLog(deps, runtime, resolution.root, {}, signal, version)
   const writePolicy = await resolveWritePolicy(deps, resolution.root, sessionId, signal)
   return ok<BootstrapValue>({
     sessionId,
@@ -97,31 +176,76 @@ async function handleBootstrap(
     status,
     log,
     writePolicy,
-    version: currentVersion(deps),
+    version,
   })
 }
 
 async function handleStatus(
   deps: RpcDeps,
+  runtime: HandlerRuntime,
   payload: unknown,
   signal: AbortSignal,
 ): Promise<ConnectionRpcHandlerResult> {
   const sessionId = parseSessionId(payload)
   const root = await repositoryRoot(deps, sessionId, signal)
-  const status = await readStatus(deps.runner, root, { signal })
+  const version = runtime.cache().versionOf(root)
+  const status = await cachedStatus(deps, runtime, root, signal, version)
   return ok<StatusValue>(status)
 }
 
 async function handleLog(
   deps: RpcDeps,
+  runtime: HandlerRuntime,
   payload: unknown,
   signal: AbortSignal,
 ): Promise<ConnectionRpcHandlerResult> {
   const sessionId = parseSessionId(payload)
   const query = parseLogQuery(payload)
   const root = await repositoryRoot(deps, sessionId, signal)
-  const page = await readLog(deps.runner, root, query, { signal })
+  const version = runtime.cache().versionOf(root)
+  const page = await cachedLog(deps, runtime, root, query, signal, version)
   return ok<LogValue>(page)
+}
+
+/** Cache-first status read; the cached value carries the version it was read at. */
+async function cachedStatus(
+  deps: RpcDeps,
+  runtime: HandlerRuntime,
+  repoRoot: string,
+  signal: AbortSignal,
+  version: number,
+): Promise<StatusValue> {
+  const cache = runtime.cache()
+  const cached = cache.get<StatusValue>(repoRoot, STATUS_CACHE_KEY)
+  if (cached !== undefined) return cached
+
+  runtime.ensureWatch(repoRoot)
+  const status = await readStatus(deps.runner, repoRoot, { signal })
+  const value: StatusValue = { ...status, version }
+  // Rejected when a watch bump raced the read: the next request recomputes.
+  cache.set(repoRoot, STATUS_CACHE_KEY, value, version)
+  return value
+}
+
+/** Cache-first log page keyed by the cursor it continues from. */
+async function cachedLog(
+  deps: RpcDeps,
+  runtime: HandlerRuntime,
+  repoRoot: string,
+  query: LogQuery,
+  signal: AbortSignal,
+  version: number,
+): Promise<LogValue> {
+  const cache = runtime.cache()
+  const key = `${LOG_CACHE_PREFIX}:${query.cursor ?? ''}:${query.limit === undefined ? '' : String(query.limit)}`
+  const cached = cache.get<LogValue>(repoRoot, key)
+  if (cached !== undefined) return cached
+
+  runtime.ensureWatch(repoRoot)
+  const page = await readLog(deps.runner, repoRoot, query, { signal })
+  const value: LogValue = { ...page, version }
+  cache.set(repoRoot, key, value, version)
+  return value
 }
 
 /** Resolve the repository root or throw the structured empty-state error. */
@@ -153,10 +277,6 @@ async function resolveWritePolicy(
     sandbox: deps.sandbox,
   }
   return await evaluateWritePolicy({ repoRoot, sessionId }, gateDeps, { signal })
-}
-
-function currentVersion(deps: RpcDeps): number {
-  return deps.version?.() ?? 0
 }
 
 function parseSessionId(payload: unknown): string {

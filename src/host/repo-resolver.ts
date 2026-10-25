@@ -91,6 +91,10 @@ export async function resolveSessionCwd(
       )
       const storedCwd = stored?.header.cwd
       if (storedCwd !== undefined && storedCwd !== '') return storedCwd
+      // 持久化服务存在、但没有这个会话的记录：客户端传了一个无效 sessionId，
+      // 必须按 no-session 处理，不能退化到部署级 workspaceRoot（那会把宿主机
+      // 的 cwd 当成本会话的仓库）。
+      return undefined
     } catch (error) {
       // A dead storage backend must not disable the deployment fallback.
       if (signal?.aborted === true) throw error

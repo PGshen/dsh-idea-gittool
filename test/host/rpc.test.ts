@@ -1,4 +1,7 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+
+// 真实 git 仓库 + 进程 spawn 在并发 worker 下偶尔超过默认 5s，这里按文件放宽。
+vi.setConfig({ testTimeout: 30_000 })
 import type {
   ConnectionRpcFailure,
   ConnectionRpcHandlerResult,
@@ -7,6 +10,7 @@ import type { SandboxMode } from '@deepseek-ai/dsh-sandbox'
 
 import type { BootstrapValue, LogValue, StatusValue, WritePolicyValue } from '../../src/shared/protocol.ts'
 import { GitCommandFailure, createGitRunner } from '../../src/host/git-executor.ts'
+import { createRepoCache } from '../../src/host/cache.ts'
 import type { SandboxPolicySource } from '../../src/host/sandbox-gate.ts'
 import type { GitRpcHandler, RpcDeps } from '../../src/host/rpc.ts'
 import { createRpcHandler } from '../../src/host/rpc.ts'
@@ -111,7 +115,14 @@ describe('createRpcHandler / status', () => {
 
 describe('createRpcHandler / bootstrap', () => {
   it('aggregates repo root, first status page, log page, write policy and version', async () => {
-    const { handler, repo } = makeHandler({ version: () => 7 })
+    const repo = makeRepo()
+    const cache = createRepoCache()
+    for (let index = 0; index < 7; index += 1) cache.bumpVersion(repo.root)
+    const handler = createRpcHandler({
+      runner: createGitRunner(createFakeSubprocess()),
+      sandboxPolicy: () => policySource(repo.root),
+      cache: () => cache,
+    })
 
     const result = await handler('bootstrap', { sessionId: 'session-1' }, SIGNAL)
 

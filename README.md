@@ -6,7 +6,7 @@ DSH Web GUI 右侧栏的 **IntelliJ 风格 Git 工作台**：看提交图与历�
 
 ## 当前状态
 
-harness 工程已初始化，**尚无代码**。下一步是 [M0 集成 spike](docs/plans/active/m0-集成-spike.md)（待负责人批准），验证构建、挂载、RPC、沙箱写门禁与刷新。
+M0 集成 spike 已完成并验收：独立双面 bundle 可在 DSH Web 挂载，`/dsh-git` RPC、写能力门禁、文档预览动作与刷新兜底都有实测证据（见 [M0 计划](docs/plans/completed/m0-集成-spike.md) 与 [调研 §13](docs/references/dsh-integration-feasibility.md)）。下一步是按里程碑拆分 A1 计划。
 
 ## 从这里开始
 

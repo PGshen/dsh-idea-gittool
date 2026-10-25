@@ -9,12 +9,13 @@
 
 | 项 | 值 |
 |---|---|
-| 状态 | 待验收（2026-10-25，AC5 部分验证，见验证记录） |
+| 状态 | 已完成（2026-10-25 负责人验收通过；AC5 部分验证，遗留见 TD-4） |
 | 里程碑 | M0：设计确认 + 集成 spike |
 | 设计依据 | [产品设计 v0.2](../../design/2026-10-25-产品设计-v0.2.md) §16、§17 M0；[设计决策 v0.2](../../design/2026-10-25-产品设计决策-v0.2.md) §4；[DSH 集成可行性调研](../../references/dsh-integration-feasibility.md) |
 | 分支 | `m0-spike`（2026-10-25 创建） |
 | 执行方式 | Agent Teams 并行：Lead 负责 T1/T2/T7 与接线；队友 `host-git` 负责 T3/T4 与 T5 的 rpc 接线；队友 `refresh` 负责 T5 模块；队友 `client-docs` 负责 T6 组件 |
 | 批准记录 | 2026-10-25 负责人在会话中批准计划与「Agent Teams 并行执行」方式 |
+| 验收记录 | 2026-10-25 负责人回复「验收通过」 |
 
 ## 目标
 
@@ -65,7 +66,7 @@ M0 只做技术验证与骨架，不实现 A1 的完整日志页。
 - **完成标准**：`pnpm install && pnpm build && make check` 全绿；`pnpm run layers` 对空/骨架 `src` 通过。
 - **验证命令**：`make check`、`pnpm build`、`node test/bundle.smoke.mjs`。
 
-### T2：开发期挂载与入口（待开始）
+### T2：开发期挂载与入口（完成）
 
 - **目标**：不安装到 profile，用 `--patch` 把包挂进本地 DSH，确认 Client 半边被加载、引导页入口与 tab 可用。
 - **涉及文件**：`dev.patch.yml`、`src/client/index.ts`、`docs/runbooks/dev-setup.md`、计划验证记录。
@@ -74,7 +75,7 @@ M0 只做技术验证与骨架，不实现 A1 的完整日志页。
 - **完成标准**：引导页出现「Git 工作台」卡片；点击/命令面板能打开空 tab；Console 无未处理错误。
 - **验证命令**：在 DSH checkout 运行 `pnpm dsh web --patch <本仓库>/dev.patch.yml`，浏览器验证并截图到 `.evidence/m0/`。
 
-### T3：RPC 骨架与 status/log（待开始）
+### T3：RPC 骨架与 status/log（完成）
 
 - **目标**：打通 sessionId → 仓库根 → git 执行 → 结构化响应，并让 Client 能取到第一页数据。
 - **涉及文件**：`src/shared/protocol.ts`、`src/host/rpc.ts`、`src/host/repo-resolver.ts`、`src/host/git-executor.ts`、`src/host/git/{status,log}.ts`、`src/client/git-client.ts`、`test/host/*`。
@@ -87,7 +88,7 @@ M0 只做技术验证与骨架，不实现 A1 的完整日志页。
 - **完成标准**：真实仓库返回正确数据；错误全部结构化；记录首屏与单次 status 延迟基准。
 - **验证命令**：`pnpm vitest run test/host`、`make check`、浏览器 Network 面板。
 
-### T4：写能力门禁（待开始）
+### T4：写能力门禁（完成）
 
 - **目标**：在任何写操作前判定沙箱边界，保证「能看永远可用，能改只在边界内」。
 - **涉及文件**：`src/host/sandbox-gate.ts`、`src/host/rpc.ts`、`src/client/read-only-banner.tsx`、`test/host/sandbox-gate.test.ts`。
@@ -96,7 +97,7 @@ M0 只做技术验证与骨架，不实现 A1 的完整日志页。
 - **完成标准**：只读模式下 UI 顶部横幅 + 写按钮禁用并说明原因；`status`/`log` 在只读模式仍可用；判定结果随 `bootstrap` 返回。
 - **验证命令**：`pnpm vitest run test/host/sandbox-gate.test.ts`、`make check`、仓库根在 workspace 外的场景走查。
 
-### T5：刷新与热更（待开始）
+### T5：刷新与热更（完成）
 
 - **目标**：确认 Agent 改文件、终端 git 操作、手动刷新、client 热更四条路径的可用性与延迟。
 - **涉及文件**：`src/host/watch.ts`、`src/host/cache.ts`、`src/client/polling.ts`、`test/host/watch.test.ts`。
@@ -105,7 +106,7 @@ M0 只做技术验证与骨架，不实现 A1 的完整日志页。
 - **完成标准**：终端提交后页面 ≤3s 刷新；重建 client 产物触发热更；Host 改动需重启，行为写进 runbook。
 - **验证命令**：`pnpm vitest run test/host/watch.test.ts`、`make check`、手动四路径走查。
 
-### T6：文档预览头部动作与 git.blame 空页（待开始）
+### T6：文档预览头部动作与 git.blame 空页（完成）
 
 - **目标**：验证公开 slot 与 `openTab` 能否支撑 Blame 入口，决定 B2 的实现路径或降级路径。
 - **涉及文件**：`src/client/document-actions.tsx`、`src/client/blame-page.tsx`、`src/client/index.ts`、`src/client/types.d.ts`（`SidebarRightTabParamsMap` 声明合并）。
@@ -114,7 +115,7 @@ M0 只做技术验证与骨架，不实现 A1 的完整日志页。
 - **完成标准**：文档预览头部出现状态字母与三个动作；点击打开空 Blame 页；slot 缺失时有降级入口且 references 记录 DSH 版本。
 - **验证命令**：`make check`、浏览器打开任意文件走查、截图到 `.evidence/m0/`。
 
-### T7：记录、回写与收尾（待开始）
+### T7：记录、回写与收尾（完成）
 
 - **目标**：把 spike 结论变成仓库里的知识，收尾 M0。
 - **涉及文件**：`docs/references/{README,dsh-integration-feasibility}.md`、`docs/quality/{tech-debt,QUALITY}.md`、`docs/ARCHITECTURE.md`、`docs/runbooks/*`、本计划的「验证记录」。
@@ -149,10 +150,10 @@ M0 只做技术验证与骨架，不实现 A1 的完整日志页。
 
 ## 下一步
 
-1. Lead：完成 T7 余项——AC5 的产物热更与终端改动刷新仍需一次手动走查（重建 `lib/client.js` 观察 HMR；在终端 `git add` 后看 version 是否递增）；把结论补进本计划「验证记录」。
-2. Lead：把本轮实测的 SDK 行为（`rpc.handle` 不可用、webServer 路由 + `requestRejection`、未知 sessionId 语义）回写 [references](../../references/dsh-integration-feasibility.md)，并更新 TD-1/TD-2。
-3. Lead：`make check` + `pnpm build && pnpm smoke` 后把计划状态改为「待验收」，请负责人验收 AC1–AC7 并确认安装态复验（`dsh plugin add`）是否在本轮做。
-4. 验收后按 SOP §7 收尾：计划移入 `plans/completed/`、TODO 勾选、必要时补 ADR（路由方案变更建议写成 ADR 0004）。
+1. 负责人已在 2026-10-25 验收通过；本计划归档到 `plans/completed/`，路由方案变更见 [ADR 0004](../../decisions/0004-通用RPC改用webServer前缀路由.md)。
+2. 后续工作：按 [设计决策 v0.2](../../design/2026-10-25-产品设计决策-v0.2.md) §4 拆分 A1 计划（提交图 + 日志页 + diff 渲染）；A1 计划里带上 TD-3（样式管线）与 TD-4（watch 降级）的取舍。
+3. AC5 剩余的手动走查（HMR、终端改动刷新）并入 A1 的首个任务，用真实界面补证据。
+4. 安装态复验（`dsh plugin --profile web add`）仍需负责人确认后执行，不在本轮。
 
 ## 决策记录
 

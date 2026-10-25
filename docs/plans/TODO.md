@@ -15,8 +15,7 @@
 
 | 优先级 | 事项 | 来源 | 备注 |
 |---|---|---|---|
-| P0 | 执行 M0 集成 spike | harness 初始化，2026-10-25 | 计划：[m0-集成-spike.md](active/m0-集成-spike.md)，待负责人批准 |
-| P1 | M0 通过后按里程碑 A1 → A2 → A3 → B1 → B2 → B3 → B4 拆分计划 | [设计决策 v0.2](../design/2026-10-25-产品设计决策-v0.2.md) §4 | 每个里程碑一份计划，执行前批准 |
+| P1 | 按里程碑 A1 → A2 → A3 → B1 → B2 → B3 → B4 拆分计划 | [设计决策 v0.2](../design/2026-10-25-产品设计决策-v0.2.md) §4 | M0 已验收；A1 计划需带 TD-3/TD-4 取舍与 AC5 手动走查 |
 | P1 | 把产品设计 §16 的最终技术结构回写 [ARCHITECTURE.md](../ARCHITECTURE.md) | M0 验证后 | 以 spike 实测结论为准，产品文档不替代架构文档 |
 | P2 | 接入远程 CI（GitHub Actions 调用 `make check`） | [ADR 0002](../decisions/0002-技术栈与质量工具链.md) | 当前只用本地关口；仓库推到 GitHub 后再做 |
 | P2 | 复核参考项目的 Apache-2.0 复用边界，补 `NOTICE` 与致谢 | [参考项目调研](../references/reference-feature-inventory.md) | 只在确实复用算法/图标时做 |
@@ -26,4 +25,5 @@
 | 完成日期 | 事项 | 计划 |
 |---|---|---|
 | 2026-10-25 | 初始化 harness 工程：入口地图、SOP、计划/ADR/质量/技术债/references 结构、`make check`、pre-commit | — |
+| 2026-10-25 | M0 集成 spike：双面 bundle 挂载、产物契约、`/dsh-git` RPC、写门禁、文档动作、刷新兜底 | [m0-集成-spike](../plans/completed/m0-集成-spike.md) |
 | 2026-10-25 | 归置既有产品设计文档到 `docs/design/`，调研文档到 `docs/references/` | — |

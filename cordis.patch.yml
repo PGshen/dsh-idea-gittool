@@ -1,0 +1,6 @@
+# 发布用 patch：只插入一行 Host 入口。
+# 安装：dsh plugin --profile web add <本包目录>
+# 本文件随 npm 包发布；开发期挂载用仓库根目录的 dev.patch.yml（不随包发布）。
+- insert:
+    - id: dsh-idea-gittool
+      name: dsh-idea-gittool

@@ -9,12 +9,12 @@
 
 | 项 | 值 |
 |---|---|
-| 状态 | 草稿（待批准） |
+| 状态 | 执行中（2026-10-25 批准） |
 | 里程碑 | M0：设计确认 + 集成 spike |
 | 设计依据 | [产品设计 v0.2](../../design/2026-10-25-产品设计-v0.2.md) §16、§17 M0；[设计决策 v0.2](../../design/2026-10-25-产品设计决策-v0.2.md) §4；[DSH 集成可行性调研](../../references/dsh-integration-feasibility.md) |
-| 分支 | `m0-spike`（批准后创建） |
-| 执行方式 | 内联（默认建议）；也可改 subagent 驱动 |
-| 批准记录 | 待负责人批准 |
+| 分支 | `m0-spike`（2026-10-25 创建） |
+| 执行方式 | Agent Teams 并行：Lead 负责 T1/T2/T7 与接线；队友 `host-git` 负责 T3/T4 与 T5 的 rpc 接线；队友 `refresh` 负责 T5 模块；队友 `client-docs` 负责 T6 组件 |
+| 批准记录 | 2026-10-25 负责人在会话中批准计划与「Agent Teams 并行执行」方式 |
 
 ## 目标
 
@@ -53,7 +53,7 @@ M0 只做技术验证与骨架，不实现 A1 的完整日志页。
 
 <!-- 状态：待开始 / 进行中 / 完成 / 阻塞。每个任务结束 make check 必须为绿，并单独 commit。 -->
 
-### T1：包骨架与工具链（待开始）
+### T1：包骨架与工具链（完成）
 
 - **目标**：建立可构建、可测试、可检查的包骨架，让 `make check` 开始真正跑代码检查。
 - **涉及文件**：`package.json`、`pnpm-lock.yaml`、`tsconfig.json`、`eslint.config.mjs`、`build.mjs`、`cordis.patch.yml`、`src/host/index.ts`、`src/client/index.ts`、`src/shared/protocol.ts`、`test/bundle.smoke.mjs`、`.gitignore`、`Makefile` 注释。
@@ -122,25 +122,43 @@ M0 只做技术验证与骨架，不实现 A1 的完整日志页。
 - **完成标准**：AC1–AC7 每条都有证据；`make check` 全绿；计划状态改为「待验收」并提交负责人验收。
 - **验证命令**：`make check`、逐条对照「验证记录」。
 
+## 并行分工
+
+| 执行者 | 任务 | 独占写作用域（其他执行者不碰） |
+|---|---|---|
+| Lead | T1（已完成）、T2、T6 接线、T7 | `src/client/index.ts`、`dev.patch.yml`、`docs/`、`src/shared/protocol.ts` 的对外约定 |
+| `host-git` | T3、T4、T5 的 rpc 接线 | `src/host/{rpc,repo-resolver,git-executor,sandbox-gate}.ts`、`src/host/git/**`、`test/host/**` |
+| `refresh` | T5 模块与测试 | `src/host/{watch,cache}.ts`、`src/client/polling.ts`、`test/host/watch.test.ts`、`test/client/polling.test.ts` |
+| `client-docs` | T6 组件与注册模块 | `src/client/{document-actions.tsx,blame-page.tsx,register-document-actions.ts,types.d.ts}`、`src/client/locales.ts` |
+
+约定：`src/shared/protocol.ts` 的接口变更先由 Lead 合入再通知其他执行者；T5 的接线由 `host-git` 在 T4 完成后进行，`refresh` 不编辑 `rpc.ts`。
+
 ## 进度
 
 <!-- 每完成一步追加一行：日期 — 任务 — 结果（commit 短哈希） -->
 
-- 无（计划尚未批准）
+- 2026-10-25 — T1 包骨架与工具链 — `pnpm install && pnpm build && node test/bundle.smoke.mjs && make check` 全绿；client 产物 1263 B（gzip 609 B）；DSH 类型经 `link:` 接入并通过 tsc 探针（见决策记录）
 
 ## 下一步
 
-1. 负责人批准本计划（可同时指定执行方式：内联或 subagent 驱动）。
-2. 批准后创建分支 `m0-spike`，从 T1 开始：先写 `test/bundle.smoke.mjs` 与 `src/shared` 的协议常量测试，确认失败；再补 `package.json`、`tsconfig.json`、eslint、`build.mjs`，直到 `pnpm build && node test/bundle.smoke.mjs && make check` 全绿。
-3. 若批准前需要调整范围或技术选型，直接改本计划后再批准。
+1. `host-git`：从 T3 开始，先写 `test/host/repo-resolver.test.ts` 与 `status/log` 解析测试并确认失败。
+2. `refresh`：从 T5 模块开始（`watch.ts` / `cache.ts` / `polling.ts`），先写假时钟测试；不编辑 `rpc.ts`，完成后消息 `host-git` 接线。
+3. `client-docs`：先写 `document-actions.tsx` / `blame-page.tsx` 单测；不编辑 `src/client/index.ts`，等 Lead 的 T2 完成通知后接注册。
+4. Lead：T2（`dev.patch.yml` + `src/client/index.ts` 注册 + 本地 `--patch` 启动验证），随后接 T6 注册、进 T7 收尾。
+5. 所有任务的接口若需改 `src/shared/protocol.ts`，先消息 Lead 合入，避免并行冲突。
 
 ## 决策记录
 
-- 无（执行中填写：日期 — 决定 — 理由）
+- 2026-10-25 — 包根即包本体，不建 `packages/plugin` 子目录 — 与 [ARCHITECTURE.md](../../ARCHITECTURE.md) 顶层结构一致；`dsh plugin add <仓库根>` 直接可用，减少一层路径。
+- 2026-10-25 — DSH 类型依赖用 `link:/Users/peng/Me/Ai/deepseek-harness/...` 接入 devDependencies — 可行性调研 §5.2 的推荐做法，保证类型与运行中 checkout 同源；锁文件记录相对 link 路径，换机器需重装。
+- 2026-10-25 — TypeScript 固定 6.x（当前 6.0.3）— typescript-eslint 8.72 拒绝 TS 7.0（`typescript-eslint does not support TS 7.0`）；等其支持后升级。
+- 2026-10-25 — 产物包装的 intro 内容并入 banner — esbuild 0.28 移除了 `intro` 选项（`Invalid option in build() call: "intro"`）；包装语义不变，smoke 覆盖。
 
 ## 意外与发现
 
-- 无（执行中填写；SDK 相关同时回写 `docs/references/`）
+- 2026-10-25 — TS 7.0.2 是当前 latest，但 typescript-eslint 尚不支持；`pnpm add -D typescript` 会装到 7.0.2，必须显式 `typescript@^6`。DSH 版本升级不影响此约束；升级 typescript-eslint 后重新评估。
+- 2026-10-25 — esbuild 0.28 移除 `intro`；可行性调研 §5.4 的示例代码需在 T7 回写补充 banner 写法。
+- 2026-10-25 — `pnpm install` 报告 esbuild 的 build script 被忽略（`ERR_PNPM_IGNORED_BUILDS`），但 esbuild 0.28 走平台二进制包，构建与 smoke 正常；不需要 `pnpm approve-builds`。
 
 ## 阻塞
 

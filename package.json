@@ -1,0 +1,68 @@
+{
+  "name": "dsh-idea-gittool",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "IntelliJ 风格 Git 工作台：DSH Web 右侧栏双面 bundle 插件",
+  "main": "lib/host.js",
+  "exports": {
+    ".": "./lib/host.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-sidebar-right",
+        "@deepseek-ai/dsh-client-shortcuts"
+      ]
+    }
+  },
+  "engines": {
+    "node": ">=22",
+    "dsh": ">=0.2.1-rc.2 <0.3.0"
+  },
+  "packageManager": "pnpm@11.28.5",
+  "scripts": {
+    "build": "node build.mjs",
+    "dev": "node build.mjs --watch",
+    "smoke": "node test/bundle.smoke.mjs",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "layers": "depcruise src --config .dependency-cruiser.cjs",
+    "test": "vitest run",
+    "check": "pnpm run lint && pnpm run typecheck && pnpm run layers && pnpm run test",
+    "check:fast": "pnpm run lint && pnpm run typecheck"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "link:/Users/peng/Me/Ai/deepseek-harness/vendor/cordis",
+    "@deepseek-ai/dsh-client-connection": "link:/Users/peng/Me/Ai/deepseek-harness/packages/client/connection",
+    "@deepseek-ai/dsh-client-shortcuts": "link:/Users/peng/Me/Ai/deepseek-harness/packages/client/shortcuts",
+    "@deepseek-ai/dsh-client-ui-primitives": "link:/Users/peng/Me/Ai/deepseek-harness/packages/client/ui-primitives",
+    "@deepseek-ai/dsh-client-ui-sidebar-right": "link:/Users/peng/Me/Ai/deepseek-harness/packages/client/ui-sidebar-right",
+    "@deepseek-ai/dsh-client-ui-slots": "link:/Users/peng/Me/Ai/deepseek-harness/packages/client/ui-slots",
+    "@deepseek-ai/dsh-sandbox": "link:/Users/peng/Me/Ai/deepseek-harness/packages/sandbox/sandbox",
+    "@deepseek-ai/dsh-sandbox-policy": "link:/Users/peng/Me/Ai/deepseek-harness/packages/sandbox/sandbox-policy",
+    "@deepseek-ai/dsh-session": "link:/Users/peng/Me/Ai/deepseek-harness/packages/core/session",
+    "@deepseek-ai/dsh-session-persistence": "link:/Users/peng/Me/Ai/deepseek-harness/packages/session/session-persistence",
+    "@deepseek-ai/dsh-subprocess": "link:/Users/peng/Me/Ai/deepseek-harness/packages/subprocess/subprocess",
+    "@deepseek-ai/dsh-working-directory": "link:/Users/peng/Me/Ai/deepseek-harness/packages/session/working-directory",
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^26.6.5",
+    "dependency-cruiser": "^18.7.0",
+    "esbuild": "^0.28.2",
+    "eslint": "^10.13.0",
+    "globals": "^17.13.0",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.72.0",
+    "vitest": "^5.0.5"
+  }
+}

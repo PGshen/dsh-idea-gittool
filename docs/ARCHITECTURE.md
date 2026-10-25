@@ -2,8 +2,8 @@
 
 本文件只描述**代码结构**和**依赖方向**，内容必须和代码保持一致（SOP §10）。产品与页面设计见 [产品设计 v0.2](design/2026-10-25-产品设计-v0.2.md)；技术方案见其中 §16 与 [DSH 集成可行性调研](references/dsh-integration-feasibility.md)。
 
-> 状态：2026-10-25，规划态（仓库尚无 `src/`）。代码结构在 M0 计划 T1 落地后按实际实现更新本文件。
-> 分层规则 R1–R5 已写入 [`.dependency-cruiser.cjs`](../.dependency-cruiser.cjs)，M0 T1 安装 dependency-cruiser 后由 `make check` 强制执行。
+> 状态：2026-10-25，M0 T1 已建立骨架（`src/host`、`src/client`、`src/shared`、`build.mjs`、`package.json`）；模块职责与分层以本文件为准，后续任务按实际实现增补。
+> 分层规则 R1–R5 已写入 [`.dependency-cruiser.cjs`](../.dependency-cruiser.cjs)，由 `make check` 强制执行。
 
 ## 1. 仓库顶层
 

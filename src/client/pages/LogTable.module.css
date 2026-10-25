@@ -1,0 +1,50 @@
+/* 提交图表格的滚动容器：尺寸容器，供行内列按宽度隐藏（<720px 隐藏作者/日期）。 */
+.scroller {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  outline: none;
+  background: var(--dsw-alias-bg-base);
+  /* 不用命名容器：esbuild local-css 会按文件给容器名加前缀，跨文件对不上。行内列取最近的容器（本元素）。 */
+  container-type: inline-size;
+}
+
+.scroller:focus-visible {
+  box-shadow: inset 0 0 0 1px var(--dsw-alias-brand-primary);
+}
+
+.canvas {
+  position: relative;
+  width: 100%;
+}
+
+.skeleton,
+.footer,
+.footerError {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 26px;
+  padding: 0 12px;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+}
+
+.footerError {
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.footerAction {
+  padding: 0 6px;
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
+  cursor: pointer;
+}
+
+.footerAction:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}

@@ -147,6 +147,7 @@ M0 只做技术验证与骨架，不实现 A1 的完整日志页。
 - 2026-10-25 — T6 文档动作与 Blame 空页 — 35 个组件单测；实机 `package.json` 预览头部渲染 `· Blame 历史 Diff`；commit `d9a04dc`
 - 2026-10-25 — 客户端数据层与路由修复 — 同源 fetch RPC + bootstrap 快照 + GitBody 数据 + 文档状态字母；`/dsh-git` 改 webServer 路由后 RPC 实机打通（真实会话返回 branch/17 改动/7 提交，read-only）；commit `3fe406c`
 - 2026-10-25 — T7 记录与收尾 — references §13 回写 11 条实测结论；ARCHITECTURE/QUALITY/tech-debt（新增 TD-3 样式管线、TD-4 watch 降级）更新；`make check` 绿（14 files / 163 tests）；计划转待验收
+- 2026-10-25 — 安装态复验（验收后补做） — `dsh plugin --profile web add` 写入 link 与 bundles；不带 `--patch` 的 3082 进程无激活警告，模块图含 `dsh-idea-gittool/client.js`，RPC 返回 `repoRoot`/branch/12 commits，无 Cookie 401；pnpm 10/11 store 差异已记入 dev-setup runbook
 
 ## 下一步
 
@@ -185,4 +186,4 @@ M0 只做技术验证与骨架，不实现 A1 的完整日志页。
 - AC5 刷新与热更：⚠️ 部分验证。poller 假时钟覆盖可见性暂停/串行/过期丢弃；Host 侧 watch 250ms 防抖与 version+1 有单测；Host 改动需重启已实测（重启 3081 后路由生效）。
   实测发现：**当前 web 组合没有挂载 `fs` 服务**（`pnpm dsh --profile web --dump-config` 与 bundle patch 均无 fs 条目），所以 `ctx.get('fs')` 为 undefined、watch 降级、`version` 恒为 0；`touch .git/index` 后 bootstrap 的 version 仍为 0 验证了这一点。兜底方案：Host 缓存给 1s TTL（3s 轮询仍拿到新数据，突发请求可复用），并把“换用 workspaceFiles.changes / 补 Host watch”登记为 TD-4。重建 `lib/client.js` 的 HMR 仍未手动走查。
 - AC6 文档动作：`package.json` 预览头部实机渲染状态徽标 + `Blame 历史 Diff`（历史/Diff disabled 并注明 B2）；slot `sidebar.right.tab.document.actions` 与 owner `absolutePath` 按 DSH 0.2.1-rc.2 契约接线；Blame 点击打开 `git.blame` 空页（type + body slot 注册，单测覆盖）。证据：`.evidence/m0/t6-document-actions.png`。
-- AC7 质量关口：`make check` 全绿（lint + tsc + dependency-cruiser + vitest + 文档检查；最近一次 14 files / 163 tests 为提交前基线，收尾以最终输出为准）；本文件与 [references](../../references/dsh-integration-feasibility.md) 已回写实测结论。
+- AC7 质量关口：`make check` 全绿（lint + tsc + dependency-cruiser + vitest + 文档检查；14 files / 163 tests，合并后在 main 上复跑仍绿）；本文件与 [references](../../references/dsh-integration-feasibility.md) 已回写实测结论。安装态复验（2026-10-25 补做）：`dsh plugin --profile web add` 后以不带 `--patch` 的 3082 进程验证通过——无激活警告、模块图含 `dsh-idea-gittool/client.js`、`/dsh-git/bootstrap` 返回结构化数据、无 Cookie 401；profile 是 pnpm 10 装的需要用 pnpm 10 执行 plugin 命令（已写进 dev-setup）。

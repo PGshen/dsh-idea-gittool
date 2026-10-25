@@ -55,6 +55,18 @@ pnpm dsh plugin --profile web add /Users/peng/Me/Ai/dsh-idea-gittool
 # 重启 dsh web 后复验
 ```
 
+**pnpm 版本坑（2026-10-25 实测）**：本机 web profile 的 `node_modules` 由 pnpm 10.27（store v10）安装，而 DSH checkout 用 pnpm 11（store v11）。直接 `pnpm dsh plugin ...` 会报 `ERR_PNPM_UNEXPECTED_STORE`。用 pnpm 10 的 CLI 绕过（`pnpm dsh` 会把 checkout 的 `node_modules/.bin` 放到 PATH 最前，所以不能靠改 PATH 解决外层）：
+
+```bash
+mkdir -p /tmp/pnpm10
+printf '#!/bin/sh\nexec node ~/.cache/node/corepack/v1/pnpm/10.27.0/bin/pnpm.cjs "$@"\n' > /tmp/pnpm10/pnpm
+chmod +x /tmp/pnpm10/pnpm
+cd /Users/peng/Me/Ai/deepseek-harness
+PATH=/tmp/pnpm10:$PATH node --import tsx/esm apps/cli/src/bin.ts plugin --profile web add /Users/peng/Me/Ai/dsh-idea-gittool
+```
+
+安装会写 profile 的 `dependencies`（`link:`）与 `dsh.profile.bundles`。**不重启正在使用的 3080** 也能复验：另起一个不带 `--patch` 的进程（如 `--port 3082`），检查启动日志无 `did not activate`、页面模块图含 `dsh-idea-gittool/client.js`、`POST /dsh-git/bootstrap` 带 Cookie 返回数据。3080 在下次手动重启后才加载插件。
+
 - 只走 `dsh plugin` 命令，不直接编辑 `~/.dsh/profiles/web` 下的文件。
 - 推送、发布 npm 包、force push 都需要负责人明确确认。
 

@@ -1,0 +1,193 @@
+/* Diff 覆盖层（设计 §9.1–9.2）：铺满 Git tab 内容区（调用方容器需 position: relative）。 */
+.root {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: var(--dsw-alias-bg-base);
+  color: var(--dsw-alias-label-primary);
+  font-size: 12px;
+  container-type: inline-size;
+  outline: none;
+}
+
+.header {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+  padding: 4px 8px;
+  border-bottom: 0.5px solid var(--dsw-alias-border-l2);
+}
+
+.back {
+  flex: 0 0 auto;
+}
+
+.breadcrumb {
+  display: flex;
+  flex: 1 1 auto;
+  gap: 4px;
+  align-items: center;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--dsw-alias-label-secondary);
+  white-space: nowrap;
+}
+
+.crumb {
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 4px;
+}
+
+.crumbSeparator {
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.path {
+  overflow: hidden;
+  color: var(--dsw-alias-label-primary);
+  direction: rtl;
+  text-align: left;
+  text-overflow: ellipsis;
+}
+
+.tools {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 4px;
+  align-items: center;
+}
+
+.position {
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.fileSelect {
+  display: none;
+}
+
+.body {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.sideList {
+  display: flex;
+  min-height: 0;
+}
+
+.main {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* 窄屏：文件列表收进顶部下拉（设计 §9.2）。 */
+@container (max-width: 599px) {
+  .sideList {
+    display: none;
+  }
+
+  .fileSelect {
+    display: inline-flex;
+  }
+}
+
+.content {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.content[data-loading='true'] {
+  opacity: 0.7;
+}
+
+.rename {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 4px 8px;
+  border-bottom: 0.5px solid var(--dsw-alias-border-l2);
+  color: var(--dsw-alias-label-secondary);
+  font-family: var(--dsw-font-markdown-code-block-font-family);
+}
+
+.arrow {
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.notice {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  align-items: center;
+  padding: 4px 8px;
+  border-bottom: 0.5px solid var(--dsw-alias-border-l2);
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-secondary);
+}
+
+.terminal {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.command {
+  font-family: var(--dsw-font-markdown-code-block-font-family);
+  user-select: all;
+}
+
+.binary {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 16px;
+}
+
+.binaryTitle {
+  font-size: 13px;
+}
+
+.binaryFacts {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 12px;
+  margin: 0;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.binaryFacts dd {
+  display: flex;
+  gap: 8px;
+  margin: 0;
+}
+
+.hash {
+  color: var(--dsw-alias-label-tertiary);
+  font-family: var(--dsw-font-markdown-code-block-font-family);
+}
+
+.state {
+  padding: 12px;
+}
+
+.loading {
+  margin: 0;
+  padding: 12px;
+  color: var(--dsw-alias-label-tertiary);
+}

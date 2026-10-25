@@ -1,0 +1,108 @@
+/* 统一模式 diff 主体：固定行高的虚拟行；增删只用 --dsw-alias-file-diff-* token。 */
+.scroller {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  color: var(--dsw-alias-label-primary);
+  font-family: var(--dsw-font-markdown-code-block-font-family);
+  font-size: 12px;
+}
+
+.canvas {
+  position: relative;
+  min-width: 100%;
+  width: max-content;
+}
+
+.line,
+.hunkHeader {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  box-sizing: border-box;
+  min-width: 100%;
+  line-height: 20px;
+  white-space: pre;
+}
+
+.hunkHeader {
+  gap: 6px;
+  align-items: center;
+  padding: 0 8px;
+  border: 0;
+  border-block: 0.5px solid var(--dsw-alias-border-l2);
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-secondary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.hunkHeader:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.chevron {
+  width: 12px;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 10px;
+}
+
+.hunkText {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hunkCount {
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 11px;
+}
+
+.gutter {
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  width: 48px;
+  padding: 0 6px;
+  color: var(--dsw-alias-label-tertiary);
+  text-align: right;
+  user-select: none;
+}
+
+.marker {
+  flex: 0 0 auto;
+  width: 16px;
+  color: var(--dsw-alias-label-tertiary);
+  text-align: center;
+  user-select: none;
+}
+
+.code {
+  flex: 1 0 auto;
+  padding-inline-end: 12px;
+}
+
+.added {
+  background: var(--dsw-alias-file-diff-added-bg);
+}
+
+.added .gutter {
+  background: var(--dsw-alias-file-diff-added-gutter);
+}
+
+.added .marker {
+  color: var(--dsw-alias-file-diff-added-marker);
+}
+
+.deleted {
+  background: var(--dsw-alias-file-diff-deleted-bg);
+}
+
+.deleted .gutter {
+  background: var(--dsw-alias-file-diff-deleted-gutter);
+}
+
+.deleted .marker {
+  color: var(--dsw-alias-file-diff-deleted-marker);
+}

@@ -990,7 +990,7 @@ Git 与构建行为（A1 实测，git 2.50.1）：
 
 | 结论 | 状态 | 证据 |
 |---|---|---|
-| `git rev-list --walk-reflogs --count refs/stash --` 返回贮藏条数；没有贮藏时 `refs/stash` 不存在，退出码 128 | ✅ 2026-10-25 | `src/host/git/status.ts` `readStashCount` + `test/host/status.test.ts` |
+| 贮藏数用 `git stash list --format=%H` 数行：没有贮藏时退出码 0、输出为空。**不要**用 `rev-list --walk-reflogs --count refs/stash`——无贮藏时退出 128，3s 轮询会把控制台刷满红色失败 | ✅ 2026-10-25 | `src/host/git/status.ts` `readStashCount` + `test/host/status.test.ts`（A1 验收演示发现） |
 | bisect 进行中以 `.git/BISECT_START` 判定（`bisect reset` 删除） | ✅ 2026-10-25 | 同上 |
 | `git --grep` 与 `--author` 是 AND 关系，表达不了「消息或作者或哈希」，搜索改在 Host 内匹配 | ✅ 2026-10-25 | `src/host/git/log.ts` + `test/host/log.test.ts` |
 | esbuild local-css 会给 `@container` 名加文件前缀，跨文件容器查询需用匿名 `container-type` | ✅ 2026-10-25 | A1 T4 |

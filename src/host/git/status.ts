@@ -65,9 +65,10 @@ export async function readStatus(
 }
 
 /**
- * Number of stash entries: the length of the `refs/stash` reflog.
- * A missing ref (exit 128) means no stash; any other failure omits the count
- * rather than failing the whole status read.
+ * Number of stash entries via `git stash list`, which exits 0 with empty output when there
+ * is no stash. (`rev-list --walk-reflogs refs/stash` exits 128 without a stash: polled every
+ * 3s, that expected miss flooded the Git console with red failures — A1 acceptance demo.)
+ * Any failure omits the count rather than failing the whole status read.
  */
 async function readStashCount(
   run: GitRunner,
@@ -76,13 +77,12 @@ async function readStashCount(
 ): Promise<number | undefined> {
   let result: GitRunResult
   try {
-    result = await run([...GIT_BASE_ARGV, 'rev-list', '--walk-reflogs', '--count', 'refs/stash', '--'], { cwd, signal })
+    result = await run([...GIT_BASE_ARGV, 'stash', 'list', '--format=%H'], { cwd, signal })
   } catch {
     return undefined
   }
-  if (result.exitCode !== 0) return 0
-  const count = Number(result.stdout.trim())
-  return Number.isSafeInteger(count) && count >= 0 ? count : undefined
+  if (result.exitCode !== 0) return undefined
+  return result.stdout.split('\n').filter((line) => line.trim() !== '').length
 }
 
 /**

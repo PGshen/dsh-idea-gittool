@@ -6,7 +6,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 vi.setConfig({ testTimeout: 30_000 })
 
 import type { GitRunner } from '../../src/host/git-executor.ts'
-import { GitCommandFailure, createGitRunner } from '../../src/host/git-executor.ts'
+import { GitCommandFailure, createGitRunner, instrumentGitRunner } from '../../src/host/git-executor.ts'
+import { createGitConsole } from '../../src/host/console.ts'
 import { parseStatusPorcelainV2Z, readStatus } from '../../src/host/git/status.ts'
 import { canonicalPath, createTempRepo } from './fixtures.ts'
 import { createFakeSubprocess } from './fake-subprocess.ts'
@@ -299,6 +300,18 @@ describe('readStatus A1 additions', () => {
     expect((await readStatus(run, repo.root)).stashCount).toBe(2)
   })
 
+  it('reading status of a repository without stashes leaves no failed command in the console', async () => {
+    const repo = makeRepo()
+    const gitConsole = createGitConsole()
+    const instrumented = instrumentGitRunner(run, gitConsole)
+
+    const status = await readStatus(instrumented, repo.root)
+
+    expect(status.stashCount).toBe(0)
+    // 每 3s 轮询一次：预期中的「没有贮藏」不能在控制台里刷成红色失败（A1 验收演示发现）。
+    expect(gitConsole.recent().records.filter((record) => record.exitCode !== 0)).toEqual([])
+  })
+
   it('reports an in-progress bisect', async () => {
     const repo = makeRepo()
     repo.commit('one')
@@ -310,7 +323,7 @@ describe('readStatus A1 additions', () => {
   it('omits stashCount when the count read fails instead of failing status', async () => {
     const repo = makeRepo()
     const failing: GitRunner = async (argv, options) => {
-      if (argv.includes('--walk-reflogs')) throw new GitCommandFailure('git/timeout', 'slow', {})
+      if (argv.includes('stash')) throw new GitCommandFailure('git/timeout', 'slow', {})
       return run(argv, options)
     }
 

@@ -1,12 +1,54 @@
-// Client 半边入口。M0 T1 只建立 __ModuleLoader__ 产物契约；
-// 右侧栏 tab 类型、引导页卡片与快捷键在 T2 接入。
+// Client 半边入口：把 git tab 类型、引导页卡片、快捷键与正文/标题接进 DSH。
+// 两段式注册（可行性调研 §1.1）：类型进 sidebarRightTabs，正文/标题进 keyed slot。
+import type { Context as ClientContext } from '@deepseek-ai/cordis'
+import type { ShortcutCommandId } from '@deepseek-ai/dsh-client-shortcuts/client'
+import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
+import type {} from '@deepseek-ai/dsh-client-ui-session/client'
+import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
+import type {} from '@deepseek-ai/dsh-client-ui-slots'
+import { GIT_ID, GIT_KIND, gitDefinition } from './definition.tsx'
+import { GitBody } from './GitBody.tsx'
+import { GitTitle } from './GitTitle.tsx'
+import { en, zh } from './locales.ts'
 
-/** Cordis 插件名，与 Host 入口保持一致。 */
 export const name = 'dsh-idea-gittool'
 
-/** 需要的客户端服务；T2 接入时补充。 */
-export const inject: string[] = []
+const NS = 'gitWorkbench'
 
-export function apply(): void {
-  // T2: sidebarRightTabs / slots / shortcuts / locale 注册
+export const inject = ['slots', 'locale', 'sidebarRightTabs', 'sidebarRight', 'shortcuts']
+
+export function apply(ctx: ClientContext): void {
+  const t = ctx.locale.bind(NS)
+
+  ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'git: dictionaries')
+  ctx.effect(() => ctx.sidebarRightTabs.register(gitDefinition(t)), 'git: tab type')
+
+  ctx.effect(() => ctx.shortcuts.register({
+    id: 'git.openLog' as ShortcutCommandId,
+    label: () => t('shortcut.open'),
+    aliases: ['git', 'git log', 'git workbench'],
+    defaults: {
+      'desktop:macos': { code: 'KeyG', modifiers: ['primary', 'shift'] },
+      'desktop:windows': { code: 'KeyG', modifiers: ['primary', 'shift'] },
+      'web:macos': { code: 'KeyG', modifiers: ['primary', 'shift'] },
+      'web:windows': { code: 'KeyG', modifiers: ['primary', 'shift'] },
+    },
+    regions: ['page', 'editable', 'terminal'],
+    modals: [],
+    resolve: ({ target: element }) => {
+      const target = ctx.sidebarRight.commandTarget(element)
+      if (target === undefined) return { status: 'blocked', reason: t('shortcut.noSession') }
+      return { status: 'handled', run: () => { ctx.sidebarRight.openTabFromTarget(GIT_KIND, target) } }
+    },
+  }), 'git: shortcut')
+
+  ctx.effect(() => ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register(
+    { name: 'sidebar.right.pane.tab', key: GIT_ID, locale: NS },
+    GitBody,
+  )), 'git: tab body')
+
+  ctx.effect(() => ctx.slots.inject('sidebar.right.pane.tab.title', () => ctx.slots.register(
+    { name: 'sidebar.right.pane.tab.title', key: GIT_ID },
+    GitTitle,
+  )), 'git: tab title')
 }

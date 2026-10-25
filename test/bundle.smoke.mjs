@@ -5,6 +5,20 @@ import { readFileSync } from 'node:fs'
 import vm from 'node:vm'
 
 const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
+// factory(require) 里的 require 就是宿主注入的 baseline 模块表；未知请求必须失败。
+const PLATFORM_MODULES = new Set([
+  'react',
+  'react/jsx-runtime',
+  'react-dom',
+  'react-dom/client',
+  '@deepseek-ai/cordis',
+  'zod',
+  '@tanstack/react-virtual',
+  '@deepseek-ai/dsh-client-store',
+  '@deepseek-ai/dsh-client-ui-slots',
+  '@deepseek-ai/dsh-client-ui-primitives',
+  '@deepseek-ai/dsh-client-ui-dockkit',
+])
 const errors = []
 const fail = (message) => errors.push(message)
 
@@ -30,9 +44,12 @@ if (registration === undefined) {
     fail('client bundle 缺少 factory 函数')
   } else {
     const requested = []
+    // 宿主注入的 baseline 模块表在真实运行时有值；smoke 只关心 require 的集合是否合法，
+    // 因此给外部模块返回空对象，未知请求仍然失败。
     const mod = registration.factory((name) => {
       requested.push(name)
-      throw new Error(`未预期的 require：${name}`)
+      if (!PLATFORM_MODULES.has(name)) throw new Error(`未预期的 require：${name}`)
+      return {}
     })
     if (mod === null || typeof mod !== 'object') {
       fail('client factory 没有返回模块对象')
@@ -40,7 +57,6 @@ if (registration === undefined) {
       if (typeof mod.apply !== 'function') fail('client 模块缺少 apply 函数')
       if (!Array.isArray(mod.inject)) fail('client 模块缺少 inject 数组')
     }
-    if (requested.length > 0) fail(`client 模块加载期不应 require：${requested.join(', ')}`)
   }
 }
 

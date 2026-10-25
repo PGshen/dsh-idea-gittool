@@ -1,0 +1,8 @@
+# 开发期 overlay（不随包发布）：用绝对路径行把本包挂进 DSH 的 client 图。
+# 启动（在 DSH checkout 内，只读不动源码）：
+#   cd /Users/peng/Me/Ai/deepseek-harness
+#   pnpm dsh web --patch /Users/peng/Me/Ai/dsh-idea-gittool/dev.patch.yml --no-open --port 3081
+# 行名是绝对路径时，client-modules 会向上找到本仓库的 package.json 并服务 ./client。
+- insert:
+    - id: dsh-idea-gittool-dev
+      name: '/Users/peng/Me/Ai/dsh-idea-gittool/lib/host.js'

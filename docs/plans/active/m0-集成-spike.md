@@ -129,22 +129,24 @@ M0 只做技术验证与骨架，不实现 A1 的完整日志页。
 | Lead | T1（已完成）、T2、T6 接线、T7 | `src/client/index.ts`、`dev.patch.yml`、`docs/`、`src/shared/protocol.ts` 的对外约定 |
 | `host-git` | T3、T4、T5 的 rpc 接线 | `src/host/{rpc,repo-resolver,git-executor,sandbox-gate}.ts`、`src/host/git/**`、`test/host/**` |
 | `refresh` | T5 模块与测试 | `src/host/{watch,cache}.ts`、`src/client/polling.ts`、`test/host/watch.test.ts`、`test/client/polling.test.ts` |
-| `client-docs` | T6 组件与注册模块 | `src/client/{document-actions.tsx,blame-page.tsx,register-document-actions.ts,types.d.ts}`、`src/client/locales.ts` |
+| `client-docs` | T6 组件与注册模块 | `src/client/{document-actions.tsx,blame-page.tsx,register-document-actions.ts,types.d.ts}`、`test/client/**`（文案先用中文字面量，不编辑 `locales.ts`） |
 
-约定：`src/shared/protocol.ts` 的接口变更先由 Lead 合入再通知其他执行者；T5 的接线由 `host-git` 在 T4 完成后进行，`refresh` 不编辑 `rpc.ts`。
+约定：`src/shared/protocol.ts` 的接口变更先由 Lead 合入再通知其他执行者；T5 的接线由 `host-git` 在 T4 完成后进行，`refresh` 不编辑 `rpc.ts`。依赖安装（`pnpm add` / `pnpm install`）只由 Lead 执行，其他执行者不写 `package.json` 与 `pnpm-lock.yaml`。
 
 ## 进度
 
 <!-- 每完成一步追加一行：日期 — 任务 — 结果（commit 短哈希） -->
 
 - 2026-10-25 — T1 包骨架与工具链 — `pnpm install && pnpm build && node test/bundle.smoke.mjs && make check` 全绿；client 产物 1263 B（gzip 609 B）；DSH 类型经 `link:` 接入并通过 tsc 探针（见决策记录）
+- 2026-10-25 — T2 开发期挂载与入口 — 用 `pnpm dsh web --patch dev.patch.yml --no-open --port 3081` 启动成功；引导页出现「Git 工作台」卡片（order 40、快捷键 ⇧⌘G），`Mod+Shift+G` 打开右侧栏 Git tab；无会话时快捷键返回 blocked 文案（代码路径已接）；控制台无错误；证据 `.evidence/m0/t2-hero.png`、`t2-guide-card.png`、`t2-git-tab.png`
+- 2026-10-25 — T5a 模块（refresh 队友） — `src/host/{watch,cache}.ts`、`src/client/polling.ts` 与 31 个假时钟测试通过；导出契约已交给 host-git 接线
 
 ## 下一步
 
-1. `host-git`：从 T3 开始，先写 `test/host/repo-resolver.test.ts` 与 `status/log` 解析测试并确认失败。
-2. `refresh`：从 T5 模块开始（`watch.ts` / `cache.ts` / `polling.ts`），先写假时钟测试；不编辑 `rpc.ts`，完成后消息 `host-git` 接线。
-3. `client-docs`：先写 `document-actions.tsx` / `blame-page.tsx` 单测；不编辑 `src/client/index.ts`，等 Lead 的 T2 完成通知后接注册。
-4. Lead：T2（`dev.patch.yml` + `src/client/index.ts` 注册 + 本地 `--patch` 启动验证），随后接 T6 注册、进 T7 收尾。
+1. Lead：等 host-git 的 T3 落地（整仓转绿）后，按任务提交 T2 与 T3；随后接线 T6 的 `registerBlameTab` / `registerDocumentActions`。
+2. `host-git`：T3 → T4 → T5b；T5b 用 refresh 已交付的 `gitWatchTargets/watchRepo/createRepoCache`。
+3. `client-docs`：完成 T6 组件与测试，把精确注册签名发给 Lead；不要执行 `pnpm add`。
+4. Lead：T7 收尾前跑一次文档预览头部动作的实机验证（文档预览 slot），并逐条填「验证记录」。
 5. 所有任务的接口若需改 `src/shared/protocol.ts`，先消息 Lead 合入，避免并行冲突。
 
 ## 决策记录

@@ -6,7 +6,7 @@
 |---|---|
 | 状态 | 已采纳 |
 | 日期 | 2026-10-25 |
-| 相关 | [A1 计划 T2](../plans/active/a1-只读日志.md)、[技术债 TD-3](../quality/tech-debt.md)、[可行性调研 §4.4/§5.4](../references/dsh-integration-feasibility.md) |
+| 相关 | [A1 计划 T2](../plans/completed/a1-只读日志.md)、[技术债 TD-3](../quality/tech-debt.md)、[可行性调研 §4.4/§5.4](../references/dsh-integration-feasibility.md) |
 
 ## 背景
 

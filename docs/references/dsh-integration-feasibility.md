@@ -979,7 +979,7 @@ dsh-idea-gittool/
 | 未知 sessionId 不能退化为 `sandboxPolicy.workspaceRoot`（那是 dsh 进程 cwd）；持久化无记录即 `git/no-session` | ✅ | `src/host/repo-resolver.ts`；curl 实测 |
 | 文档预览头部历史/Diff 与 Blame 页属产品后续里程碑（B2） | ⏳ | M0 只做空页与 disabled 占位 |
 | 重建 `lib/client.js` 触发 HMR：按内容 rev 判断，只 `touch` 不触发；内容变化约 0.5s 内热替换，页面不整页刷新，factory 会**再次执行** | ✅ 2026-10-25 | A1 T9 走查（3081）：探针属性与 CSS 描边热生效/热撤销；`build.mjs` 因此改为复用并替换 `<style data-plugin-css>`，smoke 覆盖 |
-| 终端改动后刷新：新建标签 1.3s、新建未跟踪文件 1.2s 反映到 Git tab（watch 递增 version + 1s TTL/3s 轮询） | ✅ 2026-10-25 | A1 T9 走查，见 [A1 计划](../plans/active/a1-只读日志.md) 验证记录 |
+| 终端改动后刷新：新建标签 1.3s、新建未跟踪文件 1.2s 反映到 Git tab（watch 递增 version + 1s TTL/3s 轮询） | ✅ 2026-10-25 | A1 T9 走查，见 [A1 计划](../plans/completed/a1-只读日志.md) 验证记录 |
 | **web 组合没有 `fs` 服务**（M0 结论） | ❌ 2026-10-25 | `pnpm dsh --profile web --dump-config` 第 403 行有 `fs-sandbox`（base bundle 提供 `fs`）；M0 的 watch 失败实为适配器传错参数（下一行） |
 | `ctx.fs.watch(target, changed, signal)` 的 target 是 `fs.resolve(path)` 产出的 `FsTarget`，不接受路径字符串；`changed` 可能带 Error；目录只监听直接子项 | ✅ 2026-10-25 | `packages/fs/fs/src/index.ts:100`、`types.ts:60`；`src/host/watch.ts` `fsWatchFromService` + 实测 version 0→1 |
 | 插件已经 `link:` 安装进 web profile 时，再加 `--patch dev.patch.yml` 启动会报 `resolves from multiple active Loader sources`；此时直接不带 patch 启动即可（安装态就指向本仓库 `lib/`） | ✅ 2026-10-25 | A1 走查启动 3081 |

@@ -1,0 +1,49 @@
+/* 操作状态横幅（设计 §7.3），颜色只用 --dsw-* token。 */
+.banner {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 4px 10px;
+  border-bottom: 0.5px solid var(--dsw-alias-border-l2);
+  border-left: 2px solid var(--dsw-alias-state-warn);
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.hasConflicts {
+  border-left-color: var(--dsw-alias-state-error-primary);
+}
+
+.icon {
+  color: var(--dsw-alias-state-warn);
+}
+
+.title {
+  color: var(--dsw-alias-label-primary);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.detail {
+  white-space: nowrap;
+}
+
+.conflicts {
+  color: var(--dsw-alias-state-error-primary);
+  white-space: nowrap;
+}
+
+.hint {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--dsw-alias-label-tertiary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.spacer {
+  flex: 1;
+}

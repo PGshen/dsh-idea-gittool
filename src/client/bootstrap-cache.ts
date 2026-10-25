@@ -15,7 +15,7 @@ export interface BootstrapCache {
   refresh(sessionId: string): Promise<number>
 }
 
-export function createBootstrapCache(client: GitClient): BootstrapCache {
+export function createBootstrapCache(client: Pick<GitClient, 'bootstrap'>): BootstrapCache {
   const values = new Map<string, BootstrapValue>()
   const failures = new Map<string, GitError>()
   const listeners = new Map<string, Set<() => void>>()

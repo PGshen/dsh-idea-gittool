@@ -5,6 +5,7 @@
 import type { SubprocessHandle, SubprocessRuntime } from '@deepseek-ai/dsh-subprocess'
 
 import type { GitErrorCode } from '../shared/protocol.ts'
+import type { GitConsole } from './console.ts'
 
 /** Default deadline for one read-only git command. */
 export const GIT_TIMEOUT_MS = 8000
@@ -221,6 +222,51 @@ export function createGitRunner(
     } finally {
       child.terminate()
       await child.waitForExit().catch(() => false)
+    }
+  }
+}
+
+/**
+ * Wrap a runner so every call lands in the Git console (设计 §12).
+ *
+ * This is the single埋点 point for the Host half: read commands, writes (A2/A3),
+ * timeouts, cancellations and lossy-output failures are all recorded with the
+ * facts the console needs. The wrapper never changes the runner's contract —
+ * results pass through untouched and failures are rethrown by identity.
+ */
+export function instrumentGitRunner(run: GitRunner, recorder: GitConsole): GitRunner {
+  return async function instrumentedGitRunner(argv, options) {
+    const startedAt = Date.now()
+    try {
+      const result = await run(argv, options)
+      recorder.record({
+        argv,
+        durationMs: Date.now() - startedAt,
+        exitCode: result.exitCode,
+        stdout: result.stdout,
+        stderr: result.stderr,
+      })
+      return result
+    } catch (error) {
+      const failure = error instanceof GitCommandFailure ? error : undefined
+      const details = failure?.details ?? {}
+      const detailText = (key: string): string => {
+        const value = details[key]
+        return typeof value === 'string' ? value : ''
+      }
+      recorder.record({
+        argv,
+        durationMs: Date.now() - startedAt,
+        // A thrown failure carries no exit facts except those the executor attached.
+        exitCode: typeof details.exitCode === 'number' ? details.exitCode : null,
+        stdout: detailText('stdout'),
+        stderr: detailText('stderr') || (failure?.message ?? messageOf(error)),
+        cancelled: details.cancelled === true,
+        timedOut: failure?.code === 'git/timeout',
+        // The collected stream lost its head before the executor refused to parse it.
+        stdoutTruncated: failure?.code === 'git/output-too-large',
+      })
+      throw error
     }
   }
 }

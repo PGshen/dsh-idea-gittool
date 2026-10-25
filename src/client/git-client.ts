@@ -2,12 +2,31 @@
 // 同源 POST + Cookie 鉴权（Host 侧走 connection.requestRejection）；传输错误与协议
 // 形状错误都收敛成结构化的 GitError，调用方不需要 try/catch。
 import { RPC_CHANNEL, isRpcResult } from '../shared/protocol.ts'
-import type { BootstrapValue, GitError, LogRequest, LogValue, RpcResult, StatusValue } from '../shared/protocol.ts'
+import type {
+  BootstrapValue,
+  BranchesValue,
+  CommitDetailValue,
+  CommitRequest,
+  ConsoleValue,
+  DiffFileValue,
+  DiffRequest,
+  GitError,
+  LogRequest,
+  LogValue,
+  RefsValue,
+  RpcResult,
+  StatusValue,
+} from '../shared/protocol.ts'
 
 export interface GitClient {
   bootstrap(sessionId: string, signal?: AbortSignal): Promise<RpcResult<BootstrapValue>>
   status(sessionId: string, signal?: AbortSignal): Promise<RpcResult<StatusValue>>
   log(request: LogRequest, signal?: AbortSignal): Promise<RpcResult<LogValue>>
+  branches(sessionId: string, signal?: AbortSignal): Promise<RpcResult<BranchesValue>>
+  refs(sessionId: string, signal?: AbortSignal): Promise<RpcResult<RefsValue>>
+  commit(request: CommitRequest, signal?: AbortSignal): Promise<RpcResult<CommitDetailValue>>
+  diff(request: DiffRequest, signal?: AbortSignal): Promise<RpcResult<DiffFileValue>>
+  console(sessionId: string, signal?: AbortSignal): Promise<RpcResult<ConsoleValue>>
 }
 
 function failure<T>(message: string): RpcResult<T> {
@@ -42,5 +61,10 @@ export function createGitClient(_ctx: unknown): GitClient {
     bootstrap: (sessionId, signal) => call<BootstrapValue>('bootstrap', { sessionId }, signal),
     status: (sessionId, signal) => call<StatusValue>('status', { sessionId }, signal),
     log: (request, signal) => call<LogValue>('log', request, signal),
+    branches: (sessionId, signal) => call<BranchesValue>('branches', { sessionId }, signal),
+    refs: (sessionId, signal) => call<RefsValue>('refs', { sessionId }, signal),
+    commit: (request, signal) => call<CommitDetailValue>('commit', request, signal),
+    diff: (request, signal) => call<DiffFileValue>('diff', request, signal),
+    console: (sessionId, signal) => call<ConsoleValue>('console', { sessionId }, signal),
   }
 }

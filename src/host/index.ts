@@ -13,7 +13,8 @@ import type {} from '@deepseek-ai/dsh-working-directory'
 import type { SessionsLike } from './repo-resolver.ts'
 import type { RpcDeps } from './rpc.ts'
 import type { FsWatch } from './watch.ts'
-import { createGitRunner } from './git-executor.ts'
+import { createGitConsole } from './console.ts'
+import { createGitRunner, instrumentGitRunner } from './git-executor.ts'
 import { createRpcRuntime } from './rpc.ts'
 import { registerRpcRoutes } from './http.ts'
 
@@ -35,8 +36,11 @@ interface FsServiceLike {
 export function apply(ctx: Context): void {
   // 插件卸载时统一取消所有 watch（watch 的 AbortSignal 与 runtime.dispose 都挂在这里）。
   const watchLifetime = new AbortController()
+  // Git 控制台（设计 §12）：所有 git 调用经 instrumentGitRunner 统一记录进进程内环形缓冲。
+  const gitConsole = createGitConsole()
   const deps: RpcDeps = {
-    runner: createGitRunner(ctx.subprocess),
+    runner: instrumentGitRunner(createGitRunner(ctx.subprocess), gitConsole),
+    console: gitConsole,
     // 惰性读取：composition 可能在本插件之后加载这些服务；缺失服务不等于错误。
     // `ctx.sessions` 的类型被 DSH 的 client 半边声明合并成 ISessions（同一个 Context
     // 被两侧 augmentation，skipLibCheck 下后者胜出）；Host 运行时实际是 SessionStore，

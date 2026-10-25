@@ -5,9 +5,7 @@ import type { GitClient } from '../../src/client/git-client.ts'
 import type {
   BootstrapValue,
   GitErrorCode,
-  LogValue,
   RpcResult,
-  StatusValue,
 } from '../../src/shared/protocol.ts'
 
 function bootstrapValue(version: number, branch = 'main'): BootstrapValue {
@@ -38,11 +36,10 @@ const okBootstrap = (value: BootstrapValue): RpcResult<BootstrapValue> => ({ ok:
 const fail = <T>(code: GitErrorCode, message: string): RpcResult<T> => ({ ok: false, error: { code, message } })
 
 function fakeClient(reply: (sessionId: string) => Promise<RpcResult<BootstrapValue>>): {
-  client: GitClient
+  client: Pick<GitClient, 'bootstrap'>
   calls: () => number
 } {
   let count = 0
-  const unused = async <T>(): Promise<RpcResult<T>> => fail<T>('git/exec-failed', 'unused')
   return {
     calls: () => count,
     client: {
@@ -50,8 +47,6 @@ function fakeClient(reply: (sessionId: string) => Promise<RpcResult<BootstrapVal
         count += 1
         return reply(sessionId)
       },
-      status: (): Promise<RpcResult<StatusValue>> => unused(),
-      log: (): Promise<RpcResult<LogValue>> => unused(),
     },
   }
 }

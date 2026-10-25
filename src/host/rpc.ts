@@ -12,15 +12,31 @@ import type {
   ConnectionRpcHandlerResult,
 } from '@deepseek-ai/dsh-client-connection'
 
-import type { BootstrapValue, LogValue, StatusValue, WritePolicyValue } from '../shared/protocol.ts'
+import type {
+  BootstrapValue,
+  BranchesValue,
+  CommitDetailValue,
+  ConsoleValue,
+  DiffFileValue,
+  LogValue,
+  RefsValue,
+  StatusValue,
+  WritePolicyValue,
+} from '../shared/protocol.ts'
+import type { GitConsole } from './console.ts'
 import type { RepoCache } from './cache.ts'
 import { createRepoCache } from './cache.ts'
 import type { FsWatch, RepoWatch } from './watch.ts'
 import { watchRepo } from './watch.ts'
 import type { GitRunner } from './git-executor.ts'
 import { GitCommandFailure, messageOf } from './git-executor.ts'
+import { readBranches } from './git/branches.ts'
+import { readCommit } from './git/commit.ts'
+import type { DiffQuery } from './git/diff.ts'
+import { readDiff, validateRepoPath } from './git/diff.ts'
 import type { LogQuery } from './git/log.ts'
-import { readLog } from './git/log.ts'
+import { logFilterSignature, normalizeLogFilters, readLog } from './git/log.ts'
+import { readRefs } from './git/refs.ts'
 import { readStatus } from './git/status.ts'
 import type { SandboxGateDeps, SandboxLike, SandboxPolicySource } from './sandbox-gate.ts'
 import { evaluateWritePolicy } from './sandbox-gate.ts'
@@ -32,6 +48,10 @@ const MAX_SESSION_ID_LENGTH = 200
 
 const STATUS_CACHE_KEY = 'status'
 const LOG_CACHE_PREFIX = 'log'
+const BRANCHES_CACHE_KEY = 'branches'
+const REFS_CACHE_KEY = 'refs'
+const COMMIT_CACHE_PREFIX = 'commit'
+const DIFF_CACHE_PREFIX = 'diff'
 
 /** Everything the handler needs; all session services are lazy and optional. */
 export interface RpcDeps extends SessionSources {
@@ -52,6 +72,8 @@ export interface RpcDeps extends SessionSources {
   watchDebounceMs?: number | undefined
   /** Injectable clock for cache/watch timestamps. */
   now?: (() => number) | undefined
+  /** Git console buffer fed by the instrumented runner; absent → empty console (A1). */
+  console?: GitConsole | undefined
 }
 
 /** The RPC handler shape used by `ctx.connection.rpc.handle` (peer unused today). */
@@ -123,6 +145,38 @@ export function createRpcRuntime(deps: RpcDeps): RpcRuntime {
           return await handleStatus(deps, runtime, payload, signal)
         case 'log':
           return await handleLog(deps, runtime, payload, signal)
+        case 'branches':
+          return await handleCached<BranchesValue>(deps, runtime, payload, signal, BRANCHES_CACHE_KEY, (root) =>
+            readBranches(deps.runner, root, { signal }),
+          )
+        case 'refs':
+          return await handleCached<RefsValue>(deps, runtime, payload, signal, REFS_CACHE_KEY, (root) =>
+            readRefs(deps.runner, root, { signal }),
+          )
+        case 'commit': {
+          const sha = parseCommitSha(payload)
+          return await handleCached<CommitDetailValue>(
+            deps,
+            runtime,
+            payload,
+            signal,
+            `${COMMIT_CACHE_PREFIX}:${sha}`,
+            (root) => readCommit(deps.runner, root, sha, { signal }),
+          )
+        }
+        case 'diff': {
+          const query = parseDiffQuery(payload)
+          return await handleCached<DiffFileValue>(
+            deps,
+            runtime,
+            payload,
+            signal,
+            `${DIFF_CACHE_PREFIX}:${JSON.stringify([query.scope, query.sha ?? '', query.parent ?? '', query.path])}`,
+            (root) => readDiff(deps.runner, root, query, { signal }),
+          )
+        }
+        case 'console':
+          return handleConsole(deps, payload)
         default:
           throw invalidPayload('unknown RPC endpoint', { endpoint })
       }
@@ -210,6 +264,38 @@ async function handleLog(
   return ok<LogValue>(page)
 }
 
+/**
+ * Generic read endpoint: resolve the repository, serve from the version-keyed cache,
+ * otherwise read and stamp the value with the version it was read at.
+ */
+async function handleCached<T extends object>(
+  deps: RpcDeps,
+  runtime: HandlerRuntime,
+  payload: unknown,
+  signal: AbortSignal,
+  key: string,
+  read: (repoRoot: string) => Promise<T>,
+): Promise<ConnectionRpcHandlerResult> {
+  const sessionId = parseSessionId(payload)
+  const root = await repositoryRoot(deps, sessionId, signal)
+  const cache = runtime.cache()
+  const version = cache.versionOf(root)
+  const cached = cache.get<T>(root, key)
+  if (cached !== undefined) return ok<T>(cached)
+
+  runtime.ensureWatch(root)
+  const value = { ...(await read(root)), version }
+  cache.set(root, key, value, version)
+  return ok<T>(value)
+}
+
+/** The console is process-wide and never cached: it is the record of the calls themselves. */
+function handleConsole(deps: RpcDeps, payload: unknown): ConnectionRpcHandlerResult {
+  parseSessionId(payload)
+  const value: ConsoleValue = deps.console?.recent() ?? { records: [], truncated: false }
+  return ok<ConsoleValue>(value)
+}
+
 /** Cache-first status read; the cached value carries the version it was read at. */
 async function cachedStatus(
   deps: RpcDeps,
@@ -240,7 +326,8 @@ async function cachedLog(
   version: number,
 ): Promise<LogValue> {
   const cache = runtime.cache()
-  const key = `${LOG_CACHE_PREFIX}:${query.cursor ?? ''}:${query.limit === undefined ? '' : String(query.limit)}`
+  const filters = normalizeLogFilters(query as Record<string, unknown>)
+  const key = `${LOG_CACHE_PREFIX}:${query.cursor ?? ''}:${query.limit === undefined ? '' : String(query.limit)}:${logFilterSignature(filters)}`
   const cached = cache.get<LogValue>(repoRoot, key)
   if (cached !== undefined) return cached
 
@@ -300,7 +387,7 @@ function parseSessionId(payload: unknown): string {
 }
 
 function parseLogQuery(payload: unknown): LogQuery {
-  const record = payload as { cursor?: unknown; limit?: unknown }
+  const record = payload as Record<string, unknown>
   const cursor = record.cursor
   if (cursor !== undefined && typeof cursor !== 'string') {
     throw invalidPayload('log cursor must be a string', {})
@@ -309,7 +396,33 @@ function parseLogQuery(payload: unknown): LogQuery {
   if (limit !== undefined && typeof limit !== 'number') {
     throw invalidPayload('log limit must be a number', {})
   }
-  return { cursor, limit }
+  // Type-checks every filter field; the normalized form also feeds the cache key.
+  return { cursor, limit, ...normalizeLogFilters(record) }
+}
+
+function parseCommitSha(payload: unknown): string {
+  parseSessionId(payload)
+  const sha: unknown = (payload as { sha?: unknown }).sha
+  if (typeof sha !== 'string' || !/^[0-9a-fA-F]{4,64}$/.test(sha)) {
+    throw invalidPayload('sha must be 4-64 hexadecimal characters', {})
+  }
+  return sha.toLowerCase()
+}
+
+function parseDiffQuery(payload: unknown): DiffQuery & { path: string } {
+  parseSessionId(payload)
+  const record = payload as Record<string, unknown>
+  const path = validateRepoPath(record.path)
+  for (const key of ['scope', 'sha', 'parent'] as const) {
+    const value = record[key]
+    if (value !== undefined && typeof value !== 'string') {
+      throw invalidPayload(`diff ${key} must be a string`, {})
+    }
+  }
+  const query: DiffQuery & { path: string } = { path, scope: record.scope }
+  if (record.sha !== undefined) query.sha = record.sha
+  if (record.parent !== undefined) query.parent = record.parent
+  return query
 }
 
 function ok<T>(value: T): ConnectionRpcHandlerResult {

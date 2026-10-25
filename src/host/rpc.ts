@@ -80,7 +80,10 @@ export function createRpcHandler(deps: RpcDeps): GitRpcHandler {
 
 /** Build the handler together with its lifecycle owner (index.ts disposes it on unload). */
 export function createRpcRuntime(deps: RpcDeps): RpcRuntime {
-  const fallbackCache = createRepoCache(deps.now === undefined ? {} : { now: deps.now })
+  // Web 组合当前没有挂载 `fs` 服务，watch 会降级（version 恒定 0）。此时若缓存无 TTL，
+  // 状态会永久陈旧；给兜底缓存 1s TTL：3s 轮询仍拿到新数据，短时间突发请求仍可复用。
+  // 接入 watch 的部署会用无 TTL 的 deps.cache（version 变化即失效）。
+  const fallbackCache = createRepoCache(deps.now === undefined ? { ttlMs: 1_000 } : { now: deps.now, ttlMs: 1_000 })
   const cacheOf = (): RepoCache => deps.cache?.() ?? fallbackCache
   const watches = new Map<string, RepoWatch>()
   let disposed = false

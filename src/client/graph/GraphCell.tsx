@@ -9,6 +9,9 @@ import css from './graph.module.css'
 /** 图形列的最大宽度（设计 §8.1.3：最大 160px）。 */
 export const MAX_GRAPH_WIDTH = 160
 
+/** 「+n」溢出标记占用的宽度（px）。 */
+const OVERFLOW_LABEL_WIDTH = 18
+
 export interface GraphCellProps {
   row: GraphRow
   /** 行高，默认 26px（与表格行高一致）。 */
@@ -31,7 +34,9 @@ export function GraphCell({
   current = false,
   selected = false,
 }: GraphCellProps): ReactNode {
-  const width = Math.min(MAX_GRAPH_WIDTH, Math.max(1, row.width) * laneWidth)
+  const overflow = row.overflow ?? 0
+  const lanesWidth = Math.max(1, row.width) * laneWidth
+  const width = Math.min(MAX_GRAPH_WIDTH, lanesWidth + (overflow > 0 ? OVERFLOW_LABEL_WIDTH : 0))
   const centerY = height / 2
   const nodeX = laneX(row.lane, laneWidth)
 
@@ -44,6 +49,8 @@ export function GraphCell({
       role="presentation"
       data-graph-width={row.width}
       data-graph-lane={row.lane}
+      {...(overflow > 0 ? { 'data-graph-overflow': overflow } : {})}
+      {...(row.clipped === true ? { 'data-graph-clipped': 'true' } : {})}
     >
       {row.edges.map((edge, index) => (
         <path
@@ -59,12 +66,17 @@ export function GraphCell({
         <circle className={css.currentRing} cx={nodeX} cy={centerY} r={6} />
       ) : null}
       <circle
-        className={head ? css.headNode : css.node}
+        className={head ? css.headNode : row.clipped === true ? css.clippedNode : css.node}
         cx={nodeX}
         cy={centerY}
         r={3.6}
         fill={head ? undefined : laneColor(row.colorId)}
       />
+      {overflow > 0 ? (
+        <text className={css.overflow} x={width - 1} y={centerY} textAnchor="end" dominantBaseline="central">
+          +{overflow}
+        </text>
+      ) : null}
     </svg>
   )
 }

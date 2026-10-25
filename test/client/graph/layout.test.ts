@@ -146,10 +146,10 @@ describe('graph options', () => {
     expect(rows.map((row) => row.lane)).toEqual([0, 0, 0])
   })
 
-  it('hides merge commits when noMerges is on', () => {
+  it('draws merge commits as first-parent only when noMerges is on (Host filters them; rows stay aligned)', () => {
     const layout = createGraphLayout({ noMerges: true })
     const rows = layout.append([c('a', 'b', 'c'), c('b', 'd'), c('c', 'd'), c('d')], { hasMore: false })
-    expect(rows.map((row) => row.sha)).toEqual(['b', 'c', 'd'])
+    expect(rows.map((row) => row.sha)).toEqual(['a', 'b', 'c', 'd'])
     expect(rows.every((row) => row.width <= 2)).toBe(true)
   })
 
@@ -286,3 +286,79 @@ function index(rows: readonly GraphRow[]): Record<string, GraphRow | undefined> 
   for (const row of rows) bySha[row.sha] = row
   return bySha
 }
+
+describe('lane 溢出（> maxLanes）', () => {
+  /** 12 个并行头 h0..h11，各自的父 p0..p11 在所有头之后才出现。 */
+  function parallelHeads(count: number): GraphCommit[] {
+    const heads = Array.from({ length: count }, (_, i) => ({ sha: `h${i}`, parents: [`p${i}`] }))
+    const parents = Array.from({ length: count }, (_, i) => ({ sha: `p${i}`, parents: [] }))
+    return [...heads, ...parents]
+  }
+
+  it('节点 lane 始终落在 [0, maxLanes) 内，超出的行标记 clipped 与 overflow', () => {
+    const layout = createGraphLayout({ maxLanes: 10 })
+    const rows = layout.append(parallelHeads(12), { hasMore: false })
+
+    for (const row of rows) {
+      expect(row.lane).toBeGreaterThanOrEqual(0)
+      expect(row.lane).toBeLessThan(10)
+      expect(row.width).toBeLessThanOrEqual(10)
+      for (const edge of row.edges) {
+        expect(edge.fromLane).toBeGreaterThanOrEqual(0)
+        expect(edge.fromLane).toBeLessThan(10)
+        expect(edge.toLane).toBeGreaterThanOrEqual(0)
+        expect(edge.toLane).toBeLessThan(10)
+      }
+    }
+    const h11 = rows.find((row) => row.sha === 'h11')
+    expect(h11?.clipped).toBe(true)
+    expect(h11?.overflow).toBe(2)
+    expect(rows.find((row) => row.sha === 'h0')?.clipped).toBeUndefined()
+  })
+
+  it('溢出不会吞掉其它头的等待：每个可见父提交都由一条线连到', () => {
+    const layout = createGraphLayout({ maxLanes: 10 })
+    const rows = layout.append(parallelHeads(12), { hasMore: false })
+
+    // p0..p9 在可见 lane 上，且是被上方的线接住的（有 curve 进入或贯穿的 line），不是孤立新头。
+    for (let i = 0; i < 10; i += 1) {
+      const row = rows.find((candidate) => candidate.sha === `p${i}`)
+      expect(row?.clipped).toBeUndefined()
+      expect(row?.edges.some((edge) => edge.toLane === row.lane && edge.kind !== 'dashed')).toBe(true)
+    }
+    // 所有父都被等到：没有残留的等待 lane。
+    expect(layout.pendingLanes).toBe(0)
+  })
+
+  it('溢出时遇到合并提交，主线（第一父）不被第二父覆盖', () => {
+    const layout = createGraphLayout({ maxLanes: 2 })
+    const rows = layout.append([
+      { sha: 'a', parents: ['m'] },
+      { sha: 'b', parents: ['x'] },
+      { sha: 'm', parents: ['main1', 'side1'] },
+      { sha: 'x', parents: [] },
+      { sha: 'main1', parents: [] },
+      { sha: 'side1', parents: [] },
+    ], { hasMore: false })
+
+    const merge = rows.find((row) => row.sha === 'm')
+    const main1 = rows.find((row) => row.sha === 'main1')
+    expect(main1?.lane).toBe(merge?.lane)
+    // main1 是被主线接住的，不是新开的头。
+    expect(main1?.edges.some((edge) => edge.fromLane === main1.lane && edge.toLane === main1.lane)).toBe(true)
+    expect(layout.pendingLanes).toBe(0)
+  })
+})
+
+describe('noMerges 兜底保持行对齐', () => {
+  it('合并提交仍产出一行（只连第一父），rows 与输入一一对应', () => {
+    const layout = createGraphLayout({ noMerges: true })
+    const input = [
+      { sha: 'm', parents: ['a', 'b'] },
+      { sha: 'a', parents: [] },
+    ]
+    const rows = layout.append(input, { hasMore: false })
+    expect(rows.map((row) => row.sha)).toEqual(['m', 'a'])
+    expect(rows[0]?.edges.filter((edge) => edge.kind !== 'line')).toHaveLength(1)
+  })
+})

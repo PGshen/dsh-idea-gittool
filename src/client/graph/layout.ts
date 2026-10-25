@@ -44,8 +44,12 @@ export interface GraphRow {
   /** 该条线（lane）的颜色 id，见 colors.ts。 */
   colorId: number
   edges: GraphEdge[]
-  /** 本行用到的 lane 数（含节点与所有边），用于决定图形列宽。 */
+  /** 本行用到的 lane 数（含节点与所有边），用于决定图形列宽；不超过 maxLanes。 */
   width: number
+  /** 本行之后仍在等待、但位于 maxLanes 之外（不渲染）的 lane 数；渲染为「+n」。 */
+  overflow?: number
+  /** 节点真实 lane 超出 maxLanes，被挤到最后一条可见 lane 上显示。 */
+  clipped?: boolean
 }
 
 export interface GraphCommit {
@@ -116,12 +120,31 @@ export function createGraphLayout(options: GraphLayoutOptions = {}): GraphLayout
     for (let index = 0; index <= reference && index < lanes.length; index += 1) {
       if (lanes[index]?.sha === null) return index
     }
-    if (lanes.length < maxLanes) {
-      lanes.push({ sha: null, colorId: -1, pending: null })
-      return lanes.length - 1
+    // 记账不设上限：超过 maxLanes 的 lane 照常记录等待关系，只是不渲染（见 clampRow）。
+    // 若把溢出挤到已有 lane 上，会覆盖别人的等待记录，导致丢边/断主线。
+    lanes.push({ sha: null, colorId: -1, pending: null })
+    return lanes.length - 1
+  }
+
+  /**
+   * 把真实 lane 的行裁到可见范围（设计 §8.1.3：只显示前 maxLanes 条 + 「+n」）。
+   * 两端都可见的边才保留；节点超出时挤到最后一条可见 lane 并标记 clipped。
+   */
+  function clampRow(row: GraphRow): GraphRow {
+    const hidden = lanes.reduce((count, lane, index) => count + (index >= maxLanes && lane.sha !== null ? 1 : 0), 0)
+    if (hidden > 0) row.overflow = hidden
+    if (row.lane >= maxLanes) {
+      row.lane = maxLanes - 1
+      row.clipped = true
     }
-    // 超过 lane 预算时挤在最后一条上，宁可视觉重叠也不越出图形列宽（设计 §8.1.3）。
-    return Math.min(reference, maxLanes - 1)
+    if (row.width > maxLanes) {
+      // 原地过滤，保留边对象身份（finalizePendingLanes 会就地改 kind）。
+      const visible = row.edges.filter((edge) => edge.fromLane < maxLanes && edge.toLane < maxLanes)
+      row.edges.length = 0
+      row.edges.push(...visible)
+      row.width = maxLanes
+    }
+    return row
   }
 
   function layCommit(commit: GraphCommit, parents: readonly string[]): GraphRow {
@@ -199,7 +222,7 @@ export function createGraphLayout(options: GraphLayoutOptions = {}): GraphLayout
       }
     }
 
-    return row
+    return clampRow(row)
   }
 
   function finalizePendingLanes(): void {
@@ -216,8 +239,9 @@ export function createGraphLayout(options: GraphLayoutOptions = {}): GraphLayout
       const hasMore = appendOptions.hasMore !== false
       const appended: GraphRow[] = []
       for (const commit of commits) {
-        if (noMerges && commit.parents.length > 1) continue
-        const parents = (firstParent ? commit.parents.slice(0, 1) : commit.parents)
+        // noMerges 是兜底（Host 已过滤）：合并提交仍出一行、只连第一父，
+        // 不能跳过——调用方按下标把 rows 与 commits 对齐。
+        const parents = (firstParent || noMerges ? commit.parents.slice(0, 1) : commit.parents)
           .filter((parent) => parent !== commit.sha)
         const row = layCommit(commit, parents)
         rows.push(row)

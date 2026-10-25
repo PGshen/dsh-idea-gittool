@@ -38,3 +38,15 @@
   stroke-width: 1px;
   opacity: 0.55;
 }
+
+/* 真实 lane 超出上限、被挤到最后一条可见 lane 的节点：虚线描边提示「不在此列」。 */
+.clippedNode {
+  stroke: var(--dsw-alias-label-tertiary);
+  stroke-width: 1px;
+  stroke-dasharray: 1.5 1.5;
+}
+
+.overflow {
+  fill: var(--dsw-alias-label-tertiary);
+  font-size: 9px;
+}

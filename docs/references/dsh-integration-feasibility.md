@@ -993,6 +993,7 @@ Git 与构建行为（A1 实测，git 2.50.1）：
 | 贮藏数用 `git stash list --format=%H` 数行：没有贮藏时退出码 0、输出为空。**不要**用 `rev-list --walk-reflogs --count refs/stash`——无贮藏时退出 128，3s 轮询会把控制台刷满红色失败 | ✅ 2026-10-25 | `src/host/git/status.ts` `readStashCount` + `test/host/status.test.ts`（A1 验收演示发现） |
 | bisect 进行中以 `.git/BISECT_START` 判定（`bisect reset` 删除） | ✅ 2026-10-25 | 同上 |
 | `git --grep` 与 `--author` 是 AND 关系，表达不了「消息或作者或哈希」，搜索改在 Host 内匹配 | ✅ 2026-10-25 | `src/host/git/log.ts` + `test/host/log.test.ts` |
+| 凭据脱敏不要用一条全局正则：`/([a-z][a-z0-9+.-]*:\/\/)([^\s/@]+)@/` 在长串字母上是平方复杂度（64KB 约 2.1s、2MB 数十分钟），单纯限长后 2MB 仍约 190ms。改为 `indexOf('://')` 定位、只在每处附近的小窗口里检查协议名（≤32）与 userinfo（≤512），2MB 降到毫秒级；超过 512 字符的 userinfo 不脱敏 | ✅ 2026-10-25 | A1 合并前关口：合并树上 `make check` 超时暴露；`src/host/console.ts`、`src/client/console/console-store.ts` 及对应 2MB 性能测试 |
 | esbuild local-css 会给 `@container` 名加文件前缀，跨文件容器查询需用匿名 `container-type` | ✅ 2026-10-25 | A1 T4 |
 | 单测里 `@deepseek-ai/dsh-client-ui-primitives` 经 `link:` 解析到 DSH 仓库自带的 React 副本，直接调用其 hook 报 invalid hook call；运行时 React 是 external，不受影响 | ✅ 2026-10-25 | A1 T6（DiffViewer 留 `useHighlighter` 注入点） |
 

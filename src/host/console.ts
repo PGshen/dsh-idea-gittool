@@ -45,12 +45,47 @@ export interface GitConsoleOptions {
   now?: (() => number) | undefined
 }
 
-/** URL 里的 userinfo（`scheme://user[:token]@host`）替换为 `***`。 */
-const URL_CREDENTIALS = /([a-z][a-z0-9+.-]*:\/\/)([^\s/@]+)@/gi
+/** 协议名（`https`、`ssh` …）最长 32 个字符，userinfo 最长 512 个字符。 */
+const SCHEME_BEFORE_SEPARATOR = /[a-z][a-z0-9+.-]{0,31}$/i
+const SCHEME_MAX = 32
+const USERINFO_MAX = 512
 
-/** 脱敏任意文本中的 URL 凭据；不是 URL 的 `@` 保持原样（如 scp 风格 remote）。 */
+/**
+ * 脱敏任意文本中的 URL 凭据（`scheme://user[:token]@host` → `scheme://***@host`）；
+ * 不是 URL 的 `@` 保持原样（如 scp 风格 remote）。
+ *
+ * 只在每个 `://` 附近的小窗口里检查，整体线性：一条全局正则在长串字母
+ * （base64、压缩代码）上是平方复杂度，2MB 输出会阻塞 Host 主线程数十分钟
+ * （A1 合并前关口发现）。
+ */
 export function redactCredentials(text: string): string {
-  return text.replace(URL_CREDENTIALS, '$1***@')
+  let result = ''
+  let copied = 0
+  let from = 0
+  for (;;) {
+    const separator = text.indexOf('://', from)
+    if (separator < 0) break
+    const userinfoStart = separator + 3
+    from = userinfoStart
+    if (!SCHEME_BEFORE_SEPARATOR.test(text.slice(Math.max(copied, separator - SCHEME_MAX), separator))) continue
+    const at = userinfoEnd(text, userinfoStart)
+    if (at < 0) continue
+    result += `${text.slice(copied, userinfoStart)}***@`
+    copied = at + 1
+    from = copied
+  }
+  return copied === 0 ? text : result + text.slice(copied)
+}
+
+/** userinfo 结束处 `@` 的下标；遇到空白、`/` 或超过上限则不是凭据，返回 -1。 */
+function userinfoEnd(text: string, start: number): number {
+  const limit = Math.min(text.length, start + USERINFO_MAX + 1)
+  for (let index = start; index < limit; index += 1) {
+    const char = text[index]
+    if (char === '@') return index > start ? index : -1
+    if (char === '/' || char === undefined || /\s/.test(char)) return -1
+  }
+  return -1
 }
 
 /** 保留前缀并按 UTF-8 字节截断，绝不切出半个多字节字符。 */

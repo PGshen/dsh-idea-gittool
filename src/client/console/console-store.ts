@@ -10,20 +10,52 @@ import type { Poller } from '../polling.ts'
 // 纯函数：脱敏、截断、argv 拆分与展示
 // ---------------------------------------------------------------------------
 
-const URL_USERINFO = /\b([a-z][a-z0-9+.-]*:\/\/)([^\s/@]+)@/gi
+/** 紧挨 `://` 之前、且前面是词边界的协议名（最长 32 个字符）。 */
+const SCHEME_BEFORE_SEPARATOR = /(?:^|[^a-z0-9_])([a-z][a-z0-9+.-]{0,31})$/i
+const SCHEME_WINDOW = 33
+const USERINFO_MAX = 512
 
 /**
  * URL 凭据脱敏：`scheme://user:token@host` → `scheme://***@host`。
  * http(s) 的任何 userinfo 都视为凭据（token 常单独出现）；其他 scheme 只在含 `:` 时脱敏，
  * 避免把 `ssh://git@host` 这类用户名也抹掉。Host 侧已脱敏，这里是兜底。
+ * 只在每个 `://` 附近的小窗口里检查，整体线性（与 Host 侧 console.ts 同理，A1 合并前关口发现）。
  */
 export function redactCredentials(text: string): string {
-  return text.replace(URL_USERINFO, (match, scheme: string, userinfo: string) => {
-    if (userinfo === '***') return match
+  let result = ''
+  let copied = 0
+  let from = 0
+  for (;;) {
+    const separator = text.indexOf('://', from)
+    if (separator < 0) break
+    const userinfoStart = separator + 3
+    from = userinfoStart
+    const windowStart = Math.max(0, separator - SCHEME_WINDOW)
+    // 窗口从文本开头起算时，开头本身就是词边界。
+    const head = (windowStart === 0 ? '' : ' ') + text.slice(windowStart, separator)
+    const scheme = SCHEME_BEFORE_SEPARATOR.exec(head)?.[1]
+    if (scheme === undefined) continue
+    const at = userinfoEnd(text, userinfoStart)
+    if (at < 0) continue
+    const userinfo = text.slice(userinfoStart, at)
     const lower = scheme.toLowerCase()
-    if (lower === 'http://' || lower === 'https://' || userinfo.includes(':')) return `${scheme}***@`
-    return match
-  })
+    if (userinfo === '***' || !(lower === 'http' || lower === 'https' || userinfo.includes(':'))) continue
+    result += `${text.slice(copied, userinfoStart)}***@`
+    copied = at + 1
+    from = copied
+  }
+  return copied === 0 ? text : result + text.slice(copied)
+}
+
+/** userinfo 结束处 `@` 的下标；遇到空白、`/` 或超过上限则不是凭据，返回 -1。 */
+function userinfoEnd(text: string, start: number): number {
+  const limit = Math.min(text.length, start + USERINFO_MAX + 1)
+  for (let index = start; index < limit; index += 1) {
+    const char = text[index]
+    if (char === '@') return index > start ? index : -1
+    if (char === '/' || char === undefined || /\s/.test(char)) return -1
+  }
+  return -1
 }
 
 /** 单条输出按字符兜底截断到 64KB（Host 按字节截断，这里防御异常大的响应）。 */

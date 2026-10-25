@@ -194,3 +194,15 @@ describe('createConsoleStore', () => {
     expect(store.getState().entries).toHaveLength(1)
   })
 })
+
+describe('客户端兜底脱敏保持线性（A1 合并前关口发现）', () => {
+  it.each([
+    ['连续字母', 'o'.repeat(2 * 1024 * 1024)],
+    ['每个字符都是词边界', 'o-'.repeat(1024 * 1024)],
+    ['有协议头但 userinfo 不结束', `https://${'u'.repeat(2 * 1024 * 1024)}`],
+  ])('2MB 的%s在 200ms 内完成', (_label, text) => {
+    const startedAt = performance.now()
+    redactCredentials(text)
+    expect(performance.now() - startedAt).toBeLessThan(200)
+  })
+})

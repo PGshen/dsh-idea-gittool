@@ -223,3 +223,19 @@ describe('createGitConsole per-repository view and repeat folding (评审 I5)', 
     expect(records.filter((record) => record.argv[0] === 'status')).toHaveLength(2)
   })
 })
+
+describe('redactCredentials stays linear on long output (A1 合并前关口发现)', () => {
+  it.each([
+    ['a long run of letters', 'o'.repeat(2 * 1024 * 1024)],
+    ['letters separated by word boundaries', 'o-'.repeat(1024 * 1024)],
+    ['a scheme with an endless userinfo and no @', `https://${'u'.repeat(2 * 1024 * 1024)}`],
+  ])('redacts 2MB of %s in well under a second', (_label, text) => {
+    const startedAt = performance.now()
+    redactCredentials(text)
+    expect(performance.now() - startedAt).toBeLessThan(200)
+  })
+
+  it('still redacts ordinary credentials after bounding the pattern', () => {
+    expect(redactCredentials('fetch https://alice:s3cret@github.com/x.git')).toBe('fetch https://***@github.com/x.git')
+  })
+})

@@ -17,7 +17,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-slots'
 import { BlamePage } from './blame-page.tsx'
 import { DocumentActions } from './document-actions.tsx'
 import { statusLetterOf } from './document-actions.tsx'
-import type { DocumentActionsInjected } from './document-actions.tsx'
+import type { DocumentActionsInjected, FileStatusLetter } from './document-actions.tsx'
 
 /** Tab kind of the blame page; this plugin's public page identity. */
 export const BLAME_KIND = 'git.blame'
@@ -45,6 +45,12 @@ export interface RegisterDocumentActionsOptions {
    * @param sessionId - session whose Sidebar hosts the document.
    */
   readonly repoRootFor?: (absolutePath: string, sessionId: string) => string | null
+  /**
+   * 订阅式状态来源（hook）：Git tab 与文档头部共用 bootstrap 快照时使用。
+   * @param absolutePath - 文件绝对路径。
+   * @param sessionId - 会话 id。
+   */
+  readonly useStatus?: (absolutePath: string, sessionId: string) => FileStatusLetter | null
 }
 
 function blameDefinition(): SidebarRightTabDefinition {
@@ -101,6 +107,7 @@ export function registerDocumentActions(
         },
         statusFor: absolutePath => statusLetterOf(options.statusCodeFor?.(absolutePath, sessionId)),
         repoRootFor: absolutePath => options.repoRootFor?.(absolutePath, sessionId) ?? null,
+        useStatus: absolutePath => options.useStatus?.(absolutePath, sessionId) ?? null,
       }),
     }, DocumentActions)),
     'git: document actions',

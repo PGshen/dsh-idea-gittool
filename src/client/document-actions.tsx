@@ -57,7 +57,11 @@ export interface DocumentActionsInjected {
   readonly statusFor?: (absolutePath: string) => FileStatusLetter | null
   /** Repository root for one file, used to derive the repo-relative path. */
   readonly repoRootFor?: (absolutePath: string) => string | null
+  /** 订阅式状态来源：有实时 bootstrap 快照时优先于 statusFor。 */
+  readonly useStatus?: (absolutePath: string) => FileStatusLetter | null
 }
+
+const NO_STATUS = (): FileStatusLetter | null => null
 
 /** Full component props: the slot's owner inputs plus the injected lookups. */
 export type DocumentActionsProps =
@@ -114,9 +118,12 @@ function normalizeSeparators(path: string): string {
  * @returns the status badge followed by the document actions.
  */
 export function DocumentActions(props: DocumentActionsProps): ReactNode {
-  const { absolutePath, openBlame, statusFor, repoRootFor } = props
+  const { absolutePath, openBlame, statusFor, repoRootFor, useStatus } = props
   const [failure, setFailure] = useState<string | null>(null)
-  const status = statusFor?.(absolutePath) ?? null
+  // Hook 位置稳定：注册时固定传同一个函数，缺省用无副作用的 NO_STATUS。
+  const useStatusHook = useStatus ?? NO_STATUS
+  const liveStatus = useStatusHook(absolutePath)
+  const status = liveStatus ?? statusFor?.(absolutePath) ?? null
   const repoRelativePath = toRepoRelativePath(absolutePath, repoRootFor?.(absolutePath))
   const handleBlame = (): void => {
     if (openBlame === undefined) return

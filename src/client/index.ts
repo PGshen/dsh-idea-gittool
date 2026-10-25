@@ -6,11 +6,14 @@ import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import type {} from '@deepseek-ai/dsh-client-ui-slots'
+import { createBootstrapCache } from './bootstrap-cache.ts'
 import { GIT_ID, GIT_KIND, gitDefinition } from './definition.tsx'
+import { createGitClient } from './git-client.ts'
 import { GitBody } from './GitBody.tsx'
 import { GitTitle } from './GitTitle.tsx'
 import { en, zh } from './locales.ts'
 import { registerBlameTab, registerDocumentActions } from './register-document-actions.ts'
+import { useStatusLetter } from './use-bootstrap.ts'
 
 export const name = 'dsh-idea-gittool'
 
@@ -20,6 +23,7 @@ export const inject = ['slots', 'locale', 'sidebarRightTabs', 'sidebarRight', 's
 
 export function apply(ctx: ClientContext): void {
   const t = ctx.locale.bind(NS)
+  const bootstrapCache = createBootstrapCache(createGitClient(ctx))
 
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'git: dictionaries')
   ctx.effect(() => ctx.sidebarRightTabs.register(gitDefinition(t)), 'git: tab type')
@@ -44,7 +48,7 @@ export function apply(ctx: ClientContext): void {
   }), 'git: shortcut')
 
   ctx.effect(() => ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register(
-    { name: 'sidebar.right.pane.tab', key: GIT_ID, locale: NS },
+    { name: 'sidebar.right.pane.tab', key: GIT_ID, locale: NS, inject: () => ({ bootstrapCache }) },
     GitBody,
   )), 'git: tab body')
 
@@ -53,7 +57,9 @@ export function apply(ctx: ClientContext): void {
     GitTitle,
   )), 'git: tab title')
 
-  // M0 T6：文档预览头部动作 + git.blame 空页（状态字母待 T3 客户端数据接入）。
+  // M0 T6：文档预览头部动作 + git.blame 空页；状态字母复用同一份 bootstrap 快照。
   registerBlameTab(ctx)
-  registerDocumentActions(ctx)
+  registerDocumentActions(ctx, {
+    useStatus: (absolutePath, sessionId) => useStatusLetter(bootstrapCache, sessionId, absolutePath),
+  })
 }

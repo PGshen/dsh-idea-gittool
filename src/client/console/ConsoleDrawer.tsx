@@ -58,6 +58,8 @@ export function ConsoleDrawer(props: ConsoleDrawerProps): ReactNode {
   const height = clampDrawerHeight(props.height ?? CONSOLE_DEFAULT_HEIGHT)
   const listRef = useRef<HTMLDivElement>(null)
   const rootRef = useRef<HTMLElement>(null)
+  const stopResize = useRef<(() => void) | null>(null)
+  useEffect(() => () => { stopResize.current?.() }, [])
   const copy = props.onCopy ?? defaultCopy
   const lastKey = state.entries.at(-1)?.key
 
@@ -78,18 +80,24 @@ export function ConsoleDrawer(props: ConsoleDrawerProps): ReactNode {
   const startResize = (event: ReactPointerEvent<HTMLDivElement>): void => {
     if (props.onHeightChange === undefined) return
     event.preventDefault()
+    stopResize.current?.()
     const startY = event.clientY
     const startHeight = height
     const container = rootRef.current?.parentElement?.clientHeight
     const onMove = (move: PointerEvent): void => {
       props.onHeightChange?.(clampDrawerHeight(startHeight + (startY - move.clientY), container))
     }
-    const onUp = (): void => {
+    // pointercancel 与卸载也要摘掉 window 监听，否则拖拽中途关闭抽屉会遗留（评审 M4）。
+    const stop = (): void => {
       window.removeEventListener('pointermove', onMove)
-      window.removeEventListener('pointerup', onUp)
+      window.removeEventListener('pointerup', stop)
+      window.removeEventListener('pointercancel', stop)
+      if (stopResize.current === stop) stopResize.current = null
     }
+    stopResize.current = stop
     window.addEventListener('pointermove', onMove)
-    window.addEventListener('pointerup', onUp)
+    window.addEventListener('pointerup', stop)
+    window.addEventListener('pointercancel', stop)
   }
 
   const onResizeKey = (event: KeyboardEvent<HTMLDivElement>): void => {
@@ -226,6 +234,9 @@ function ConsoleRow({ entry, expanded, onToggle, onCopy }: ConsoleRowProps): Rea
           {subcommand === null ? null : <span className={css.subcommand} data-subcommand={subcommand}> {subcommand}</span>}
           {args.map((arg, index) => <span key={`a${index}`} className={css.arg}> {arg}</span>)}
         </code>
+        {record.repeat !== undefined && record.repeat > 1
+          ? <span className={css.repeat} data-repeat={record.repeat} title={`相同命令重复执行 ${record.repeat} 次（轮询），只保留最近一次`}>×{record.repeat}</span>
+          : null}
         <span className={css.duration}>{formatDuration(record.durationMs)}</span>
         <span className={`${css.exit} ${failed ? css.exitFailed : ''}`}>{exitLabel(record)}</span>
         {truncated ? <span className={css.truncated} data-truncated="true">已截断</span> : null}

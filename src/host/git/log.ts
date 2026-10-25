@@ -14,6 +14,8 @@ import type { CommitSummary, LogValue } from '../../shared/protocol.ts'
 import { LOG_PAGE_DEFAULT_LIMIT, LOG_PAGE_MAX_LIMIT } from '../../shared/protocol.ts'
 import type { GitRunner } from '../git-executor.ts'
 import { GIT_BASE_ARGV, GitCommandFailure, failureFromExit } from '../git-executor.ts'
+import type { RegexBatchMatcher } from './regex-worker.ts'
+import { createRegexBatchMatcher } from './regex-worker.ts'
 
 /** ASCII unit separator: safe for every field except the subject/message, which is the remainder. */
 const FIELD_SEPARATOR = '\u001f'
@@ -70,6 +72,8 @@ export interface ReadLogOptions {
   /** Test seams for the search scan. */
   searchChunk?: number | undefined
   searchBudget?: number | undefined
+  /** Per-batch deadline for regex matching in the worker (test seam). */
+  regexTimeoutMs?: number | undefined
 }
 
 /** Build the opaque v1 cursor (no filters, HEAD only). */
@@ -175,7 +179,7 @@ export async function readLog(
   let offset = 0
   if (query.cursor !== undefined) {
     const parsed = parseAnyLogCursor(query.cursor)
-    if (parsed.signature !== signature) {
+    if (cursorSignature(parsed.signature) !== cursorSignature(signature)) {
       throw invalidPayload('log cursor was issued for different filters', { cursor: query.cursor })
     }
     heads = parsed.heads
@@ -184,7 +188,7 @@ export async function readLog(
   } else if (filters.branches !== undefined) {
     heads = await resolveBranches(run, cwd, filters.branches, signal)
   } else {
-    const resolved = await run(['rev-parse', '--verify', 'HEAD'], { cwd, signal })
+    const resolved = await run([...GIT_BASE_ARGV, 'rev-parse', '--verify', 'HEAD'], { cwd, signal })
     // An unborn HEAD is an empty history, not an error.
     if (resolved.exitCode !== 0) return { commits: [], truncated: false }
     const head = resolved.stdout.trim()
@@ -192,7 +196,26 @@ export async function readLog(
     heads = [head]
   }
 
-  const matcher = filters.query === undefined ? undefined : compileMatcher(filters)
+  const matcher = filters.query === undefined ? undefined : compileMatcher(filters, options.regexTimeoutMs)
+  try {
+    return await scanLog(run, cwd, heads, filters, signature, offset, limit, matcher, options)
+  } finally {
+    await matcher?.close()
+  }
+}
+
+async function scanLog(
+  run: GitRunner,
+  cwd: string,
+  heads: string[],
+  filters: LogFilters,
+  signature: string,
+  offset: number,
+  limit: number,
+  matcher: BatchMatcher | undefined,
+  options: ReadLogOptions,
+): Promise<LogValue> {
+  const { signal } = options
   let chunk = matcher === undefined ? limit + 1 : Math.max(limit + 1, options.searchChunk ?? LOG_SEARCH_CHUNK)
   const budget = options.searchBudget ?? LOG_SEARCH_BUDGET
 
@@ -211,10 +234,11 @@ export async function readLog(
       }
       throw error
     }
+    const hits = matcher === undefined ? undefined : await matcher.match(records)
     for (let index = 0; index < records.length && matches.length <= limit; index += 1) {
       const record = records[index]
       if (record === undefined) continue
-      if (matcher === undefined || matcher(record)) {
+      if (hits === undefined || hits[index] === true) {
         matches.push({ commit: record.commit, position: offset + scanned + index })
       }
     }
@@ -241,9 +265,16 @@ export async function readLog(
     value.next =
       signature === '' && heads.length === 1 && heads[0] !== undefined
         ? encodeLogCursor(heads[0], nextOffset)
-        : `v2:${heads.join('.')}:${String(nextOffset)}:${signature === '' ? '0'.repeat(16) : signature}`
+        : `v2:${heads.join('.')}:${String(nextOffset)}:${cursorSignature(signature)}`
   }
   return value
+}
+
+/** Unfiltered reads encode an all-zero signature in v2 cursors; compare both sides normalized (评审 M6). */
+const EMPTY_CURSOR_SIGNATURE = '0'.repeat(16)
+
+function cursorSignature(signature: string): string {
+  return signature === '' ? EMPTY_CURSOR_SIGNATURE : signature
 }
 
 interface LogRecord {
@@ -325,41 +356,62 @@ async function verifyHeads(
 ): Promise<void> {
   const argv =
     heads.length === 1
-      ? ['rev-parse', '--verify', `${heads[0] ?? ''}^{commit}`]
-      : ['rev-parse', ...heads.map((head) => `${head}^{commit}`), '--']
+      ? [...GIT_BASE_ARGV, 'rev-parse', '--verify', `${heads[0] ?? ''}^{commit}`]
+      : [...GIT_BASE_ARGV, 'rev-parse', ...heads.map((head) => `${head}^{commit}`), '--']
   const verified = await run(argv, { cwd, signal })
   if (verified.exitCode !== 0) {
     throw invalidPayload('log cursor points at a commit that no longer exists', { cursor })
   }
 }
 
-/** Build the text/hash matcher: message, author name, author email; hash-shaped → sha prefix too. */
-function compileMatcher(filters: LogFilters): (record: LogRecord) => boolean {
+interface BatchMatcher {
+  match: (records: readonly LogRecord[]) => Promise<boolean[]>
+  close: () => Promise<void>
+}
+
+/**
+ * Build the text/hash matcher: message, author name, author email; hash-shaped → sha prefix too.
+ * Literal queries match on the main thread; regex queries match in a worker with a deadline
+ * (a user pattern must never be able to block the Host event loop, 评审 I2).
+ */
+function compileMatcher(filters: LogFilters, regexTimeoutMs?: number): BatchMatcher {
   const query = filters.query ?? ''
   const caseSensitive = filters.caseSensitive === true
-  let test: (text: string) => boolean
+  const hashPrefix = HASH_QUERY.test(query) ? query.toLowerCase() : undefined
+  const hashHit = (record: LogRecord): boolean => hashPrefix !== undefined && record.commit.sha.startsWith(hashPrefix)
+  const textsOf = (record: LogRecord): string[] => [record.message, record.commit.author, record.commit.email]
+
   if (filters.regex === true) {
-    let pattern: RegExp
+    const flags = caseSensitive ? 'mu' : 'imu'
+    // Compiling is linear and safe on the main thread; it also yields the syntax error early.
     try {
-      pattern = new RegExp(query, caseSensitive ? 'mu' : 'imu')
+      new RegExp(query, flags)
     } catch (error) {
       throw invalidPayload('log query is not a valid regular expression', {
         message: error instanceof Error ? error.message : String(error),
       })
     }
-    test = (text) => pattern.test(text)
-  } else if (caseSensitive) {
-    test = (text) => text.includes(query)
-  } else {
-    const needle = query.toLowerCase()
-    test = (text) => text.toLowerCase().includes(needle)
+    let worker: RegexBatchMatcher | undefined
+    return {
+      match: async (records) => {
+        worker ??= createRegexBatchMatcher(query, flags, regexTimeoutMs)
+        const hits = await worker.match(records.map(textsOf))
+        return records.map((record, index) => hashHit(record) || hits[index] === true)
+      },
+      close: async () => {
+        await worker?.close()
+      },
+    }
   }
-  const hashPrefix = HASH_QUERY.test(query) ? query.toLowerCase() : undefined
-  return (record) =>
-    (hashPrefix !== undefined && record.commit.sha.startsWith(hashPrefix)) ||
-    test(record.message) ||
-    test(record.commit.author) ||
-    test(record.commit.email)
+
+  const needle = caseSensitive ? query : query.toLowerCase()
+  const test = caseSensitive
+    ? (text: string): boolean => text.includes(needle)
+    : (text: string): boolean => text.toLowerCase().includes(needle)
+  return {
+    match: async (records) => records.map((record) => hashHit(record) || textsOf(record).some(test)),
+    close: async () => {},
+  }
 }
 
 function normalizeLimit(limit: number | undefined, fallback: number): number {

@@ -26,7 +26,6 @@ function bootstrapValue(version: number, branch = 'main'): BootstrapValue {
       operation: null,
       truncated: false,
     },
-    log: { commits: [], truncated: false },
     writePolicy: { mode: 'read-write' },
     version,
   }

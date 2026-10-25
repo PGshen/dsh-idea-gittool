@@ -10,6 +10,7 @@ import {
 import type { ConsoleDrawerProps } from '../../../src/client/console/ConsoleDrawer.tsx'
 import { createConsoleStore } from '../../../src/client/console/console-store.ts'
 import type { ConsoleState } from '../../../src/client/console/console-store.ts'
+import { CONSOLE_BUFFER_SIZE } from '../../../src/shared/protocol.ts'
 import type { ConsoleRecord } from '../../../src/shared/protocol.ts'
 import { failedRecord, record } from './console-fixtures.ts'
 
@@ -115,7 +116,7 @@ describe('ConsoleDrawer', () => {
   })
 
   it('Host 环形缓冲丢弃旧记录时给出提示', () => {
-    expect(render(stateOf([record()], () => ({}), true))).toContain('仅保留最近 100 条')
+    expect(render(stateOf([record()], () => ({}), true))).toContain(`仅保留最近 ${CONSOLE_BUFFER_SIZE} 条`)
   })
 
   it('全高模式没有分隔条也不设固定高度', () => {
@@ -130,5 +131,14 @@ describe('ConsoleDrawer', () => {
     expect(html).not.toContain('<input')
     expect(html).not.toContain('<textarea')
     expect(html).not.toContain('contenteditable')
+  })
+})
+
+describe('ConsoleDrawer 重复折叠（评审 I5）', () => {
+  it('折叠的重复命令显示 ×n，单次命令不显示', () => {
+    const html = render(stateOf([record({ repeat: 4 }), record({ at: '2026-10-25T04:03:10.000Z', argv: ['status'] })]))
+    expect(html).toContain('data-repeat="4"')
+    expect(html).toContain('×4')
+    expect((html.match(/data-repeat=/g) ?? []).length).toBe(1)
   })
 })

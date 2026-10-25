@@ -8,7 +8,7 @@ import { stat } from 'node:fs/promises'
 import type { Session, SessionId } from '@deepseek-ai/dsh-session'
 
 import type { GitRunner } from './git-executor.ts'
-import { GitCommandFailure } from './git-executor.ts'
+import { GIT_BASE_ARGV, GitCommandFailure } from './git-executor.ts'
 
 /** Structural subset of `ctx.sessions`. */
 export interface SessionsLike {
@@ -118,7 +118,7 @@ export async function resolveRepository(
 
   let result
   try {
-    result = await deps.runner(['rev-parse', '--show-toplevel'], {
+    result = await deps.runner([...GIT_BASE_ARGV, 'rev-parse', '--show-toplevel'], {
       cwd,
       signal,
       timeoutMs: options.timeoutMs,

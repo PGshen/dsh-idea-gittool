@@ -141,7 +141,7 @@
   gap: 4px;
   min-width: 0;
   height: 22px;
-  padding-inline-start: calc(16px + var(--dsw-git-tree-depth, 0) * 14px);
+  padding-inline-start: calc(16px + var(--git-tree-depth, 0) * 14px);
   padding-inline-end: 8px;
   white-space: nowrap;
   cursor: default;

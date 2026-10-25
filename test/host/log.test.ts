@@ -366,3 +366,41 @@ describe('readLog search chunking', () => {
     expect(fake.spawns.filter((spawn) => spawn.spec.argv.includes('log')).length).toBeGreaterThan(1)
   })
 })
+
+describe('readLog regex search isolation', () => {
+  const shasOf = (page: { commits: { sha: string }[] }): string[] => page.commits.map((commit) => commit.sha)
+
+  it('times out a catastrophic regex without blocking the Host event loop', async () => {
+    const repo = makeRepo()
+    repo.write('a.txt', 'x\n')
+    repo.commit(`${'a'.repeat(32)}!`)
+    const { run } = makeRunner()
+
+    let ticks = 0
+    const ticker = setInterval(() => { ticks += 1 }, 20)
+    const startedAt = Date.now()
+    try {
+      await expect(
+        readLog(run, repo.root, { query: '^(a+)+$', regex: true }, { regexTimeoutMs: 300 }),
+      ).rejects.toMatchObject({ code: 'git/timeout' })
+    } finally {
+      clearInterval(ticker)
+    }
+    expect(Date.now() - startedAt).toBeLessThan(5_000)
+    // The main thread kept running timers while the pattern spun in the worker.
+    expect(ticks).toBeGreaterThan(3)
+  })
+
+  it('still matches ordinary regexes across message, author and email', async () => {
+    const repo = makeRepo()
+    repo.write('a.txt', 'one\n')
+    const target = repo.commit('feat: Worker isolation')
+    repo.write('a.txt', 'two\n')
+    repo.commit('chore: unrelated')
+    const { run } = makeRunner()
+
+    expect(shasOf(await readLog(run, repo.root, { query: 'worker\\s+iso', regex: true }))).toEqual([target])
+    expect(shasOf(await readLog(run, repo.root, { query: 'Worker', regex: true, caseSensitive: true }))).toEqual([target])
+    expect(await readLog(run, repo.root, { query: 'worker', regex: true, caseSensitive: true })).toMatchObject({ commits: [] })
+  })
+})

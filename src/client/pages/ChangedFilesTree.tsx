@@ -140,7 +140,7 @@ export function FileRow({ file, name, depth, showDirectory, selected = false, on
       type="button"
       className={selected ? `${css.row} ${css.selected}` : css.row}
       aria-current={selected ? 'true' : undefined}
-      style={{ '--dsw-git-tree-depth': depth } as CSSProperties}
+      style={{ '--git-tree-depth': depth } as CSSProperties}
       title={file.origPath === undefined ? file.path : `${file.origPath} → ${file.path}`}
       data-path={file.path}
       data-parent={file.parentSha}
@@ -174,7 +174,7 @@ function TreeRows({ nodes, depth, collapsed, selectedPath, onToggle, onOpenFile 
             <button
               type="button"
               className={css.directoryRow}
-              style={{ '--dsw-git-tree-depth': depth } as CSSProperties}
+              style={{ '--git-tree-depth': depth } as CSSProperties}
               aria-expanded={!isCollapsed}
               onClick={() => onToggle(node.path)}
             >

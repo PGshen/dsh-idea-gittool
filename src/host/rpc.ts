@@ -194,7 +194,7 @@ export function createRpcRuntime(deps: RpcDeps): RpcRuntime {
           )
         }
         case 'console':
-          return handleConsole(deps, payload)
+          return await handleConsole(deps, payload, signal)
         default:
           throw invalidPayload('unknown RPC endpoint', { endpoint })
       }
@@ -230,7 +230,6 @@ async function handleBootstrap(
       sessionId,
       repoRoot: null,
       status: null,
-      log: null,
       writePolicy: {
         mode: 'read-only',
         reason: '当前会话目录不在 Git 仓库中',
@@ -243,14 +242,12 @@ async function handleBootstrap(
   // the older version, so the client treats that data as stale and polls again.
   const version = runtime.cache().versionOf(resolution.root)
   const status = await cachedStatus(deps, runtime, resolution.root, signal, version)
-  const log = await cachedLog(deps, runtime, resolution.root, {}, signal, version)
   const writePolicy = await resolveWritePolicy(deps, resolution.root, sessionId, signal)
   const gitVersion = await runtime.gitVersion(resolution.root, signal)
   return ok<BootstrapValue>({
     sessionId,
     repoRoot: resolution.root,
     status,
-    log,
     writePolicy,
     version,
     ...(gitVersion === undefined ? {} : { gitVersion }),
@@ -310,10 +307,16 @@ async function handleCached<T extends object>(
 }
 
 /** The console is process-wide and never cached: it is the record of the calls themselves. */
-function handleConsole(deps: RpcDeps, payload: unknown): ConnectionRpcHandlerResult {
-  parseSessionId(payload)
-  const value: ConsoleValue = deps.console?.recent() ?? { records: [], truncated: false }
-  return ok<ConsoleValue>(value)
+/** Console records of the session's repository only: the buffer is shared process-wide (评审 I5). */
+async function handleConsole(
+  deps: RpcDeps,
+  payload: unknown,
+  signal: AbortSignal,
+): Promise<ConnectionRpcHandlerResult> {
+  const sessionId = parseSessionId(payload)
+  if (deps.console === undefined) return ok<ConsoleValue>({ records: [], truncated: false })
+  const root = await repositoryRoot(deps, sessionId, signal)
+  return ok<ConsoleValue>(deps.console.recent({ root }))
 }
 
 /** Cache-first status read; the cached value carries the version it was read at. */

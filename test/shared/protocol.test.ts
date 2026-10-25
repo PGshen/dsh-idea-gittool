@@ -30,7 +30,7 @@ describe('RPC 协议常量', () => {
     expect(DIFF_FILE_MAX_BYTES).toBe(256 * 1024)
     expect(DIFF_FILE_MAX_LINES).toBe(5000)
     expect(DIFF_RESPONSE_MAX_BYTES).toBe(4 * 1024 * 1024)
-    expect(CONSOLE_BUFFER_SIZE).toBe(100)
+    expect(CONSOLE_BUFFER_SIZE).toBe(200) // 设计 §12：最多 200 条
     expect(CONSOLE_OUTPUT_MAX_BYTES).toBe(64 * 1024)
   })
 

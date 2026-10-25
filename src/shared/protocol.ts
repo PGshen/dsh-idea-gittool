@@ -163,7 +163,7 @@ export interface BootstrapValue {
   sessionId: string
   repoRoot: string | null
   status: StatusValue | null
-  log: LogValue | null
+  // A1 起日志页自己分页拉取（`log` 端点）；bootstrap 每 3s 轮询，不再附带日志首页（评审 I5）。
   writePolicy: WritePolicyValue
   version: number
   /** Host 侧 git 版本号（如 `2.50.1`），进程内只探测一次；探测失败时省略（A1 追加）。 */
@@ -179,8 +179,8 @@ export const DIFF_FILE_MAX_BYTES = 256 * 1024
 export const DIFF_FILE_MAX_LINES = 5000
 export const DIFF_RESPONSE_MAX_BYTES = 4 * 1024 * 1024
 
-/** 控制台环形缓冲条数与单条输出上限（设计 §12）。 */
-export const CONSOLE_BUFFER_SIZE = 100
+/** 控制台环形缓冲条数与单条输出上限（设计 §12：最多 200 条）。 */
+export const CONSOLE_BUFFER_SIZE = 200
 export const CONSOLE_OUTPUT_MAX_BYTES = 64 * 1024
 
 export type RefKind = 'local' | 'remote' | 'tag'
@@ -316,6 +316,10 @@ export interface ConsoleRecord {
   stderrTruncated: boolean
   cancelled?: boolean
   timedOut?: boolean
+  /** 执行目录；`console` 端点据此只返回当前会话仓库的记录（评审 I5）。 */
+  cwd?: string
+  /** 相同命令（同目录、成功、输出一致）连续重复的次数；轮询类读命令折叠成一条。 */
+  repeat?: number
 }
 
 export interface ConsoleValue {

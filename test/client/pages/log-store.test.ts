@@ -428,6 +428,26 @@ describe('refresh', () => {
     expect(store.getState().generation).toBe(generation)
   })
 
+  it('reloads to the previously loaded depth so deep selections survive', async () => {
+    const { store, requests } = harness([
+      page([commit('a', 'b'), commit('b', 'c')], 'p2'),
+      page([commit('c', 'd'), commit('d')]),
+      // 刷新：第一页 + 跟到原深度的第二页。
+      page([commit('a', 'b'), commit('b', 'c')], 'r2'),
+      page([commit('c', 'd'), commit('d')]),
+    ])
+    await store.loadFirstPage()
+    await store.loadNextPage()
+    store.selectIndex(3)
+
+    await store.refresh()
+
+    expect(store.getState().commits.map((c) => c.sha)).toEqual(['a', 'b', 'c', 'd'])
+    expect(store.getState().selection).toEqual(['d'])
+    expect(store.getState().activeIndex).toBe(3)
+    expect(requests.map((request) => request.cursor)).toEqual([undefined, 'p2', undefined, 'r2'])
+  })
+
   it('drops selected commits that disappeared', async () => {
     const { store } = harness([
       page([commit('a', 'b'), commit('b')]),
@@ -543,3 +563,51 @@ async function flush(): Promise<void> {
   await Promise.resolve()
   await Promise.resolve()
 }
+
+describe('locate beyond loaded rows (评审 I4)', () => {
+  it('pages forward until a hash prefix appears, then selects it', async () => {
+    const { store } = harness([
+      page([commit('aaa1', 'bbb2')], 'p2'),
+      page([commit('bbb2', 'ccc3')], 'p3'),
+      page([commit('ccc3')]),
+    ])
+    await store.loadFirstPage()
+
+    expect(await store.locate('ccc')).toBe(true)
+    expect(store.getState().commits.map((c) => c.sha)).toEqual(['aaa1', 'bbb2', 'ccc3'])
+    expect(store.getState().selection).toEqual(['ccc3'])
+    expect(store.getState().jumpError).toBeNull()
+  })
+
+  it('resolves a branch via refs and pages to its commit', async () => {
+    const { store } = harness([
+      page([commit('aaa1', 'bbb2')], 'p2'),
+      page([commit('bbb2')]),
+    ])
+    await store.loadFirstPage()
+    store.setRefs({ bbb2: [{ ref: 'refs/heads/topic', name: 'topic', kind: 'local', sha: 'bbb2' }] })
+
+    expect(await store.locate('topic')).toBe(true)
+    expect(store.getState().selection).toEqual(['bbb2'])
+  })
+
+  it('explains a ref outside the current view instead of a bare "not found"', async () => {
+    const { store } = harness([page([commit('aaa1')])])
+    await store.loadFirstPage()
+    store.setRefs({ zzz9: [{ ref: 'refs/heads/side', name: 'side', kind: 'local', sha: 'zzz9' }] })
+
+    expect(await store.locate('side')).toBe(false)
+    expect(store.getState().jumpError).toContain('不在当前视图')
+  })
+
+  it('jumpTo does not flag an error while it is still paging', async () => {
+    const { store } = harness([
+      page([commit('aaa1', 'bbb2')], 'p2'),
+      page([commit('bbb2')]),
+    ])
+    await store.loadFirstPage()
+
+    expect(store.jumpTo('bbb')).toBe(false)
+    expect(store.getState().jumpError).toBeNull()
+  })
+})

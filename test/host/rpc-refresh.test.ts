@@ -143,7 +143,6 @@ describe('rpc cache', () => {
 
     expect(bootstrap.version).toBe(1)
     expect(bootstrap.status?.version).toBe(1)
-    expect(bootstrap.log?.version).toBe(1)
   })
 
   it('caches log pages per cursor and per limit', async () => {

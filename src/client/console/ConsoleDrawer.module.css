@@ -236,3 +236,9 @@
   color: var(--dsw-alias-state-warn);
   font-size: 11px;
 }
+
+.repeat {
+  flex: none;
+  color: var(--dsw-alias-label-tertiary);
+  font-variant-numeric: tabular-nums;
+}

@@ -125,12 +125,13 @@ describe('createRpcHandler / status', () => {
 })
 
 describe('createRpcHandler / bootstrap', () => {
-  it('aggregates repo root, first status page, log page, write policy and version', async () => {
+  it('aggregates repo root, status, write policy and version without reading the log', async () => {
     const repo = makeRepo()
     const cache = createRepoCache()
     for (let index = 0; index < 7; index += 1) cache.bumpVersion(repo.root)
+    const fake = createFakeSubprocess()
     const handler = createRpcHandler({
-      runner: createGitRunner(createFakeSubprocess()),
+      runner: createGitRunner(fake),
       sandboxPolicy: () => policySource(repo.root),
       cache: () => cache,
     })
@@ -141,8 +142,9 @@ describe('createRpcHandler / bootstrap', () => {
     expect(bootstrap.sessionId).toBe('session-1')
     expect(bootstrap.repoRoot).toBe(repo.root)
     expect(bootstrap.status?.branch).toBe('main')
-    expect(bootstrap.log?.commits).toHaveLength(1)
-    expect(bootstrap.log?.commits[0]?.subject).toBe('initial commit')
+    // 日志页自己分页拉取；bootstrap 每 3s 轮询一次，不再白跑 git log（评审 I5）。
+    expect('log' in bootstrap).toBe(false)
+    expect(fake.spawns.some((spawn) => spawn.spec.argv.includes('log'))).toBe(false)
     expect(bootstrap.writePolicy.mode).toBe('read-only')
     expect(bootstrap.version).toBe(7)
   })
@@ -244,7 +246,6 @@ describe('createRpcHandler / bootstrap', () => {
 
     expect(bootstrap.repoRoot).toBeNull()
     expect(bootstrap.status).toBeNull()
-    expect(bootstrap.log).toBeNull()
     expect(bootstrap.writePolicy.mode).toBe('read-only')
   })
 
@@ -441,6 +442,24 @@ describe('createRpcHandler / A1 read endpoints', () => {
     expect(value.records.length).toBeGreaterThan(0)
     expect(value.records.some((record) => record.argv.includes('status'))).toBe(true)
     expect(value.records.every((record) => typeof record.durationMs === 'number')).toBe(true)
+  })
+
+  it('returns only console records from the session repository (评审 I5)', async () => {
+    const gitConsole = createGitConsole()
+    const repo = makeRepo()
+    const handler = createRpcHandler({
+      runner: instrumentGitRunner(createGitRunner(createFakeSubprocess()), gitConsole),
+      sandboxPolicy: () => policySource(repo.root),
+      console: gitConsole,
+    })
+    // Another session's repository shares the process-wide console.
+    gitConsole.record({ argv: ['status'], cwd: '/somewhere/else', durationMs: 1, exitCode: 0, stdout: '', stderr: '' })
+
+    await handler('status', { sessionId: 'session-1' }, SIGNAL)
+    const value = okValue<ConsoleValue>(await handler('console', { sessionId: 'session-1' }, SIGNAL))
+
+    expect(value.records.length).toBeGreaterThan(0)
+    expect(value.records.every((record) => record.cwd?.startsWith(repo.root) === true)).toBe(true)
   })
 
   it('returns an empty console without a console dependency', async () => {

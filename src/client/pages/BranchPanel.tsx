@@ -305,7 +305,7 @@ interface BranchRowViewProps extends Omit<BranchGroupViewProps, 'group' | 'searc
 }
 
 function BranchRowView({ group, row, selected, onToggleDirectory, onClickEntry, onDoubleClickEntry, onContextMenu }: BranchRowViewProps): ReactNode {
-  const indent = { '--dsw-git-tree-depth': row.depth } as CSSProperties
+  const indent = { '--git-tree-depth': row.depth } as CSSProperties
   if (row.kind === 'directory') {
     const expanded = row.directoryCollapsed !== true
     const toggle = (): void => { if (row.path !== undefined) onToggleDirectory?.(row.path) }

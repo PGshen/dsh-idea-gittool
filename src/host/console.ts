@@ -13,6 +13,8 @@ import { CONSOLE_BUFFER_SIZE, CONSOLE_OUTPUT_MAX_BYTES } from '../shared/protoco
 export interface GitConsoleInput {
   /** 实际 argv（不含可执行文件路径）；记录时做凭据脱敏。 */
   argv: readonly string[]
+  /** 执行目录（用于按仓库过滤）。 */
+  cwd?: string | undefined
   durationMs: number
   exitCode: number | null
   stdout: string
@@ -27,8 +29,11 @@ export interface GitConsoleInput {
 /** Git 控制台数据源：记录入口 + 只读快照。 */
 export interface GitConsole {
   record: (input: GitConsoleInput) => void
-  /** 按时间顺序（旧 → 新）返回当前缓冲；返回新数组，调用方可随意修改。 */
-  recent: () => ConsoleValue
+  /**
+   * 按时间顺序（旧 → 新）返回当前缓冲；返回新数组，调用方可随意修改。
+   * 传 `root` 时只返回在该仓库根（含子目录）里执行的记录。
+   */
+  recent: (filter?: { root?: string | undefined }) => ConsoleValue
 }
 
 export interface GitConsoleOptions {
@@ -84,6 +89,16 @@ export function createGitConsole(options: GitConsoleOptions = {}): GitConsole {
     }
     if (input.cancelled === true) entry.cancelled = true
     if (input.timedOut === true) entry.timedOut = true
+    if (input.cwd !== undefined) entry.cwd = input.cwd
+    // 轮询会反复执行同样的读命令：成功且输出一致的重复命令折叠成一条（移到末尾、计数），
+    // 否则 3s 一轮的噪音会很快冲掉用户真正想排查的记录。失败永远单独保留。
+    if (entry.exitCode === 0) {
+      const previous = records.findIndex((record) => isSameSuccess(record, entry))
+      if (previous >= 0) {
+        const [folded] = records.splice(previous, 1)
+        entry.repeat = (folded?.repeat ?? 1) + 1
+      }
+    }
     records.push(entry)
     while (records.length > size) {
       records.shift()
@@ -91,11 +106,29 @@ export function createGitConsole(options: GitConsoleOptions = {}): GitConsole {
     }
   }
 
-  const recent = (): ConsoleValue => ({
-    records: records.map((record) => ({ ...record, argv: [...record.argv] })),
+  const recent = (filter: { root?: string | undefined } = {}): ConsoleValue => ({
+    records: records
+      .filter((record) => filter.root === undefined || isWithin(record.cwd, filter.root))
+      .map((record) => ({ ...record, argv: [...record.argv] })),
     // truncated 表示历史记录已因环形缓冲上限被丢弃（单条截断另有 per-record 标记）。
     truncated: dropped > 0,
   })
 
   return { record, recent }
+}
+
+function isSameSuccess(left: ConsoleRecord, right: ConsoleRecord): boolean {
+  return left.exitCode === 0
+    && left.cwd === right.cwd
+    && left.stdout === right.stdout
+    && left.stderr === right.stderr
+    && left.argv.length === right.argv.length
+    && left.argv.every((argument, index) => argument === right.argv[index])
+}
+
+/** `cwd` 是否位于仓库根内（按路径段比较，`/repo/ab` 不属于 `/repo/a`）。 */
+function isWithin(cwd: string | undefined, root: string): boolean {
+  if (cwd === undefined) return false
+  const base = root.endsWith('/') ? root.slice(0, -1) : root
+  return cwd === base || cwd.startsWith(`${base}/`)
 }

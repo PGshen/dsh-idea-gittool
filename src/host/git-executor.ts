@@ -241,6 +241,7 @@ export function instrumentGitRunner(run: GitRunner, recorder: GitConsole): GitRu
       const result = await run(argv, options)
       recorder.record({
         argv,
+        cwd: options.cwd,
         durationMs: Date.now() - startedAt,
         exitCode: result.exitCode,
         stdout: result.stdout,
@@ -256,6 +257,7 @@ export function instrumentGitRunner(run: GitRunner, recorder: GitConsole): GitRu
       }
       recorder.record({
         argv,
+        cwd: options.cwd,
         durationMs: Date.now() - startedAt,
         // A thrown failure carries no exit facts except those the executor attached.
         exitCode: typeof details.exitCode === 'number' ? details.exitCode : null,

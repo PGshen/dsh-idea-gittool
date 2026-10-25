@@ -76,7 +76,7 @@ async function readStashCount(
 ): Promise<number | undefined> {
   let result: GitRunResult
   try {
-    result = await run(['rev-list', '--walk-reflogs', '--count', 'refs/stash', '--'], { cwd, signal })
+    result = await run([...GIT_BASE_ARGV, 'rev-list', '--walk-reflogs', '--count', 'refs/stash', '--'], { cwd, signal })
   } catch {
     return undefined
   }
@@ -279,7 +279,7 @@ async function detectOperation(
 ): Promise<RepoOperation> {
   let resolved: GitRunResult
   try {
-    resolved = await run(['rev-parse', '--absolute-git-dir'], { cwd, signal })
+    resolved = await run([...GIT_BASE_ARGV, 'rev-parse', '--absolute-git-dir'], { cwd, signal })
   } catch {
     // The status read that follows reports the authoritative failure.
     return null

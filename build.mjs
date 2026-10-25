@@ -39,7 +39,8 @@ const emitClientBundle = {
       const js = files.find(file => file.path.endsWith('.js'))
       if (js === undefined) return
       const css = files.find(file => file.path.endsWith('.css'))?.text ?? ''
-      const text = js.text.replace(JSON.stringify(CSS_TOKEN), JSON.stringify(css))
+      // 函数形式的替换值：CSS 里出现 `$&`、`$'` 等时不会被当成替换模式（评审 M3）。
+      const text = js.text.replace(JSON.stringify(CSS_TOKEN), () => JSON.stringify(css))
       writeFileSync('lib/client.js', text)
       if (css.length > 0) writeFileSync('lib/client.css', css)
       else rmSync('lib/client.css', { force: true })

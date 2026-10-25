@@ -173,3 +173,53 @@ describe('createGitConsole', () => {
     expect(gitConsole.recent().records).toHaveLength(1)
   })
 })
+
+describe('createGitConsole per-repository view and repeat folding (评审 I5)', () => {
+  const now = () => Date.parse('2026-10-25T10:00:00.000Z')
+  const ok = (argv: string[], cwd: string, stdout = '') => ({ argv, cwd, durationMs: 1, exitCode: 0, stdout, stderr: '' })
+
+  it('keeps 200 records as designed (§12)', () => {
+    expect(CONSOLE_BUFFER_SIZE).toBe(200)
+  })
+
+  it('filters records to the requested repository root, subdirectories included', () => {
+    const gitConsole = createGitConsole({ now })
+    gitConsole.record(ok(['status'], '/repo/a'))
+    gitConsole.record(ok(['rev-parse', '--show-toplevel'], '/repo/a/sub'))
+    gitConsole.record(ok(['status'], '/repo/b'))
+    gitConsole.record(ok(['status'], '/repo/ab'))
+
+    const value = gitConsole.recent({ root: '/repo/a' })
+
+    expect(value.records.map((record) => record.cwd)).toEqual(['/repo/a', '/repo/a/sub'])
+  })
+
+  it('folds identical successful commands into one record with a repeat count', () => {
+    const gitConsole = createGitConsole({ now })
+    gitConsole.record(ok(['status'], '/r', 'same'))
+    gitConsole.record(ok(['rev-parse', 'HEAD'], '/r', 'abc'))
+    gitConsole.record(ok(['status'], '/r', 'same'))
+    gitConsole.record(ok(['status'], '/r', 'same'))
+
+    const records = gitConsole.recent({ root: '/r' }).records
+
+    expect(records.map((record) => record.argv[0])).toEqual(['rev-parse', 'status'])
+    expect(records.at(-1)?.repeat).toBe(3)
+    expect(records[0]?.repeat).toBeUndefined()
+  })
+
+  it('never folds failures or changed output, so a past failure stays visible', () => {
+    const gitConsole = createGitConsole({ now })
+    const failure = { argv: ['log', 'bad'], cwd: '/r', durationMs: 1, exitCode: 128, stdout: '', stderr: 'fatal' }
+    gitConsole.record(failure)
+    gitConsole.record(failure)
+    gitConsole.record(ok(['status'], '/r', 'one'))
+    gitConsole.record(ok(['status'], '/r', 'two'))
+    for (let index = 0; index < 500; index += 1) gitConsole.record(ok(['status'], '/r', 'two'))
+
+    const records = gitConsole.recent({ root: '/r' }).records
+
+    expect(records.filter((record) => record.exitCode === 128)).toHaveLength(2)
+    expect(records.filter((record) => record.argv[0] === 'status')).toHaveLength(2)
+  })
+})

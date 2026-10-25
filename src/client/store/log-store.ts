@@ -154,6 +154,11 @@ export interface LogStore {
   handleKey(input: LogKeyInput): LogKeyResult
   /** 跳转到哈希/分支/标签；失败时设置 jumpError 并返回 false。 */
   jumpTo(input: string): boolean
+  /**
+   * 跳转并在需要时继续翻页查找（上限 maxRows）；找到即选中。
+   * 失败时设置 jumpError：分支/标签不在当前视图时给出可操作的说明。
+   */
+  locate(input: string): Promise<boolean>
   clearJumpError(): void
   dispose(): void
 }
@@ -289,6 +294,8 @@ export function createLogStore(options: LogStoreOptions): LogStore {
     seen = new Set()
     const keptSelection = reset ? [] : state.selection
     const keptActive = reset ? -1 : state.activeIndex
+    // 刷新要回到原来已加载的深度，否则深处的选中/滚动位置会被截掉（评审 I3）。
+    const keptDepth = reset ? 0 : Math.min(maxRows, state.commits.length)
     setState({
       loading: true,
       loadingMore: false,
@@ -307,8 +314,21 @@ export function createLogStore(options: LogStoreOptions): LogStore {
       setState({ loading: false, error: result.error })
       return
     }
+    // 刷新时先在后台把后续页缓冲到原深度，再一次性替换，列表不会先缩短再变长。
+    const commits = [...result.value.commits]
+    let next = result.value.next
+    while (commits.length < keptDepth && next !== undefined) {
+      const more = await fetchPage(next)
+      if (seq !== requestSeq) return
+      if (!more.ok) break
+      commits.push(...more.value.commits)
+      next = more.value.next
+    }
+    const first: LogValue = { ...result.value, commits }
+    if (next === undefined) delete first.next
+    else first.next = next
     // loading 保持到空页跟进结束，避免先闪一下「无结果」。
-    await followEmptyPages(seq, integrate(result.value, true))
+    await followEmptyPages(seq, integrate(first, true))
     if (seq !== requestSeq) return
     setState({ loading: false })
     if (!reset && keptSelection.length > 0) restoreSelection(keptSelection)
@@ -322,6 +342,41 @@ export function createLogStore(options: LogStoreOptions): LogStore {
       ? -1
       : state.commits.findIndex((commit) => commit.sha === activeSha)
     setState({ selection, activeIndex, anchorIndex: activeIndex })
+  }
+
+  /** 目标在已加载行里时直接选中：先按哈希前缀，再按 ref 名解析出的 sha。 */
+  function selectLoaded(target: string): boolean {
+    const lowered = target.toLowerCase()
+    const bySha = state.commits.findIndex((commit) => commit.sha.toLowerCase().startsWith(lowered))
+    const refSha = bySha >= 0 ? null : findRefSha(state.refsBySha, lowered)
+    const index = bySha >= 0 ? bySha : refSha === null ? -1 : state.commits.findIndex((commit) => commit.sha === refSha)
+    if (index < 0) return false
+    setState({ jumpError: null })
+    selectIndex(index)
+    return true
+  }
+
+  /** 逐页加载直到命中、没有更多或到行数上限；筛选在途中变化就放弃。 */
+  async function locateFrom(target: string): Promise<boolean> {
+    const generation = state.generation
+    while (state.next !== undefined && !state.atRowLimit) {
+      const before = state.commits.length
+      await store.loadNextPage()
+      if (state.generation !== generation) return false
+      if (selectLoaded(target)) return true
+      if (state.error !== null || state.commits.length === before) break
+    }
+    failJump(target)
+    return false
+  }
+
+  function failJump(target: string): void {
+    const refSha = findRefSha(state.refsBySha, target.toLowerCase())
+    setState({
+      jumpError: refSha !== null
+        ? `「${target}」不在当前视图中（已加载 ${state.commits.length} 行）；可在分支面板双击它，过滤到该分支`
+        : `已加载的 ${state.commits.length} 行中未找到「${target}」`,
+    })
   }
 
   function applyQuery(query: string): void {
@@ -409,7 +464,7 @@ export function createLogStore(options: LogStoreOptions): LogStore {
     return { handled: true, targetIndex }
   }
 
-  return {
+  const store: LogStore = {
     getState: () => state,
     subscribe(listener) {
       listeners.add(listener)
@@ -532,24 +587,24 @@ export function createLogStore(options: LogStoreOptions): LogStore {
         setState({ jumpError: '请输入哈希、分支或标签' })
         return false
       }
-      const lowered = target.toLowerCase()
-      const bySha = state.commits.findIndex((commit) => commit.sha.toLowerCase().startsWith(lowered))
-      if (bySha >= 0) {
-        setState({ jumpError: null })
-        selectIndex(bySha)
-        return true
+      if (selectLoaded(target)) return true
+      if (state.next === undefined || state.atRowLimit) {
+        failJump(target)
+        return false
       }
-      const refSha = findRefSha(state.refsBySha, lowered)
-      if (refSha !== null) {
-        const index = state.commits.findIndex((commit) => commit.sha === refSha)
-        if (index >= 0) {
-          setState({ jumpError: null })
-          selectIndex(index)
-          return true
-        }
-      }
-      setState({ jumpError: `未找到「${target}」` })
+      // 还有未加载的页：后台翻页查找，期间不提前标红（评审 I4）。
+      setState({ jumpError: null })
+      void locateFrom(target)
       return false
+    },
+    async locate(input) {
+      const target = input.trim()
+      if (target.length === 0) {
+        setState({ jumpError: '请输入哈希、分支或标签' })
+        return false
+      }
+      if (selectLoaded(target)) return true
+      return await locateFrom(target)
     },
     clearJumpError() {
       if (state.jumpError !== null) setState({ jumpError: null })
@@ -560,6 +615,7 @@ export function createLogStore(options: LogStoreOptions): LogStore {
       listeners.clear()
     },
   }
+  return store
 }
 
 /** 在 refs 索引里按短名或完整 ref 名找一个 sha。 */

@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# 由 make setup 启用（git config core.hooksPath .githooks）。
+set -euo pipefail
+make --no-print-directory check-fast

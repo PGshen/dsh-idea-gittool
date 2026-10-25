@@ -11,8 +11,8 @@
 
 | 模块 | 评级 | 已知缺口 | 更新日期 |
 |---|---|---|---|
-| `src/host/` | — | 尚未实现（M0 建立骨架，A1 起补读路径） | 2026-10-25 |
-| `src/client/` | — | 尚未实现（M0 建立空 tab，A1 起补日志页） | 2026-10-25 |
-| `src/shared/` | — | 尚未实现 | 2026-10-25 |
-| `build.mjs` | — | 尚未实现；产物契约见技术债 TD-1 | 2026-10-25 |
-| 文档与 harness | B | 计划/ADR 校验已机器化；references 部分结论待 M0 实测（TD-2） | 2026-10-25 |
+| `src/host/` | B | M0 只读路径（status/log/bootstrap）与门禁有真实仓库测试；写操作、diff/show、大仓库极端场景未做 | 2026-10-25 |
+| `src/client/` | C | M0 只有 tab 骨架、bootstrap 摘要与文档动作；无提交图/diff/筛选，样式为内联（TD-3） | 2026-10-25 |
+| `src/shared/` | B | 协议常量/类型与 isRpcResult 有单测；RPC 端点契约随实现演进 | 2026-10-25 |
+| `build.mjs` | B | 双面产物 + smoke；契约漂移风险见 TD-1 | 2026-10-25 |
+| 文档与 harness | B | 计划/ADR 校验已机器化；references §13 已回写 M0 实测，HMR/刷新待补（TD-2） | 2026-10-25 |

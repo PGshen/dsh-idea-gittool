@@ -11,7 +11,7 @@
 
 > 本文所有 `文件:行号` 均指 DSH 源码（`/Users/peng/Me/Ai/deepseek-harness`）或该仓库 `docs/` 下的文件；profile 配置指 `~/.dsh/profiles/web/`。行号对应版本 `0.2.1-rc.2`。
 >
-> **状态**：✅ 已按 DSH `0.2.1-rc.2` 源码核实（2026-10-25）；⚠️ 产物构建、`--patch` 挂载、RPC、沙箱门禁与热更行为尚未在本仓库实测，待 [M0 spike](../plans/active/m0-集成-spike.md) 逐条验证后回写。
+> **状态**：✅ 已按 DSH `0.2.1-rc.2` 源码核实（2026-10-25）；M0 spike 已实测挂载、产物契约、RPC、沙箱门禁与文档 slot（结论见 §13）；⚠️ HMR 与终端改动刷新尚未手动走查。
 
 ---
 
@@ -958,3 +958,26 @@ dsh-idea-gittool/
 | 沙箱 | `packages/sandbox/sandbox-local/README.md`；`packages/sandbox/sandbox-policy/src/index.ts:122-124,164-171` |
 | 变更监听 | `packages/fs/fs/src/index.ts:92-104`；`packages/fs/fs-local/src/index.ts:69-89`；`packages/api/workspace-files/src/changes.ts:17-105`；`packages/client/ui-sidebar-files/src/client/face.ts:30-70` |
 | 可复用 UI | `packages/client/ui-primitives/README.md:39,49,68,76-77,108-110,127`；`src/DiffBlock.tsx:18-56`；`src/icons/index.tsx:159-165`；`util/workspace-path/src/index.ts:92-99` |
+
+
+---
+
+## 13. M0 spike 实测结论（2026-10-25，DSH 0.2.1-rc.2）
+
+本节只记录**本仓库实测过**的行为；未标 ✅ 的结论仍以源码阅读为准。
+
+| 结论 | 状态 | 证据 |
+|---|---|---|
+| 独立双面 bundle 用 `--patch` 绝对路径行挂载，client 产物被服务并进入模块图（向上找到 package.json） | ✅ | `dev.patch.yml` + `pnpm dsh web --patch ...`，页面模块图含 `dsh-idea-gittool/client.js` |
+| 产物包装契约（`__ModuleLoader__.load` + factory + `apply`/`inject`）与 baseline externals | ✅ | `test/bundle.smoke.mjs` |
+| 右侧栏 tab 两段式注册、引导页卡片（order 40）、`Mod+Shift+G` 快捷键、无会话 blocked 文案 | ✅ | `.evidence/m0/t2-guide-card.png`、`t2-git-tab.png` |
+| 文档预览 header 子 slot `sidebar.right.tab.document.actions`（owner `{ absolutePath }`）可注册并渲染 | ✅ | `.evidence/m0/t6-document-actions.png` |
+| Host 用 `ctx.subprocess` 执行 git、`ctx.sandbox`/`sandboxPolicy` 判写边界、fail closed | ✅ | `test/host/{git-executor,status,log,sandbox-gate}.test.ts` |
+| **`ctx.connection.rpc.handle('/dsh-git', ...)` 从外部插件不可用** | ❌ | 激活即抛 `cannot get property "webServer" without inject`（`rpc-host.ts:274`，owner 是 app root fiber） |
+| 替代路径：`ctx.inject(['webServer'])` + `webServer.register({kind:'prefix'})` + `connection.requestRejection(req)` 鉴权 + 自定义 JSON 信封 | ✅ | `src/host/http.ts`；`ui-open-in-app` 同款先例；无 Cookie 401、未知端点 404 |
+| 浏览器端同源 `fetch` + Cookie 即可调通；`/dsh-git/bootstrap` 返回结构化数据 | ✅ | 真实会话返回 repoRoot/branch/17 改动/7 提交 |
+| 未知 sessionId 不能退化为 `sandboxPolicy.workspaceRoot`（那是 dsh 进程 cwd）；持久化无记录即 `git/no-session` | ✅ | `src/host/repo-resolver.ts`；curl 实测 |
+| 文档预览头部历史/Diff 与 Blame 页属产品后续里程碑（B2） | ⏳ | M0 只做空页与 disabled 占位 |
+| 重建 `lib/client.js` 触发 HMR、终端改动后 ≤3s 刷新 | ⚠️ | 只有单测（poller/watch），待手动走查 |
+
+依赖与类型：DSH 类型用 `link:` 指向本机 checkout；`webServer` 服务的类型包是 **`@deepseek-ai/dsh-host-webserver`**（不是 `dsh-webserver`）；`ctx.connection` 的 Host 半边类型来自 `@deepseek-ai/dsh-client-connection`。

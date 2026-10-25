@@ -23,7 +23,16 @@ make setup               # 启用 .githooks/pre-commit；有 package.json 后同
 make check               # 基线必须全绿
 ```
 
-当前仓库还没有 `package.json`（M0 T1 建立）。在那之前 `make check` 只跑文档检查，`make setup` 只启用 git hooks。
+当前仓库已有 `package.json`（M0 T1 建立）。`make setup` 会启用 git hooks 并 `pnpm install`；DSH 类型依赖用 `link:` 指向本机 checkout，换机器时先确认路径存在再安装。
+
+常用命令：
+
+```bash
+pnpm build        # 产出 lib/host.js 与 lib/client.js
+pnpm dev          # esbuild watch（重建 lib/client.js 会触发 DSH 热更）
+pnpm smoke        # 产物契约 smoke（需先 build）
+make check        # lint + typecheck + 分层契约 + 测试 + 文档检查
+```
 
 ## 本地挂载（开发期，M0 T2 起）
 

@@ -2,8 +2,8 @@
 
 本文件只描述**代码结构**和**依赖方向**，内容必须和代码保持一致（SOP §10）。产品与页面设计见 [产品设计 v0.2](design/2026-10-25-产品设计-v0.2.md)；技术方案见其中 §16 与 [DSH 集成可行性调研](references/dsh-integration-feasibility.md)。
 
-> 状态：2026-10-25，规划态（仓库尚无 `src/`）。代码结构在 M0 计划 T1 落地后按实际实现更新本文件。
-> 分层规则 R1–R5 已写入 [`.dependency-cruiser.cjs`](../.dependency-cruiser.cjs)，M0 T1 安装 dependency-cruiser 后由 `make check` 强制执行。
+> 状态：2026-10-25，M0 spike 已落地（骨架 + `/dsh-git` HTTP RPC + Git tab 数据 + 文档动作 + 只读门禁）；HMR/刷新走查待补。
+> 分层规则 R1–R5 已写入 [`.dependency-cruiser.cjs`](../.dependency-cruiser.cjs)，由 `make check` 强制执行。
 
 ## 1. 仓库顶层
 
@@ -29,8 +29,9 @@ dsh-idea-gittool/
 
 | 模块 | 职责 | 可以依赖 |
 |---|---|---|
-| `src/client/` | 右侧栏 Git tab、四个平级页、覆盖页栈、UI store、`GitClient`（React-free RPC 封装）、文档预览头部动作 | `src/shared/`；DSH baseline external（React、`@deepseek-ai/dsh-client-*`、`@tanstack/react-virtual`） |
-| `src/host/` | `/dsh-git` RPC 处理器、sessionId → 仓库根解析、git 进程执行与解析、写能力门禁、缓存与刷新 | `src/shared/`；`node:*`；DSH 能力只从 `ctx` 取 |
+| `src/client/` | 右侧栏 Git tab、四个平级页、覆盖页栈、UI store、`git-client.ts`（fetch RPC）、`bootstrap-cache.ts`（每会话快照/去重/丢旧 version）、`use-bootstrap.ts`（快照与状态字母 hook）、`polling.ts`（可见时轮询）、文档预览头部动作与 `git.blame` 页 | `src/shared/`；DSH baseline external（React、`@deepseek-ai/dsh-client-*`、`@tanstack/react-virtual`） |
+| `src/host/` | `/dsh-git` HTTP 路由（webServer prefix + `requestRejection` 鉴权，**不用** `connection.rpc.handle`）、RPC 处理器、sessionId → 仓库根解析、git 进程执行与解析、写能力门禁、缓存与刷新 | `src/shared/`；`node:*`；DSH 能力只从 `ctx` 取 |
+| `src/host/http.ts` | 自注册 `/dsh-git/<endpoint>` 前缀路由、JSON 信封与错误映射；原因见 references §13 | 同上 |
 | `src/shared/` | RPC 方法与 payload 类型、文件状态与 diff 数据结构、错误码 | 无（只放两端都能内联的类型与常量） |
 | `build.mjs` | 产出 `lib/host.js` / `lib/client.js`，复刻 `window.__ModuleLoader__` 契约与 baseline externals | `package.json`；以 `src/` 为构建输入 |
 | `scripts/check_docs.py` | 文档链接、计划/ADR 章节、技术债编号、AGENTS.md 行数检查 | 无（仅 Python 标准库） |

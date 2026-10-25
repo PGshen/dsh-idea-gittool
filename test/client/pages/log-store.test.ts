@@ -5,6 +5,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
+  LOG_EMPTY_PAGE_FOLLOW_LIMIT,
   LOG_MAX_ROWS,
   LOG_PAGE_SIZE,
   LOG_SEARCH_DEBOUNCE_MS,
@@ -31,6 +32,43 @@ describe('pagination', () => {
     expect(store.getState().next).toBeUndefined()
     expect(requests.map((request) => request.cursor)).toEqual([undefined, 'cursor-2'])
     expect(requests.every((request) => request.limit === 100)).toBe(true)
+  })
+
+  it('follows empty search pages that still carry a cursor', async () => {
+    // Host 搜索按预算扫描：可能返回空页 + next，客户端不能停在「无结果」。
+    const { store, requests } = harness([
+      page([], 'c1'),
+      page([], 'c2'),
+      page([commit('a')], 'c3'),
+      page([], 'c4'),
+      page([commit('b')]),
+    ])
+
+    await store.loadFirstPage()
+    expect(store.getState().commits.map((c) => c.sha)).toEqual(['a'])
+    expect(store.getState().loading).toBe(false)
+    expect(requests.map((request) => request.cursor)).toEqual([undefined, 'c1', 'c2'])
+
+    await store.loadNextPage()
+    expect(store.getState().commits.map((c) => c.sha)).toEqual(['a', 'b'])
+    expect(store.getState().next).toBeUndefined()
+  })
+
+  it('gives up following empty pages after a bounded number of requests', async () => {
+    let served = 0
+    const store = createLogStore({
+      sessionId: 's',
+      loadPage: async () => {
+        served += 1
+        return ok(page([], `c${served}`))
+      },
+    })
+
+    await store.loadFirstPage()
+    expect(served).toBe(LOG_EMPTY_PAGE_FOLLOW_LIMIT + 1)
+    expect(store.getState().commits).toEqual([])
+    // 游标仍保留：用户滚动/重试时可以继续。
+    expect(store.getState().next).toBe(`c${served}`)
   })
 
   it('stops at 2000 rows even when the host keeps returning a cursor', async () => {

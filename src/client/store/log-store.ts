@@ -21,6 +21,12 @@ export const LOG_MAX_ROWS = 2000
 /** 搜索防抖 600ms（设计 §8.1.2）。 */
 export const LOG_SEARCH_DEBOUNCE_MS = 600
 
+/**
+ * Host 搜索按预算扫描，可能返回「空页 + next」；客户端自动跟进的最大次数。
+ * 超过后保留游标，等用户滚动或重试再继续，避免一次搜索打满 Host。
+ */
+export const LOG_EMPTY_PAGE_FOLLOW_LIMIT = 5
+
 export type LogOrder = 'date' | 'topo'
 
 /** 影响 Host 侧 `git log` 参数的全部筛选条件（AC4：筛选在 Host 执行）。 */
@@ -234,7 +240,7 @@ export function createLogStore(options: LogStoreOptions): LogStore {
    * 把一页结果并入 layout：跨页去重，并遵守 2000 行上限。
    * `replace` 用于首页：以空列表为基底（刷新时旧行一直显示到新结果到达，再整体替换）。
    */
-  function integrate(value: LogValue, replace: boolean): void {
+  function integrate(value: LogValue, replace: boolean): number {
     const baseCommits = replace ? [] : state.commits
     const baseRows = replace ? [] : state.rows
     const capacity = Math.max(0, maxRows - baseCommits.length)
@@ -258,6 +264,22 @@ export function createLogStore(options: LogStoreOptions): LogStore {
       truncated: value.truncated,
       atRowLimit: next !== undefined && commits.length >= maxRows,
     })
+    return fresh.length
+  }
+
+  /** 跟进空页：只要本页没带来新提交且还有游标，就继续拉，直到有结果或达到跟进上限。 */
+  async function followEmptyPages(seq: number, added: number): Promise<void> {
+    let follows = 0
+    while (added === 0 && state.next !== undefined && !state.atRowLimit && follows < LOG_EMPTY_PAGE_FOLLOW_LIMIT) {
+      follows += 1
+      const result = await fetchPage(state.next)
+      if (seq !== requestSeq) return
+      if (!result.ok) {
+        setState({ error: result.error })
+        return
+      }
+      added = integrate(result.value, false)
+    }
   }
 
   /** reset=false 时保留选中（刷新），否则清空选中并回到顶部。 */
@@ -285,8 +307,10 @@ export function createLogStore(options: LogStoreOptions): LogStore {
       setState({ loading: false, error: result.error })
       return
     }
+    // loading 保持到空页跟进结束，避免先闪一下「无结果」。
+    await followEmptyPages(seq, integrate(result.value, true))
+    if (seq !== requestSeq) return
     setState({ loading: false })
-    integrate(result.value, true)
     if (!reset && keptSelection.length > 0) restoreSelection(keptSelection)
   }
 
@@ -419,8 +443,9 @@ export function createLogStore(options: LogStoreOptions): LogStore {
         setState({ loadingMore: false, error: result.error })
         return
       }
+      await followEmptyPages(seq, integrate(result.value, false))
+      if (seq !== requestSeq) return
       setState({ loadingMore: false })
-      integrate(result.value, false)
     },
     async refresh() {
       await load(false)

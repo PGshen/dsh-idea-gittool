@@ -3,10 +3,11 @@
  * header's action can open a page type and hand it the file it acted on. The
  * line-level blame data arrives in B2 from the Host RPC.
  */
-import type { CSSProperties, ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 // Loads the SlotMap declarations for 'sidebar.right.pane.tab'.
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
+import css from './blame-page.module.css'
 
 /** The file a blame page was opened for. */
 export interface BlameTarget {
@@ -18,33 +19,6 @@ export interface BlameTarget {
 
 /** Props of the tab body: the framework's bound tab reader. */
 export type BlamePageProps = PropsRuntime<'sidebar.right.pane.tab'>
-
-const PAGE_STYLE: CSSProperties = {
-  height: '100%',
-  overflow: 'auto',
-  padding: '16px',
-  color: 'var(--dsw-alias-label-primary)',
-}
-
-const TITLE_STYLE: CSSProperties = {
-  margin: '0 0 8px',
-  fontSize: '13px',
-  fontWeight: 600,
-}
-
-const BODY_STYLE: CSSProperties = {
-  margin: '0 0 6px',
-  color: 'var(--dsw-alias-label-secondary)',
-  fontSize: '12px',
-  lineHeight: 1.6,
-}
-
-const MUTED_STYLE: CSSProperties = {
-  margin: '12px 0 0',
-  color: 'var(--dsw-alias-label-tertiary)',
-  fontSize: '11px',
-  lineHeight: 1.5,
-}
 
 /**
  * Narrow the opaque navigation parameters to a blame target.
@@ -69,25 +43,25 @@ export function readBlameTarget(params: unknown): BlameTarget | null {
 export function BlameEmptyState(props: { readonly target: BlameTarget | null }): ReactNode {
   const { target } = props
   return (
-    <div className="git-blame-page" style={PAGE_STYLE}>
-      <h2 className="git-blame-page__title" style={TITLE_STYLE}>Blame 视图将在 B2 实现</h2>
+    <div className={`git-blame-page ${css.page}`}>
+      <h2 className={`git-blame-page__title ${css.title}`}>Blame 视图将在 B2 实现</h2>
       {target === null
-        ? <p className="git-blame-page__missing" style={BODY_STYLE}>未提供文件路径，无法定位要标注的文件。</p>
+        ? <p className={`git-blame-page__missing ${css.body}`}>未提供文件路径，无法定位要标注的文件。</p>
         : (
           <div className="git-blame-page__target">
-            <p style={BODY_STYLE}>
+            <p className={css.body}>
               文件：<code>{target.absolutePath}</code>
             </p>
             {target.repoRelativePath === undefined
               ? null
               : (
-                <p style={BODY_STYLE}>
+                <p className={css.body}>
                   仓库相对路径：<code>{target.repoRelativePath}</code>
                 </p>
               )}
           </div>
         )}
-      <p className="git-blame-page__note" style={MUTED_STYLE}>
+      <p className={`git-blame-page__note ${css.muted}`}>
         M0 只验证文档预览头部动作与 openTab 跳转；行级 blame 数据由 Host RPC 在 B2 提供。
       </p>
     </div>

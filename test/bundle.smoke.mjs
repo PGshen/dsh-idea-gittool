@@ -57,6 +57,13 @@ if (registration === undefined) {
       if (typeof mod.apply !== 'function') fail('client 模块缺少 apply 函数')
       if (!Array.isArray(mod.inject)) fail('client 模块缺少 inject 数组')
     }
+    // ADR 0005：样式必须在 factory 内注入一次，且 class 名是 local-css 哈希。
+    const source = readFileSync(new URL('../lib/client.js', import.meta.url), 'utf8')
+    if (!source.includes('data-plugin-css')) fail('client.js 缺少 data-plugin-css 样式注入')
+    if (!/\.[a-zA-Z][\w-]*_[a-z0-9]{4,}/u.test(source)) fail('client.js 没有 CSS Modules 哈希类名')
+    if (requested.length > 0 && requested.some(name => !PLATFORM_MODULES.has(name))) {
+      fail(`client 模块加载期 require 了非基线模块：${requested.join(', ')}`)
+    }
   }
 }
 

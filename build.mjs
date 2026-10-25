@@ -1,7 +1,10 @@
 // 双面产物构建：lib/host.js（ESM，Node）与 lib/client.js（浏览器 bundle）。
 // 复刻 DSH 官方的 __ModuleLoader__ 包装契约；契约来源见
 // docs/references/dsh-integration-feasibility.md §5.3–5.4（TD-1 需要持续盯住）。
-import { readFileSync, utimesSync } from 'node:fs'
+//
+// CSS Modules（ADR 0005）：esbuild 的 local-css 处理 *.module.css，样式文本在构建期
+// 收集并内联进单个 client.js；factory 首次执行时注入一个 <style data-plugin-css>。
+import { readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
 import { build, context } from 'esbuild'
 
 const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8'))
@@ -23,6 +26,31 @@ const PLATFORM_MODULES = [
   '@deepseek-ai/dsh-client-ui-dockkit',
 ]
 
+/** 构建期 CSS 占位符；写入产物前替换成真正的样式文本。 */
+const CSS_TOKEN = '__DSH_GIT_CSS__'
+
+/** 把 esbuild 的 JS + CSS 两个输出合成单个 client.js，并保住 dsh-client-hmr 的 mtime 语义。 */
+const emitClientBundle = {
+  name: 'emit-client-bundle',
+  setup(buildApi) {
+    buildApi.onEnd((result) => {
+      if (result.errors.length > 0) return
+      const files = result.outputFiles ?? []
+      const js = files.find(file => file.path.endsWith('.js'))
+      if (js === undefined) return
+      const css = files.find(file => file.path.endsWith('.css'))?.text ?? ''
+      const text = js.text.replace(JSON.stringify(CSS_TOKEN), JSON.stringify(css))
+      writeFileSync('lib/client.js', text)
+      if (css.length > 0) writeFileSync('lib/client.css', css)
+      else rmSync('lib/client.css', { force: true })
+      rmSync('lib/client.js.map', { force: true })
+      const now = new Date()
+      utimesSync('lib/client.js', now, now)
+      console.log(`client bundle ${(text.length / 1024).toFixed(1)} KB (css ${(css.length / 1024).toFixed(1)} KB)`)
+    })
+  },
+}
+
 /** @type {import('esbuild').BuildOptions} */
 const client = {
   entryPoints: ['src/client/index.ts'],
@@ -32,31 +60,34 @@ const client = {
   platform: 'browser',
   target: 'es2022',
   jsx: 'automatic',
-  sourcemap: true,
+  // 产物由插件手工合成（CSS 内联），sourcemap 会与真实产物错位；M0/A1 先不产客户端 map。
+  sourcemap: false,
+  write: false,
   external: PLATFORM_MODULES,
-  loader: { '.svg': 'dataurl', '.png': 'dataurl', '.webp': 'dataurl', '.css': 'text' },
+  loader: {
+    '.svg': 'dataurl',
+    '.png': 'dataurl',
+    '.webp': 'dataurl',
+    '.module.css': 'local-css',
+    '.css': 'text',
+  },
   define: { 'process.env.NODE_ENV': '"production"' },
   // esbuild 0.28 起没有 intro 选项，把 intro 内容并进 banner（顺序不变）。
   banner: {
     js: [
       `window.__ModuleLoader__.load({ id: ${JSON.stringify(ID)}, factory: (require) => {`,
       'var module = { exports: {} }; var exports = module.exports;',
+      `var __dshGitCss = ${JSON.stringify(CSS_TOKEN)};`,
+      "if (typeof document !== 'undefined' && __dshGitCss.length > 0 && !document.querySelector('style[data-plugin-css=\"dsh-idea-gittool\"]')) {",
+      "  var __style = document.createElement('style');",
+      "  __style.setAttribute('data-plugin-css', 'dsh-idea-gittool');",
+      '  __style.textContent = __dshGitCss;',
+      '  document.head.appendChild(__style);',
+      '}',
     ].join('\n'),
   },
   footer: { js: 'return module.exports; } });' },
-  plugins: [
-    {
-      // dsh-client-hmr 按 mtime/ctime/size 判断产物是否更新，构建完要戳一下。
-      name: 'stamp-client-bundle',
-      setup(buildApi) {
-        buildApi.onEnd((result) => {
-          if (result.errors.length > 0) return
-          const now = new Date()
-          utimesSync('lib/client.js', now, now)
-        })
-      },
-    },
-  ],
+  plugins: [emitClientBundle],
 }
 
 /** @type {import('esbuild').BuildOptions} */

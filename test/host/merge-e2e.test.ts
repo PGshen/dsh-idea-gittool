@@ -6,11 +6,12 @@ import { join } from 'node:path'
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import { resolveAllSimple, simpleAllSummary } from '../../src/client/pages/operation-actions.ts'
 import { counts } from '../../src/client/merge/merge-model.ts'
 import type { MergeModel } from '../../src/client/merge/merge-model.ts'
 import type { ActionOutcome } from '../../src/client/store/action-store.ts'
 import { createMergeStore } from '../../src/client/store/merge-store.ts'
-import type { MergeAction, MergeStore } from '../../src/client/store/merge-store.ts'
+import type { MergeAction, MergeStore, MergeStoreDeps } from '../../src/client/store/merge-store.ts'
 import { text } from '../../src/client/localized-text.ts'
 import { GitCommandFailure } from '../../src/host/git-executor.ts'
 import type { WriteContext, WriteOperation } from '../../src/host/git-executor.ts'
@@ -18,7 +19,7 @@ import { resolveConflictOperation } from '../../src/host/git/conflict.ts'
 import { mergeDraftRef, readMergeFile } from '../../src/host/git/merge-file.ts'
 import { mergeApplyOperation, mergeDraftSaveOperation, unresolveConflictOperation } from '../../src/host/git/merge-write.ts'
 import { operationCommitOperation, operationControlOperation } from '../../src/host/git/operation.ts'
-import type { WriteEndpoint } from '../../src/shared/protocol.ts'
+import type { FileEntry, WriteEndpoint } from '../../src/shared/protocol.ts'
 import { createTempRepo } from './fixtures.ts'
 import type { TempRepo } from './fixtures.ts'
 import { contextFor } from './remote-fixtures.ts'
@@ -43,8 +44,8 @@ const OPERATIONS: Partial<Record<WriteEndpoint, WriteOperation<unknown, object>>
 }
 
 /** A merge store whose loads and writes go straight to the real Host operations. */
-function hostStore(ctx: WriteContext): MergeStore {
-  return createMergeStore({
+function hostDeps(ctx: WriteContext): MergeStoreDeps {
+  return {
     loadFile: async (path) => {
       try {
         return { ok: true, value: { ...(await readMergeFile(ctx, path)), version: 1 } }
@@ -61,13 +62,17 @@ function hostStore(ctx: WriteContext): MergeStore {
           return { kind: 'done', value }
         } catch (error) {
           if (error instanceof GitCommandFailure) {
-            return { kind: 'failed', error: { code: error.code, message: error.message }, message: text('merge.error.loadFailed', { code: error.code }) }
+            return { kind: 'failed', error: { code: error.code, message: error.message, details: error.details }, message: text('merge.error.loadFailed', { code: error.code }) }
           }
           throw error
         }
       }) as never,
     },
-  })
+  }
+}
+
+function hostStore(ctx: WriteContext): MergeStore {
+  return createMergeStore(hostDeps(ctx))
 }
 
 async function run<I, V extends object>(op: WriteOperation<I, V>, ctx: WriteContext, payload: Record<string, unknown>): Promise<V> {
@@ -95,14 +100,17 @@ function draftRefs(repo: TempRepo): string[] {
 const BASE = 'l1\nl2\nl3\nl4\nl5\nl6\n'
 
 /** theirs-only change at l1, ours-only at l3, both-sides conflict at l5. */
-function seedMerge(repo: TempRepo): void {
+function seedMerge(repo: TempRepo, withSecond = false): void {
   repo.write('f.txt', BASE)
+  if (withSecond) repo.write('g.txt', 'a\nb\nc\n')
   repo.commit('base')
   repo.git('checkout', '-q', '-b', 'feature')
   repo.write('f.txt', 'F1\nl2\nl3\nl4\nfeature5\nl6\n')
+  if (withSecond) repo.write('g.txt', 'a\nfeature\nc\n')
   repo.commit('feature side')
   repo.git('checkout', '-q', 'main')
   repo.write('f.txt', 'l1\nl2\nM3\nl4\nmain5\nl6\n')
+  if (withSecond) repo.write('g.txt', 'a\nmain\nc\n')
   repo.commit('main side')
 }
 
@@ -119,12 +127,15 @@ async function applyThroughStore(store: MergeStore, path: string, actions: Merge
 describe('merge conflict -> window -> commit (AC1, AC2, AC3, AC6)', () => {
   it('resolves block by block through the store, then operationCommit finishes the merge', async () => {
     const repo = makeRepo()
-    seedMerge(repo)
-    repo.write('other.txt', 'x\n')
-    repo.git('add', 'other.txt')
-    repo.git('commit', '-q', '-m', 'main other')
+    seedMerge(repo, true)
     expect(repo.gitResult('merge', '--no-edit', 'feature').status).not.toBe(0)
     const ctx = contextFor(repo)
+    // A saved draft on the second path outlives resolveConflict and must be removed by the commit.
+    const other = hostStore(ctx)
+    await other.open('g.txt')
+    other.dispatch({ type: 'acceptFile', side: 'left' })
+    expect(await other.saveAndClose()).toBe(true)
+    expect(draftRefs(repo)).toEqual([mergeDraftRef('g.txt')])
 
     const store = hostStore(ctx)
     await store.open('f.txt')
@@ -148,7 +159,9 @@ describe('merge conflict -> window -> commit (AC1, AC2, AC3, AC6)', () => {
     expect(state.model!.result).toBe(expected)
 
     const applied = await store.apply()
-    expect(applied).toEqual({ remaining: 0 })
+    expect(applied).toEqual({ remaining: 1 })
+    await run(resolveConflictOperation, ctx, { path: 'g.txt', resolution: 'ours' })
+    expect(draftRefs(repo)).toEqual([mergeDraftRef('g.txt')])
     // AC3: stage 0 blob and worktree equal the Result; the file moved out of the unresolved list.
     expect(repo.git('ls-files', '-u')).toBe('')
     expect(repo.git('show', ':f.txt')).toBe(expected)
@@ -180,10 +193,14 @@ describe('merge conflict -> window -> commit (AC1, AC2, AC3, AC6)', () => {
 describe('rebase conflict -> window -> continue (AC1, AC2)', () => {
   it('left is the rebase target (git ours); applying and continuing finishes the rebase', async () => {
     const repo = makeRepo()
-    seedMerge(repo)
+    seedMerge(repo, true)
     repo.git('checkout', '-q', 'feature')
     expect(repo.gitResult('rebase', 'main').status).not.toBe(0)
     const ctx = contextFor(repo)
+    const other = hostStore(ctx)
+    await other.open('g.txt')
+    other.dispatch({ type: 'acceptFile', side: 'left' })
+    expect(await other.saveAndClose()).toBe(true)
 
     const store = hostStore(ctx)
     await store.open('f.txt')
@@ -197,8 +214,10 @@ describe('rebase conflict -> window -> continue (AC1, AC2)', () => {
     const id = conflictIds(store.getState().model!)[0]!
     store.dispatch({ type: 'append', id, order: 'right-first' })
     const expected = 'F1\nl2\nM3\nl4\nfeature5\nmain5\nl6\n'
-    expect(await store.apply()).toEqual({ remaining: 0 })
+    expect(await store.apply()).toEqual({ remaining: 1 })
     expect(repo.git('show', ':f.txt')).toBe(expected)
+    await run(resolveConflictOperation, ctx, { path: 'g.txt', resolution: 'ours' })
+    expect(draftRefs(repo)).toEqual([mergeDraftRef('g.txt')])
 
     const control = await run(operationControlOperation, ctx, { action: 'continue' })
     expect(control.operation).toBeNull()
@@ -348,7 +367,8 @@ describe('restore conflict resolution (AC9)', () => {
       ]),
     ).toEqual({ remaining: 0 })
     expect(repo.git('ls-files', '-u')).toBe('')
-    // apply removes the draft of the applied file; save another one afterwards to prove unresolve keeps it.
+    // Applying removes the file's own draft; a draft saved afterwards must survive unresolve.
+    expect(draftRefs(repo)).toEqual([])
     const reopened = hostStore(ctx)
     await reopened.open('f.txt')
     expect(reopened.getState().file!.resolved).toBe(true)
@@ -373,7 +393,7 @@ describe('stale worktree and oversized files (AC12)', () => {
     store.dispatch({ type: 'acceptFile', side: 'left' })
     writeFileSync(join(repo.root, 'f.txt'), 'agent wrote this\n')
     expect(await store.apply()).toBeNull()
-    expect(store.getState().error).not.toBeNull()
+    expect(store.getState().error).toEqual(text('merge.error.stale'))
     expect(readFileSync(join(repo.root, 'f.txt'), 'utf8')).toBe('agent wrote this\n')
     expect(repo.git('ls-files', '-u', '--', 'f.txt')).not.toBe('')
     // Direct Host call carries the contract code.
@@ -406,5 +426,36 @@ describe('stale worktree and oversized files (AC12)', () => {
     await store.open('big.txt')
     expect(store.getState().file).toMatchObject({ tooLarge: true })
     expect(store.getState().model).toBeNull()
+  })
+})
+
+describe('all simple conflicts (AC6)', () => {
+  it('writes back only files whose every chunk resolves automatically, with no drafts', async () => {
+    const repo = makeRepo()
+    repo.write('simple.txt', 'alpha beta gamma\nx\n')
+    repo.write('hard.txt', 'alpha beta gamma\nx\n')
+    repo.commit('base')
+    repo.git('checkout', '-q', '-b', 'feature')
+    repo.write('simple.txt', 'alpha beta GAMMA\nx\n')
+    repo.write('hard.txt', 'alpha beta feature\nx\n')
+    repo.commit('feature')
+    repo.git('checkout', '-q', 'main')
+    repo.write('simple.txt', 'ALPHA beta gamma\nx\n')
+    repo.write('hard.txt', 'alpha beta main\nx\n')
+    repo.commit('main')
+    expect(repo.gitResult('merge', '--no-edit', 'feature').status).not.toBe(0)
+    const ctx = contextFor(repo)
+    const deps = hostDeps(ctx)
+    const entries: FileEntry[] = ['hard.txt', 'simple.txt'].map((path) => ({ path, status: 'U', conflict: 'both-modified' }))
+
+    const outcome = await resolveAllSimple({ actions: deps.actions, loadFile: deps.loadFile, trigger: null }, entries)
+    expect(outcome).toEqual({ resolved: ['simple.txt'], manual: ['hard.txt'] })
+    expect(simpleAllSummary(outcome)).toEqual(text('conflict.simpleAll.done', { resolved: 1, manual: 1 }))
+    expect(repo.git('ls-files', '-u', '--', 'simple.txt')).toBe('')
+    expect(repo.git('show', ':simple.txt')).toBe('ALPHA beta GAMMA\nx\n')
+    expect(readFileSync(join(repo.root, 'simple.txt'), 'utf8')).toBe('ALPHA beta GAMMA\nx\n')
+    expect(repo.git('ls-files', '-u', '--', 'hard.txt').trim().split('\n')).toHaveLength(3)
+    expect(readFileSync(join(repo.root, 'hard.txt'), 'utf8')).toContain('<<<<<<<')
+    expect(draftRefs(repo)).toEqual([])
   })
 })

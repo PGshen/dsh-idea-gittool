@@ -1,6 +1,6 @@
 // A3 T2：智能贮藏（真实临时仓库）。脏工作区先问、贮藏→操作→`pop --index` 恢复、
 // 停在冲突时贮藏保留并写待恢复标记（Host 重启后仍可恢复）。
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, symlinkSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -8,8 +8,15 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { DIRTY_PATHS_LIMIT } from '../../src/shared/protocol.ts'
 import { GIT_BASE_ARGV, GitCommandFailure } from '../../src/host/git-executor.ts'
 import type { WriteContext } from '../../src/host/git-executor.ts'
-import { pendingStashPath, readPendingStash, restorePendingStash, withSmartStash } from '../../src/host/git/smart-stash.ts'
-import { createTempRepo } from './fixtures.ts'
+import {
+  PENDING_STASH_META_REF,
+  PENDING_STASH_REF,
+  queryOf,
+  readPendingStash,
+  restorePendingStash,
+  withSmartStash,
+} from '../../src/host/git/smart-stash.ts'
+import { createTempDir, createTempRepo, removeTempDir } from './fixtures.ts'
 import type { TempRepo } from './fixtures.ts'
 import { contextFor } from './remote-fixtures.ts'
 
@@ -69,6 +76,14 @@ function stashShas(repo: TempRepo): string[] {
 
 function gitDir(repo: TempRepo): string {
   return repo.git('rev-parse', '--absolute-git-dir').trim()
+}
+
+function hasMarker(repo: TempRepo): boolean {
+  return repo.gitResult('rev-parse', '-q', '--verify', PENDING_STASH_REF).status === 0
+}
+
+async function pendingOf(repo: TempRepo) {
+  return await readPendingStash(queryOf(contextFor(repo)))
 }
 
 describe('withSmartStash / dirty worktree', () => {
@@ -144,7 +159,7 @@ describe('withSmartStash / stash and restore', () => {
     expect(statusLines(repo)).toEqual(before)
     expect(repo.git('diff', '--cached', '--', 'main.txt')).toContain('+main staged')
     expect(stashShas(repo)).toEqual([])
-    expect(existsSync(pendingStashPath(gitDir(repo)))).toBe(false)
+    expect(hasMarker(repo)).toBe(false)
   })
 
   it('restores the stash when the operation fails without starting (original error kept)', async () => {
@@ -176,13 +191,21 @@ describe('withSmartStash / stash and restore', () => {
     expect(failure.details).toMatchObject({ operation: 'merge', stashKept: true })
     const [sha] = stashShas(repo)
     expect(sha).toMatch(/^[0-9a-f]{40}$/)
-    const pending = await readPendingStash(gitDir(repo))
-    expect(pending).toMatchObject({ stashSha: sha, operation: 'merge' })
-    expect(Number.isNaN(Date.parse(pending?.createdAt ?? ''))).toBe(false)
-    // The marker is a plain file under <gitDir>/dsh-git: it survives a Host restart.
-    expect(JSON.parse(readFileSync(join(gitDir(repo), 'dsh-git', 'pending-stash.json'), 'utf8'))).toMatchObject({
+    const pending = await pendingOf(repo)
+    expect(pending).toMatchObject({
       stashSha: sha,
+      operation: 'merge',
+      branch: 'refs/heads/main',
+      headSha: repo.git('rev-parse', 'HEAD').trim(),
     })
+    expect(Number.isNaN(Date.parse(pending?.createdAt ?? ''))).toBe(false)
+    // The marker is a per-worktree ref (survives a Host restart, keeps the stash reachable)
+    // and never shows up among branches, remotes or tags.
+    expect(repo.git('rev-parse', PENDING_STASH_REF).trim()).toBe(sha)
+    expect(repo.git('for-each-ref', '--format=%(refname)', 'refs/heads', 'refs/remotes', 'refs/tags')).not.toContain(
+      'dsh-git',
+    )
+    expect(existsSync(join(gitDir(repo), 'dsh-git'))).toBe(false)
   })
 
   it('keeps the stash pending when the operation succeeds but leaves an operation open (--no-commit)', async () => {
@@ -199,7 +222,7 @@ describe('withSmartStash / stash and restore', () => {
 
     expect(result.outcome).toEqual({ stashKept: true })
     expect(stashShas(repo)).toHaveLength(1)
-    expect(await readPendingStash(gitDir(repo))).toMatchObject({ operation: 'merge' })
+    expect(await pendingOf(repo)).toMatchObject({ operation: 'merge' })
   })
 
   it('reports git/conflict with stashKept when restoring conflicts with the result', async () => {
@@ -247,7 +270,7 @@ describe('restorePendingStash', () => {
     expect(outcome).toEqual({ stashRestored: true })
     expect(readFileSync(join(repo.root, 'README.md'), 'utf8')).toBe('# dirty\n')
     expect(stashShas(repo)).toEqual([unrelated])
-    expect(existsSync(pendingStashPath(gitDir(repo)))).toBe(false)
+    expect(hasMarker(repo)).toBe(false)
   })
 
   it('answers stashMissing (not an error) when the user dropped the stash', async () => {
@@ -260,18 +283,95 @@ describe('restorePendingStash', () => {
     repo.git('stash', 'drop', '-q')
 
     expect(await restorePendingStash(ctx)).toEqual({ stashMissing: true })
-    expect(existsSync(pendingStashPath(gitDir(repo)))).toBe(false)
+    expect(hasMarker(repo)).toBe(false)
   })
 
   it('ignores a corrupt marker without touching the stash list', async () => {
     const repo = makeRepo()
     repo.write('README.md', '# dirty\n')
     repo.git('stash', 'push', '-q')
-    mkdirSync(join(gitDir(repo), 'dsh-git'), { recursive: true })
-    writeFileSync(pendingStashPath(gitDir(repo)), '{not json', 'utf8')
+    const blob = repo.git('hash-object', '-w', '--stdin').trim() // empty stdin: not JSON
+    repo.git('update-ref', PENDING_STASH_REF, stashShas(repo)[0] ?? '')
+    repo.git('update-ref', PENDING_STASH_META_REF, blob)
 
-    expect(await readPendingStash(gitDir(repo))).toBeUndefined()
+    expect(await pendingOf(repo)).toBeUndefined()
     expect(await restorePendingStash(contextFor(repo))).toEqual({})
+    expect(stashShas(repo)).toHaveLength(1)
+  })
+})
+
+describe('pending marker is written only through confined git (评审 I1)', () => {
+  it('never follows a symlink planted under .git and writes markers only with write-mode git', async () => {
+    const repo = makeRepo()
+    branches(repo, true)
+    repo.write('README.md', '# dirty\n')
+    const outside = createTempDir('dsh-git-outside-')
+    cleanups.push(() => removeTempDir(outside))
+    // What a sandboxed agent could plant: the former marker location pointing outside.
+    symlinkSync(outside, join(gitDir(repo), 'dsh-git'))
+    const base = contextFor(repo)
+    const calls: Array<{ args: string[]; mode: string }> = []
+    const ctx: WriteContext = {
+      ...base,
+      git: async (argv, options) => {
+        calls.push({ args: argv.slice(GIT_BASE_ARGV.length), mode: options?.mode ?? 'write' })
+        return await base.git(argv, options)
+      },
+    }
+
+    await failureOf(withSmartStash(ctx, { stash: true, operation: 'merge' }, mergeFeature(ctx)))
+    repo.git('merge', '--abort')
+    expect(await restorePendingStash(ctx)).toEqual({ stashRestored: true })
+
+    expect(readdirSync(outside)).toEqual([])
+    const markerWrites = calls.filter(({ args }) => args[0] === 'update-ref' || args[0] === 'hash-object')
+    expect(markerWrites.map(({ args }) => args[0])).toEqual(['hash-object', 'update-ref', 'update-ref'])
+    expect(markerWrites.every(({ mode }) => mode === 'write')).toBe(true)
+  })
+
+  it('has no Host-side filesystem writes on the marker path', () => {
+    for (const file of ['smart-stash.ts', 'operation.ts']) {
+      const source = readFileSync(join(import.meta.dirname, '../../src/host/git', file), 'utf8')
+      expect(source, file).not.toMatch(/from 'node:fs(\/promises)?'/)
+    }
+  })
+})
+
+describe('restorePendingStash / belongs to the branch it was made on (评审 M1)', () => {
+  it('keeps the stash (no pop) when HEAD is now on another branch', async () => {
+    const repo = makeRepo()
+    branches(repo, true)
+    repo.write('README.md', '# dirty\n')
+    const ctx = contextFor(repo)
+    await failureOf(withSmartStash(ctx, { stash: true, operation: 'merge' }, mergeFeature(ctx)))
+    repo.git('merge', '--abort')
+    repo.git('checkout', '-q', 'feature')
+
+    expect(await restorePendingStash(ctx)).toEqual({ stashKept: true })
+    expect(readFileSync(join(repo.root, 'README.md'), 'utf8')).toBe('# fixture\n')
+    expect(stashShas(repo)).toHaveLength(1)
+    expect(hasMarker(repo)).toBe(true)
+  })
+})
+
+describe('withSmartStash / original error preserved (评审 M2)', () => {
+  it('reports the operation failure, not the restore conflict, with stashKept merged in', async () => {
+    const repo = makeRepo()
+    repo.write('README.md', '# dirty\n')
+    const ctx = contextFor(repo)
+
+    const failure = await failureOf(
+      withSmartStash(ctx, { stash: true, operation: 'merge' }, async () => {
+        // The failed step still moved README.md, so putting the edit back conflicts.
+        repo.write('README.md', '# moved by the operation\n')
+        repo.commit('moved')
+        throw new GitCommandFailure('git/hook-failed', 'blocked by a hook', { output: 'nope' })
+      }),
+    )
+
+    expect(failure.code).toBe('git/hook-failed')
+    expect(failure.message).toBe('blocked by a hook')
+    expect(failure.details).toMatchObject({ output: 'nope', stashKept: true })
     expect(stashShas(repo)).toHaveLength(1)
   })
 })

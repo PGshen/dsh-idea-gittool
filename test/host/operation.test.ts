@@ -12,7 +12,7 @@ import {
   operationControlOperation,
   readOperationState,
 } from '../../src/host/git/operation.ts'
-import { pendingStashPath, withSmartStash } from '../../src/host/git/smart-stash.ts'
+import { PENDING_STASH_REF, withSmartStash } from '../../src/host/git/smart-stash.ts'
 import { readStatus } from '../../src/host/git/status.ts'
 import { createFakeSubprocess } from './fake-subprocess.ts'
 import { createTempRepo } from './fixtures.ts'
@@ -84,6 +84,10 @@ function gitDir(repo: TempRepo): string {
   return repo.git('rev-parse', '--absolute-git-dir').trim()
 }
 
+function hasMarker(repo: TempRepo): boolean {
+  return repo.gitResult('rev-parse', '-q', '--verify', PENDING_STASH_REF).status === 0
+}
+
 /**
  * main and feature both edit a.txt and b.txt (conflicts); feature alone adds c.txt
  * (auto-merged, staged). Leaves `main` checked out.
@@ -116,7 +120,7 @@ async function smartMergeStopped(repo: TempRepo): Promise<WriteContext> {
     }),
   )
   expect(failure.code).toBe('git/conflict')
-  expect(existsSync(pendingStashPath(gitDir(repo)))).toBe(true)
+  expect(hasMarker(repo)).toBe(true)
   return ctx
 }
 
@@ -257,7 +261,7 @@ describe('operationControlOperation / merge', () => {
     expect(existsSync(join(gitDir(repo), 'MERGE_HEAD'))).toBe(false)
     expect(readFileSync(join(repo.root, 'README.md'), 'utf8')).toBe('# my uncommitted edit\n')
     expect(stashShas(repo)).toEqual([])
-    expect(existsSync(pendingStashPath(gitDir(repo)))).toBe(false)
+    expect(hasMarker(repo)).toBe(false)
   })
 
   it('refuses continue while conflicts remain', async () => {
@@ -297,7 +301,7 @@ describe('operationControlOperation / merge', () => {
     const value = await control(ctx, 'abort')
 
     expect(value).toMatchObject({ operation: null, stashMissing: true })
-    expect(existsSync(pendingStashPath(gitDir(repo)))).toBe(false)
+    expect(hasMarker(repo)).toBe(false)
   })
 
   it('refuses skip outside a rebase or cherry-pick', async () => {
@@ -464,5 +468,68 @@ describe('operationCommitOperation', () => {
     ])
     expect(existsSync(join(gitDir(repo), 'MERGE_HEAD'))).toBe(false)
     expect(readFileSync(join(repo.root, 'README.md'), 'utf8')).toBe('# my uncommitted edit\n')
+  })
+})
+
+describe('pending stash belongs to its operation (评审 M1)', () => {
+  it('continue with no operation does not pop onto another branch', async () => {
+    const repo = makeRepo()
+    const ctx = await smartMergeStopped(repo)
+    repo.git('merge', '--abort')
+    repo.git('checkout', '-q', 'feature')
+
+    const value = await control(ctx, 'continue')
+
+    expect(value).toMatchObject({ operation: null, stashKept: true })
+    expect(value.stashRestored).toBeUndefined()
+    expect(readFileSync(join(repo.root, 'README.md'), 'utf8')).toBe('# fixture\n')
+    expect(stashShas(repo)).toHaveLength(1)
+    expect(hasMarker(repo)).toBe(true)
+    expect((await state(repo)).pendingStash).toBe(true)
+  })
+
+  it('an unrelated operation ending (cherry-pick) leaves the merge stash alone', async () => {
+    const repo = makeRepo()
+    const ctx = await smartMergeStopped(repo)
+    repo.git('merge', '--abort')
+    // A cherry-pick started in a terminal, then aborted through the workbench.
+    repo.gitResult('cherry-pick', 'feature')
+    expect((await state(repo)).operation).toBe('cherry-pick')
+
+    const value = await control(ctx, 'abort')
+
+    expect(value).toMatchObject({ operation: null, stashKept: true })
+    expect(stashShas(repo)).toHaveLength(1)
+    expect(hasMarker(repo)).toBe(true)
+  })
+})
+
+describe('operationCommitOperation / restore failure after the commit (评审 M3)', () => {
+  it('returns the commit with stashKept + stashError instead of failing', async () => {
+    const repo = makeRepo()
+    const base = await smartMergeStopped(repo)
+    resolve(repo, 'a.txt', 'resolved a\n')
+    resolve(repo, 'b.txt', 'resolved b\n')
+    let committed = false
+    const ctx: WriteContext = {
+      ...base,
+      git: async (argv, options) => {
+        const args = argv.slice(GIT_BASE_ARGV.length)
+        if (args[0] === 'commit') committed = true
+        if (committed && args[0] === 'stash' && args[1] === 'list') {
+          return { exitCode: 128, stdout: '', stderr: 'fatal: simulated failure' }
+        }
+        return await base.git(argv, options)
+      },
+    }
+
+    const value = await commitInOperation(ctx, 'merge it')
+
+    expect(value.sha).toBe(sha(repo, 'HEAD'))
+    expect(value.stashKept).toBe(true)
+    expect(value.stashError).toEqual(expect.any(String))
+    expect(existsSync(join(gitDir(repo), 'MERGE_HEAD'))).toBe(false)
+    expect(stashShas(repo)).toHaveLength(1)
+    expect(hasMarker(repo)).toBe(true)
   })
 })

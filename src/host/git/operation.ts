@@ -3,7 +3,8 @@
 //   拣选/回滚取 CHERRY_PICK_HEAD/REVERT_HEAD）、变基进度、冲突与已解决路径、是否有待恢复贮藏；
 // - 继续/提交前先看冲突是否清零（否则 `git/conflict` + 数量）；不等编辑器：写环境 `GIT_EDITOR=true`，
 //   合并 continue 用 `commit --no-edit`、拣选/回滚 continue 加 `--no-edit`；
-// - 操作结束（走完、中止、合并提交）后按 sha 恢复智能贮藏（smart-stash.ts），贮藏永不 drop。
+// - 操作结束（走完、中止、合并提交）后按 sha 恢复智能贮藏（smart-stash.ts），贮藏永不 drop；
+//   只恢复属于这次操作的贮藏：操作种类与分支在执行前核对（评审 M1），对不上就保留并报 `stashKept`。
 
 import type {
   ConflictSide,
@@ -24,7 +25,15 @@ import {
   readHead,
   redactedFailure,
 } from './write-support.ts'
-import { hasPendingStash, readPendingStash, restorePendingStash, writeGitDir } from './smart-stash.ts'
+import type { PendingStash } from './smart-stash.ts'
+import {
+  finishPendingStash,
+  hasPendingStash,
+  pendingStashMatches,
+  queryOf,
+  readPendingStash,
+  writeGitDir,
+} from './smart-stash.ts'
 import {
   detectOperationIn,
   readRebaseStep,
@@ -162,7 +171,7 @@ export async function readOperationState(
     theirs: { label: '' },
     conflicts: status.conflicts,
     resolved: [],
-    pendingStash: await hasPendingStash(gitDir, await stashShas(query)),
+    pendingStash: await hasPendingStash(query, await stashShas(query)),
   }
 
   if (operation === 'merge') {
@@ -197,6 +206,15 @@ type ControllableOperation = Exclude<RepoOperation, null | 'bisect'>
 
 function isControllable(operation: RepoOperation): operation is ControllableOperation {
   return operation !== null && operation !== 'bisect'
+}
+
+async function matchesPending(
+  query: Query,
+  gitDir: string,
+  pending: PendingStash | undefined,
+  operation: RepoOperation,
+): Promise<boolean> {
+  return pending !== undefined && (await pendingStashMatches(query, gitDir, pending, operation))
 }
 
 /** Number of unmerged paths right now. */
@@ -261,12 +279,15 @@ export const operationControlOperation: WriteOperation<OperationControlInput, Om
 
   async run(ctx, input) {
     const gitDir = await writeGitDir(ctx)
+    const query = queryOf(ctx)
     const operation = await detectOperationIn(gitDir)
+    const pending = await readPendingStash(query)
     if (!isControllable(operation)) {
       // The operation already ended elsewhere (e.g. aborted in a terminal): continue still
-      // brings the user's changes back instead of leaving the stash stranded.
-      if (operation === null && input.action === 'continue' && (await readPendingStash(gitDir)) !== undefined) {
-        const outcome = await restorePendingStash(ctx)
+      // brings the user's changes back, but only onto the branch they were stashed from.
+      if (operation === null && input.action === 'continue' && pending !== undefined) {
+        const matches = await pendingStashMatches(query, gitDir, pending, null)
+        const outcome = await finishPendingStash(ctx, pending, matches)
         return { operation: null, head: (await readHead(ctx)).sha, ...outcome }
       }
       throw invalidPayload('no merge, rebase, cherry-pick or revert is in progress', { operation })
@@ -278,6 +299,8 @@ export const operationControlOperation: WriteOperation<OperationControlInput, Om
       const remaining = await unmergedCount(ctx)
       if (remaining > 0) throw conflictsRemain(operation, remaining)
     }
+    // Decided before the action: afterwards the rebase state (head-name) is gone.
+    const matches = await matchesPending(query, gitDir, pending, operation)
 
     const args = controlArgs(operation, input.action)
     const result = await ctx.git([...GIT_BASE_ARGV, ...args])
@@ -290,7 +313,7 @@ export const operationControlOperation: WriteOperation<OperationControlInput, Om
       return { operation: after, head: (await readHead(ctx)).sha }
     }
     // The operation ended: the pending stash goes back whatever the exit code says.
-    const outcome = await restorePendingStash(ctx)
+    const outcome = await finishPendingStash(ctx, pending, matches)
     if (result.exitCode !== 0) {
       const failure = await classifyFailure(ctx, result, `git ${args.join(' ')}`)
       throw new GitCommandFailure(failure.code, failure.message, { ...failure.details, ...outcome })
@@ -316,11 +339,15 @@ export const operationCommitOperation: WriteOperation<OperationCommitInput, Omit
     }
     const remaining = await unmergedCount(ctx)
     if (remaining > 0) throw conflictsRemain(operation, remaining)
+    const query = queryOf(ctx)
+    const pending = await readPendingStash(query)
+    const matches = await matchesPending(query, gitDir, pending, operation)
     // Message on stdin, no pathspec: the merge commit takes the whole index.
     const result = await ctx.git([...GIT_BASE_ARGV, 'commit', '-F', '-'], { stdin: input.message })
     if (result.exitCode !== 0) throw await classifyFailure(ctx, result, 'git commit')
     const head = await readHead(ctx)
-    const outcome = (await detectOperationIn(gitDir)) === null ? await restorePendingStash(ctx) : {}
+    // The commit exists: a failed restore is reported in the value, never as a failed commit (评审 M3).
+    const outcome = (await detectOperationIn(gitDir)) === null ? await finishPendingStash(ctx, pending, matches) : {}
     return { ...head, ...outcome }
   },
 }

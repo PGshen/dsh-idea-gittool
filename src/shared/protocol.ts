@@ -755,8 +755,13 @@ export interface OperationControlValue {
   stashRestored?: boolean
   /** 待恢复贮藏已不在贮藏列表里（例如被用户手动删除）；不算错误。 */
   stashMissing?: boolean
-  /** 恢复冲突，贮藏保留。 */
+  /**
+   * 贮藏保留、没有自动恢复：恢复冲突；或待恢复贮藏不属于刚结束的操作（操作种类或分支对不上，
+   * T2 评审 M1，此时 `operationState.pendingStash` 仍为 true，由用户显式恢复）；或恢复时 git 出错。
+   */
   stashKept?: boolean
+  /** 恢复时遇到冲突以外的 git 错误（T2 评审追加）；贮藏保留。 */
+  stashError?: string
   version?: number
 }
 
@@ -773,6 +778,8 @@ export interface OperationCommitValue extends CommitResultValue {
   stashRestored?: boolean
   stashMissing?: boolean
   stashKept?: boolean
+  /** 提交已成功、但恢复贮藏时 git 出错（贮藏保留）。 */
+  stashError?: string
 }
 
 // --- 冲突（T3） -----------------------------------------------------------------

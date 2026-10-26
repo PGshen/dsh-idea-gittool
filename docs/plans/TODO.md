@@ -18,6 +18,7 @@
 | P1 | 按 B1 → B2 → B3 → B4 依次拆分计划（A3 代码已合并，待走查与验收） | [设计决策 v0.2](../design/2026-10-25-产品设计决策-v0.2.md) §4 | 每个里程碑一份计划，执行前批准；A3：[a3-分支贮藏冲突](active/a3-分支贮藏冲突.md)（执行中，T12 走查与评审后转待验收，验收通过前仍为执行中） |
 | P2 | 筛选/仓库栏/分支右键菜单改用 ui-primitives `MenuSurface`/`Menu` | A1 走查，2026-10-25 | 当前按 [ADR 0006](../decisions/0006-浮层菜单材质例外.md) 手写菜单材质，迁移后废弃该 ADR |
 | P2 | 向 DSH 反馈：`workspace-write` 的 Seatbelt profile 放行 `DARWIN_USER_CACHE_DIR`，否则 osxkeychain 凭据助手在 confine 下不可用 | A2 T1 spike，2026-10-26 | 见 [references §13](../references/dsh-integration-feasibility.md)「写执行与沙箱」；只反馈不改 DSH 仓库，由负责人决定是否提 |
+| P2 | 分支树改为单一 Tab 停靠点（roving tabindex：选中行或首行为 0，其余 -1）；菜单 ↑↓ 是否停在不可用项上以便读屏听到原因，与负责人确认 | A3 I-1 评审，2026-10-26 | 当前每个叶子行各占一个 Tab 停靠点；↑↓ 跳过不可用项 |
 | P2 | 控制台抽屉显示 `ConsoleRecord.stdinBytes`（「stdin: N bytes」），让走 stdin 的路径/提交信息在控制台里可见其存在 | A3 T1，2026-10-26 | Host 已记录字段；A3 未做 UI |
 | P2 | 远程分支签出到已存在但落后的本地分支时，提供「签出并重置/变基」（IntelliJ 行为） | A3 T3 评审，2026-10-26 | 当前直接签出本地分支，不看跟踪关系；属 B3 |
 | P2 | 工作台在操作进行中挂载时自动打开冲突列表（现在只在 status 观察到 null → 非 null 时开一次，之后靠横幅「解决冲突…」） | A3 T9 裁定，2026-10-26 | A3 有意不做：避免用户关闭后刷新又被弹出；做的话需要记住「用户已关闭」，与自动打开设置开关（B4）一起设计 |

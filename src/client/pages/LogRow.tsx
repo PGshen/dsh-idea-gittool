@@ -25,6 +25,8 @@ export interface LogRowProps {
   style?: CSSProperties
   onClick?(index: number, modifiers: LogRowModifiers): void
   onDoubleClick?(index: number): void
+  /** 右键（A3 T8）：由 LogTable 接成提交右键菜单。 */
+  onContextMenu?(index: number, event: MouseEvent): void
   /** 日期显示的参照「现在」（年份不同才显示年），测试可注入。 */
   now?: number
 }
@@ -55,6 +57,7 @@ export function LogRow({
   style,
   onClick,
   onDoubleClick,
+  onContextMenu,
   now,
 }: LogRowProps): ReactNode {
   const { commit, graph, refs } = data
@@ -81,6 +84,7 @@ export function LogRow({
       }}
       onClick={(event) => onClick?.(index, rowModifiers(event))}
       onDoubleClick={() => onDoubleClick?.(index)}
+      onContextMenu={onContextMenu === undefined ? undefined : (event) => onContextMenu(index, event)}
     >
       <span role="gridcell" className={css.graph}>
         <GraphCell row={graph} head={head} current={onCurrentBranch} selected={selected} />

@@ -5,6 +5,9 @@
 // - 分类顺序：沙箱拒绝（references §13：工作区外 bare 远程表现为 `(unpacker error)`）→ 认证失败 →
 //   porcelain `!` 行（`git/rejected`，附 fetch 后的远程新提交）→ 本地 pre-push hook → 其它。
 // - 所有错误信息与 details 都经过凭据脱敏；`details.command` 只含远程名与分支名，不含 URL。
+// - TD-10（A3 T4）：带 `expectedRemoteSha` 时用 `--force-with-lease=refs/heads/<branch>:<sha>`——只覆盖用户看过的
+//   远程 tip，不依赖本地远程跟踪 ref（被拒后的 fetch 会更新它，单纯 `--force-with-lease` 会因此放行）。
+//   被拒 details 带 fetch 后的远程 tip `remoteSha`，供客户端回传。
 
 import type {
   CommitSummary,
@@ -22,6 +25,7 @@ import {
   authRequired,
   firstLine,
   hasHook,
+  invalidPayload,
   isAuthFailure,
   isSandboxDenial,
   optionalBoolean,
@@ -38,7 +42,11 @@ export interface PushInput {
   setUpstream: boolean
   forceWithLease: boolean
   tags: boolean
+  /** TD-10: the remote tip the user saw; only together with `forceWithLease`. */
+  expectedRemoteSha?: string
 }
+
+const SHA_PATTERN = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/
 
 /** One porcelain ref line: `<flag>\t<from>:<to>\t<summary>`. */
 export interface PushRefResult {
@@ -102,7 +110,8 @@ export function parseCommitSummaries(stdout: string): CommitSummary[] {
   return commits
 }
 
-function logArgv(limit: number, revisions: readonly string[]): string[] {
+/** `log -z` argv in the format {@link parseCommitSummaries} reads. */
+export function logArgv(limit: number, revisions: readonly string[]): string[] {
   return ['log', '-z', `--max-count=${String(limit)}`, `--format=${COMMIT_FORMAT}`, ...revisions, '--']
 }
 
@@ -142,16 +151,26 @@ export function networkFailure(
   return redactedFailure(result, label)
 }
 
-/** Remote commits missing locally (`HEAD..<remote>/<branch>` after a fetch); best effort. */
-async function readRemoteCommits(ctx: WriteContext, remote: string, branch: string): Promise<CommitSummary[]> {
+/**
+ * After a fetch: remote commits missing locally (`HEAD..<remote>/<branch>`) and the remote tip
+ * (TD-10 `remoteSha`). Best effort: anything unreadable is left out.
+ */
+async function readRemoteState(
+  ctx: WriteContext,
+  remote: string,
+  branch: string,
+): Promise<{ remoteCommits: CommitSummary[]; remoteSha?: string }> {
   try {
     const fetched = await fetchRemoteBranch(ctx, remote, branch)
-    if (fetched.exitCode !== 0) return []
-    const log = await query(ctx, logArgv(PUSH_PREVIEW_COMMIT_LIMIT, [`refs/remotes/${remote}/${branch}`, '--not', 'HEAD']))
-    if (log.exitCode !== 0) return []
-    return parseCommitSummaries(log.stdout)
+    if (fetched.exitCode !== 0) return { remoteCommits: [] }
+    const tracking = `refs/remotes/${remote}/${branch}`
+    const tip = await query(ctx, ['rev-parse', '-q', '--verify', tracking])
+    const remoteSha = tip.exitCode === 0 && SHA_PATTERN.test(tip.stdout.trim()) ? tip.stdout.trim() : undefined
+    const log = await query(ctx, logArgv(PUSH_PREVIEW_COMMIT_LIMIT, [tracking, '--not', 'HEAD']))
+    const remoteCommits = log.exitCode === 0 ? parseCommitSummaries(log.stdout) : []
+    return remoteSha === undefined ? { remoteCommits } : { remoteCommits, remoteSha }
   } catch {
-    return []
+    return { remoteCommits: [] }
   }
 }
 
@@ -227,23 +246,39 @@ export async function readPushPreview(
   }
 }
 
+/** `--force-with-lease`, pinned to the expected remote tip when the user saw one (TD-10). */
+function leaseOption(input: PushInput): string {
+  return input.expectedRemoteSha === undefined
+    ? '--force-with-lease'
+    : `--force-with-lease=refs/heads/${input.branch}:${input.expectedRemoteSha}`
+}
+
 export const pushOperation: WriteOperation<PushInput, Omit<PushValue, 'version'>> = {
   parse(payload) {
     const record = payloadRecord(payload)
-    return {
+    const input: PushInput = {
       remote: parseRefName(record.remote, 'remote'),
       branch: parseRefName(record.branch, 'branch'),
       setUpstream: optionalBoolean(record, 'setUpstream'),
       forceWithLease: optionalBoolean(record, 'forceWithLease'),
       tags: optionalBoolean(record, 'tags'),
     }
+    const expected = record.expectedRemoteSha
+    if (expected !== undefined) {
+      if (typeof expected !== 'string' || !SHA_PATTERN.test(expected)) {
+        throw invalidPayload('expectedRemoteSha must be a full lowercase hexadecimal object name')
+      }
+      if (!input.forceWithLease) throw invalidPayload('expectedRemoteSha is only valid together with forceWithLease')
+      input.expectedRemoteSha = expected
+    }
+    return input
   },
 
   async run(ctx, input) {
     await assertPushTarget(ctx, input.remote, input.branch)
     const options = [
       ...(input.setUpstream ? ['--set-upstream'] : []),
-      ...(input.forceWithLease ? ['--force-with-lease'] : []),
+      ...(input.forceWithLease ? [leaseOption(input)] : []),
       ...(input.tags ? ['--follow-tags'] : []),
     ]
     const target = [input.remote, `HEAD:refs/heads/${input.branch}`]
@@ -262,11 +297,12 @@ export const pushOperation: WriteOperation<PushInput, Omit<PushValue, 'version'>
       if (first !== undefined) {
         const reason = classifyRejection(first.summary, result.stderr)
         const fetchable = reason === 'non-fast-forward' || reason === 'fetch-first' || reason === 'stale-lease'
+        const remoteState = fetchable ? await readRemoteState(ctx, input.remote, input.branch) : { remoteCommits: [] }
         const details: PushRejectedDetails = {
           reason,
           remote: input.remote,
           branch: input.branch,
-          remoteCommits: fetchable ? await readRemoteCommits(ctx, input.remote, input.branch) : [],
+          ...remoteState,
           summary: redactCredentials(first.summary),
         }
         throw new GitCommandFailure('git/rejected', `push to ${input.remote}/${input.branch} was rejected (${reason})`, {

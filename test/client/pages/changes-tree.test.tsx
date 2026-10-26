@@ -20,7 +20,7 @@ function bootstrap(status: BootstrapValue['status']): BootstrapValue {
 }
 
 describe('PageTabs', () => {
-  it('renders log/commit tabs with the badge on commit', () => {
+  it('renders log/commit/branches/stash tabs with the badge on commit', () => {
     const html = renderToStaticMarkup(<PageTabs page="log" onChange={() => {}} uncommittedCount={8} />)
     expect(html).toContain('role="tablist"')
     expect(html).toContain('data-page="log"')
@@ -28,8 +28,10 @@ describe('PageTabs', () => {
     expect(html).toMatch(/data-page="log"[^>]*>|aria-selected="true"/)
     expect(html).toContain('data-badge="8"')
     expect(html).toContain('>日志<')
-    expect(html).not.toContain('分支')
-    expect(html).not.toContain('贮藏')
+    expect(html).toContain('data-page="branches"')
+    expect(html).toContain('>分支<')
+    expect(html).toContain('data-page="stash"')
+    expect(html).toContain('>贮藏<')
   })
 
   it('hides the badge at 0 and caps at 99+', () => {
@@ -41,8 +43,11 @@ describe('PageTabs', () => {
 
   it('arrow keys wrap between pages', () => {
     expect(adjacentPage('log', 'ArrowRight')).toBe('commit')
-    expect(adjacentPage('commit', 'ArrowRight')).toBe('log')
-    expect(adjacentPage('log', 'ArrowLeft')).toBe('commit')
+    expect(adjacentPage('commit', 'ArrowRight')).toBe('branches')
+    expect(adjacentPage('branches', 'ArrowRight')).toBe('stash')
+    expect(adjacentPage('stash', 'ArrowRight')).toBe('log')
+    expect(adjacentPage('log', 'ArrowLeft')).toBe('stash')
+    expect(adjacentPage('log', 'End')).toBe('stash')
     expect(adjacentPage('log', 'x')).toBeNull()
   })
 })

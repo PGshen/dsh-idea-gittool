@@ -1,16 +1,24 @@
 // 日志页（设计 §8.1）：筛选栏 + 虚拟化提交图表格 + 可插入的详情区。
 // 数据全部来自注入的 LogStore（React-free，见 store/log-store.ts）；页面本身不发 RPC，
 // 由宿主（GitBody）创建 store、喂 refs，并通过 renderDetail / onSelect / onOpenCommit 接详情与 diff。
-import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { KeyboardEvent, ReactNode } from 'react'
-import type { CommitSummary, RefEntry } from '../../shared/protocol.ts'
+import type { CommitSummary, RefEntry, RepoOperation } from '../../shared/protocol.ts'
+import { restoreFocus } from '../focus.ts'
+import type { FocusTarget } from '../focus.ts'
 import { DEFAULT_LOG_FILTER } from '../store/log-store.ts'
 import type { LogAction, LogState, LogStore } from '../store/log-store.ts'
 import { useT } from '../i18n.tsx'
 import { EmptyState } from '../ui/EmptyState.tsx'
 import { FilterBar, hasActiveFilter } from './FilterBar.tsx'
 import type { BranchOption } from './FilterBar.tsx'
+import { CommitContextMenu } from './CommitContextMenu.tsx'
+import { childOf, commitActionContext, commitActions } from './commit-actions.ts'
+import { finishRowMenu } from './menu-focus.ts'
+import type { MenuAnchor } from './menu-position.ts'
+import type { CommitActionId } from './commit-actions.ts'
 import { LogTable } from './LogTable.tsx'
+import type { RowMenuRequest } from './LogTable.tsx'
 import css from './LogPage.module.css'
 
 /** 当前选择：交给详情区 / 宿主。`commit` 是键盘焦点行（最后点的那行）。 */
@@ -19,6 +27,21 @@ export interface LogSelection {
   commit: CommitSummary | null
   /** 已加载的选中提交（按表格顺序）。 */
   commits: CommitSummary[]
+}
+
+/** 提交右键菜单的上下文与回调（A3 T8）；未传时日志行没有右键菜单。 */
+export interface CommitMenuConfig {
+  writable: boolean
+  operation: RepoOperation
+  /** 选中菜单项；`childSha` 是已加载的子提交（跳到子提交用）。 */
+  onAction(id: CommitActionId, commit: CommitSummary, trigger: FocusTarget | null, childSha: string | null): void
+}
+
+interface MenuState {
+  commit: CommitSummary
+  /** Where the menu opens; the menu measures itself and stays inside the viewport and the panel. */
+  anchor: MenuAnchor
+  trigger: FocusTarget | null
 }
 
 export interface LogPageProps {
@@ -44,6 +67,8 @@ export interface LogPageProps {
   onCopyHash?(shas: string[]): void
   /** 详情区插槽：Wide 档在右侧，Standard/Compact 档在表格下方。返回 null 时不占位。 */
   renderDetail?(selection: LogSelection): ReactNode
+  /** 提交右键菜单（Shift+F10 / ContextMenu 键同样打开）。 */
+  commitMenu?: CommitMenuConfig
   /** 左侧插槽（分支面板）。 */
   sidebar?: ReactNode
   /** 首帧视口高度（SSR/测试用；运行时以真实尺寸为准）。 */
@@ -89,6 +114,7 @@ export function LogPage({
   onOpenCommit,
   onCopyHash,
   renderDetail,
+  commitMenu,
   sidebar,
   viewportHeight,
 }: LogPageProps): ReactNode {
@@ -98,6 +124,7 @@ export function LogPage({
   const searchRef = useRef<HTMLInputElement | null>(null)
   const tableRef = useRef<HTMLDivElement | null>(null)
   const authorsSeen = useRef(new Set<string>())
+  const [menu, setMenu] = useState<MenuState | null>(null)
 
   useEffect(() => {
     if (refsBySha !== undefined) store.setRefs(refsBySha)
@@ -135,6 +162,20 @@ export function LogPage({
   function openActive(): void {
     const commit = store.getState().commits[store.getState().activeIndex]
     if (commit !== undefined) onOpenCommit?.(commit)
+  }
+
+  function openMenu(request: RowMenuRequest): void {
+    const commit = store.getState().commits[request.index]
+    if (commit === undefined) return
+    // 右键一个没选中的行时先选中它，菜单和详情指向同一个提交。
+    if (!store.getState().selection.includes(commit.sha)) store.selectIndex(request.index)
+    setMenu({ commit, anchor: { kind: 'point', x: request.x, y: request.y }, trigger: request.trigger })
+  }
+
+  function closeMenu(refocus: boolean): void {
+    const trigger = menu?.trigger ?? null
+    setMenu(null)
+    if (refocus) restoreFocus(trigger)
   }
 
   function onAction(action: LogAction): void {
@@ -207,6 +248,7 @@ export function LogPage({
         }}
         onKey={store.handleKey}
         onAction={onAction}
+        {...(commitMenu === undefined ? {} : { onRowContextMenu: openMenu })}
         onNearEnd={loadNext}
         footerError={state.error === null ? null : { message: state.error.message, onRetry: loadNext }}
         tableRef={tableRef}
@@ -238,6 +280,23 @@ export function LogPage({
         <div className={css.main}>{content}</div>
         {detail === null ? null : <div className={css.detail} data-log-detail="">{detail}</div>}
       </div>
+      {menu === null || commitMenu === undefined
+        ? null
+        : (
+            <CommitContextMenu
+              commit={menu.commit}
+              items={commitActions(menu.commit, commitActionContext(state.commits, menu.commit, commitMenu))}
+              anchor={menu.anchor}
+              onClose={() => { closeMenu(true) }}
+              onSelect={(id) => {
+                const { commit, trigger } = menu
+                const child = childOf(state.commits, commit.sha)
+                closeMenu(false)
+                // Focus returns to the log row (grid) first; an overlay the action opens returns focus there too (I-1).
+                finishRowMenu(trigger, row => commitMenu.onAction(id, commit, row, child))
+              }}
+            />
+          )}
     </div>
   )
 }

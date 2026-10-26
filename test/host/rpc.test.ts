@@ -12,13 +12,19 @@ import type {
   BootstrapValue,
   BranchesValue,
   CommitDetailValue,
+  ConflictCommandValue,
   ConsoleValue,
   DiffFileValue,
   LogValue,
+  OperationStateValue,
+  ResetPreviewValue,
   RefsValue,
+  StashFilesValue,
+  StashListValue,
   StatusValue,
   WritePolicyValue,
 } from '../../src/shared/protocol.ts'
+import { RPC_ENDPOINTS, WRITE_ENDPOINTS, isWriteEndpoint } from '../../src/shared/protocol.ts'
 import { GitCommandFailure, createGitRunner, instrumentGitRunner } from '../../src/host/git-executor.ts'
 import { createGitConsole } from '../../src/host/console.ts'
 import { createRepoCache } from '../../src/host/cache.ts'
@@ -508,5 +514,119 @@ describe('createRpcHandler / A1 read endpoints', () => {
     const result = await handler(endpoint, payload, SIGNAL)
 
     expect(errorOf(result).code).toBe('git/invalid-payload')
+  })
+})
+
+describe('endpoint registry (A3 T1)', () => {
+  it('routes every registered endpoint (none answers "unknown RPC endpoint")', async () => {
+    const { handler } = makeHandler()
+    for (const endpoint of RPC_ENDPOINTS) {
+      const result = await handler(endpoint, { sessionId: 'session-1', requestId: 'r-1', sha: 'a'.repeat(40) }, SIGNAL)
+      if (!result.ok) expect(result.error.message, endpoint).not.toBe('unknown RPC endpoint')
+    }
+    expect(errorOf(await handler('nope', { sessionId: 'session-1' }, SIGNAL)).message).toBe('unknown RPC endpoint')
+  })
+
+  it('implements every registered endpoint (none answers "not implemented")', async () => {
+    const { handler } = makeHandler()
+    for (const endpoint of RPC_ENDPOINTS) {
+      const result = await handler(endpoint, { sessionId: 'session-1', requestId: 'r-1' }, SIGNAL)
+      if (!result.ok) expect(result.error.message, endpoint).not.toBe('not implemented')
+    }
+  })
+
+  it('serves stashList and stashFiles (T5) as versioned reads and validates the sha', async () => {
+    const { handler, repo } = makeHandler()
+    expect(okValue<StashListValue>(await handler('stashList', { sessionId: 'session-1' }, SIGNAL))).toEqual({
+      entries: [],
+      version: 0,
+    })
+    repo.write('README.md', 'changed\n')
+    repo.git('stash', 'push', '-q', '-m', 'saved')
+    const sha = repo.git('rev-parse', 'refs/stash').trim()
+
+    const files = okValue<StashFilesValue>(await handler('stashFiles', { sessionId: 'session-1', sha }, SIGNAL))
+    expect(files).toMatchObject({ sha, untrackedSha: null, untracked: [], version: 0 })
+    expect(files.files.map((file) => file.path)).toEqual(['README.md'])
+    const bad = await handler('stashFiles', { sessionId: 'session-1', sha: 'stash@{0}' }, SIGNAL)
+    expect(errorOf(bad).code).toBe('git/invalid-payload')
+  })
+
+  it('serves operationState (T2) as a versioned read', async () => {
+    const { handler, repo } = makeHandler()
+    const value = okValue<OperationStateValue>(await handler('operationState', { sessionId: 'session-1' }, SIGNAL))
+    expect(value).toMatchObject({
+      operation: null,
+      ours: { label: 'main', sha: repo.git('rev-parse', 'HEAD').trim() },
+      theirs: { label: '' },
+      conflicts: [],
+      resolved: [],
+      pendingStash: false,
+      version: 0,
+    })
+  })
+
+  it('validates operationControl / operationCommit payloads before the gate (T2)', async () => {
+    const { handler } = makeHandler()
+    const control = await handler('operationControl', { sessionId: 'session-1', requestId: 'r', action: 'quit' }, SIGNAL)
+    expect(errorOf(control).code).toBe('git/invalid-payload')
+    const commit = await handler('operationCommit', { sessionId: 'session-1', requestId: 'r', message: '  ' }, SIGNAL)
+    expect(errorOf(commit).code).toBe('git/invalid-payload')
+  })
+
+  it('serves conflictCommand (T3) for the resolved repository', async () => {
+    const { handler, repo } = makeHandler()
+    const value = okValue<ConflictCommandValue>(await handler('conflictCommand', { sessionId: 'session-1' }, SIGNAL))
+    expect(value.command).toBe(`cd ${repo.root} && git status && git mergetool`)
+  })
+
+  it.each([
+    ['checkout', { target: { kind: 'local', name: '-b' } }],
+    ['createBranch', { name: 'x', startPoint: 'main' }],
+    ['renameBranch', { from: 'a', to: '--force' }],
+    ['deleteBranch', { name: 'x', force: false, expectedSha: 'abc' }],
+    ['resolveConflict', { path: '../x', resolution: 'ours' }],
+  ])('validates %s payloads before the gate (T3)', async (endpoint, extra) => {
+    const { handler } = makeHandler()
+    const result = await handler(endpoint, { sessionId: 'session-1', requestId: 'r', ...extra }, SIGNAL)
+    expect(errorOf(result).code).toBe('git/invalid-payload')
+  })
+
+  it.each([
+    ['merge', { ref: '--abort' }],
+    ['rebase', { onto: '-i' }],
+    ['cherryPick', { sha: 'HEAD' }],
+    ['revertCommit', { sha: 'abc' }],
+    ['reset', { sha: 'a'.repeat(40), mode: 'hard' }],
+    ['fetch', { remote: '--all', prune: false }],
+    ['pull', { remote: 'origin', branch: 'main', mode: 'squash' }],
+    ['updateProject', { mode: 'ff' }],
+    ['resetToRemote', { backup: 'yes' }],
+  ])('validates %s payloads before the gate (T4)', async (endpoint, extra) => {
+    const { handler } = makeHandler()
+    const result = await handler(endpoint, { sessionId: 'session-1', requestId: 'r', ...extra }, SIGNAL)
+    expect(errorOf(result).code).toBe('git/invalid-payload')
+  })
+
+  it('serves resetPreview (T4) as a versioned read and validates the sha', async () => {
+    const { handler, repo } = makeHandler()
+    const head = repo.git('rev-parse', 'HEAD').trim()
+    const value = okValue<ResetPreviewValue>(await handler('resetPreview', { sessionId: 'session-1', sha: head }, SIGNAL))
+    expect(value).toEqual({ head, discardCount: 0, commitsLost: [], truncated: false, version: 0 })
+    const bad = await handler('resetPreview', { sessionId: 'session-1', sha: 'HEAD' }, SIGNAL)
+    expect(errorOf(bad).code).toBe('git/invalid-payload')
+  })
+
+  it('write endpoints are a subset of the registry and require a requestId', async () => {
+    const { handler } = makeHandler()
+    for (const endpoint of WRITE_ENDPOINTS) {
+      expect(RPC_ENDPOINTS).toContain(endpoint)
+      expect(isWriteEndpoint(endpoint)).toBe(true)
+      const error = errorOf(await handler(endpoint, { sessionId: 'session-1' }, SIGNAL))
+      expect({ endpoint, code: error.code }).toEqual({ endpoint, code: 'git/invalid-payload' })
+    }
+    for (const endpoint of ['status', 'operationState', 'stashList', 'resetPreview']) {
+      expect(isWriteEndpoint(endpoint)).toBe(false)
+    }
   })
 })

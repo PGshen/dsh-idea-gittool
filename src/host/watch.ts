@@ -1,7 +1,8 @@
 // Host 侧刷新：监听 .git 关键文件的变更，250ms 防抖合并后通知调用方刷新。
 // 只做「什么时候可能变了」的判定，不知道 RPC 与业务数据（T5b 由 rpc.ts 接线）。
 // watch 实现由调用方注入（真实运行用 ctx.fs.watch 适配；测试用假实现）。
-import { join } from 'node:path'
+import { access, readdir } from 'node:fs/promises'
+import { join, sep } from 'node:path'
 
 /** 一次合并后的变更信号。 */
 export interface WatchSignal {
@@ -33,7 +34,8 @@ export type FsWatch = (
 export interface WatchFailure {
   /** 未能监听的目标（没有注入实现时为 `<repoRoot>/.git`）。 */
   target: string
-  code: 'watch-unavailable' | 'watch-threw' | 'watch-invalid-result'
+  /** `watch-limit`：嵌套 refs 子目录超过 {@link NESTED_REF_DIRS_MAX}，多出的不监听（A3 T1）。 */
+  code: 'watch-unavailable' | 'watch-threw' | 'watch-invalid-result' | 'watch-limit'
   /** 便于日志排查的说明。 */
   reason: string
 }
@@ -65,6 +67,8 @@ export interface WatchRepoOptions {
   now?: () => number
   /** 初始化失败或后续降级时回调（异步失败也能通知到）。 */
   onDegraded?: (failures: readonly WatchFailure[]) => void
+  /** 测试注入：列出目录下的全部子目录（递归、绝对路径）；默认读真实文件系统。 */
+  listRefDirs?: (base: string, limit: number) => Promise<string[]>
 }
 
 /**
@@ -97,7 +101,8 @@ export const DEFAULT_DEBOUNCE_MS = 250
  *
  * 目录目标只监听直接子项，所以 `refs`、`refs/heads`、`refs/remotes`、`refs/tags` 都要显式挂上，
  * 才能覆盖「分支指针更新」、新建标签与 `git pack-refs` / fetch 写入的 packed-refs。
- * 已知缺口：带 `/` 的分支名（refs/heads/feature/x）落在更深的子目录，只能靠手动刷新。
+ * 带 `/` 的分支名（refs/heads/feature/x）落在更深的子目录：由 watchRepo 另行枚举并监听
+ * （{@link nestedRefBases}，A3 T1 收掉 TD-5）。
  */
 export function gitWatchTargets(repoRoot: string): string[] {
   const gitDir = join(repoRoot, '.git')
@@ -112,6 +117,42 @@ export function gitWatchTargets(repoRoot: string): string[] {
     join(gitDir, 'refs', 'remotes'),
     join(gitDir, 'refs', 'tags'),
   ]
+}
+
+/** 嵌套 refs 子目录的监听上限；超出记 `watch-limit` 并降级为轮询兜底（A3 T1）。 */
+export const NESTED_REF_DIRS_MAX = 256
+
+/** 需要枚举子目录的 refs 根（它们自身已在 {@link gitWatchTargets} 里）。 */
+export function nestedRefBases(repoRoot: string): string[] {
+  const refs = join(repoRoot, '.git', 'refs')
+  return [join(refs, 'heads'), join(refs, 'remotes'), join(refs, 'tags')]
+}
+
+/**
+ * 广度优先列出 `base` 下的全部子目录（不跟随符号链接）。最多收集 `limit + 1` 个，
+ * 调用方据此判断是否超限；不存在或读不了的目录当作没有子目录（如尚无 refs/remotes）。
+ */
+export async function listNestedDirs(base: string, limit: number): Promise<string[]> {
+  const found: string[] = []
+  const queue = [base]
+  while (queue.length > 0 && found.length <= limit) {
+    const dir = queue.shift()
+    if (dir === undefined) break
+    let entries
+    try {
+      entries = await readdir(dir, { withFileTypes: true })
+    } catch {
+      continue
+    }
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue
+      const child = join(dir, entry.name)
+      found.push(child)
+      queue.push(child)
+      if (found.length > limit) break
+    }
+  }
+  return found
 }
 
 function isWatchPromise(
@@ -149,13 +190,21 @@ export function watchRepo(options: WatchRepoOptions): RepoWatch {
     debounceMs = DEFAULT_DEBOUNCE_MS,
     now = Date.now,
     onDegraded,
+    listRefDirs = listNestedDirs,
   } = options
   const windowMs = Number.isFinite(debounceMs) ? Math.max(0, debounceMs) : DEFAULT_DEBOUNCE_MS
 
   const targets = gitWatchTargets(root)
+  const refBases = nestedRefBases(root)
+  const refsRoot = join(root, '.git', 'refs')
   const failures: WatchFailure[] = []
   const disposers: WatchDispose[] = []
   const watched: string[] = []
+  /** 嵌套 refs 目录 → 释放函数（undefined 表示正在异步初始化）。 */
+  const nested = new Map<string, WatchDispose | undefined>()
+  let limitReported = false
+  let rescanning: Promise<void> | undefined
+  let rescanAgain = false
   const pendingEvents = new Set<string>()
   const initTasks: Promise<void>[] = []
   let timer: ReturnType<typeof setTimeout> | undefined
@@ -188,6 +237,8 @@ export function watchRepo(options: WatchRepoOptions): RepoWatch {
     pendingEvents.add(target)
     if (timer !== undefined) clearTimeout(timer)
     timer = setTimeout(flush, windowMs)
+    // Any refs directory changing may have created or removed a nested directory.
+    if (target === refsRoot || target.startsWith(`${refsRoot}${sep}`)) void requestRescan()
   }
 
   const adopt = (target: string, handle: WatchHandle | WatchDispose): void => {
@@ -212,6 +263,121 @@ export function watchRepo(options: WatchRepoOptions): RepoWatch {
     } catch {
       // close 的失败不影响已关闭的事实。
     }
+  }
+
+  const releaseNested = (dir: string): void => {
+    const dispose = nested.get(dir)
+    nested.delete(dir)
+    const index = watched.indexOf(dir)
+    if (index >= 0) watched.splice(index, 1)
+    if (dispose === undefined) return
+    try {
+      void Promise.resolve(dispose()).catch(() => undefined)
+    } catch {
+      // 释放失败无法补救。
+    }
+  }
+
+  const adoptNested = (dir: string, handle: WatchHandle | WatchDispose): void => {
+    const dispose = normalizeDispose(handle)
+    if (closed || !nested.has(dir) || dispose === undefined) {
+      if (dispose !== undefined) closeLate(handle)
+      nested.delete(dir)
+      return
+    }
+    nested.set(dir, dispose)
+    watched.push(dir)
+  }
+
+  /** A nested directory that vanished before its watch started is not a degradation. */
+  const nestedFailed = async (dir: string, error: unknown): Promise<void> => {
+    nested.delete(dir)
+    if (closed) return
+    try {
+      await access(dir)
+    } catch {
+      return
+    }
+    reportFailure({ target: dir, code: 'watch-threw', reason: describeError(error) })
+  }
+
+  const watchNested = (watchImpl: FsWatch, dir: string): Promise<void> | undefined => {
+    nested.set(dir, undefined)
+    try {
+      const result = watchImpl(dir, () => schedule(dir))
+      if (!isWatchPromise(result)) {
+        adoptNested(dir, result)
+        return undefined
+      }
+      return Promise.resolve(result).then(
+        (handle) => adoptNested(dir, handle),
+        (error: unknown) => nestedFailed(dir, error),
+      )
+    } catch (error) {
+      return nestedFailed(dir, error)
+    }
+  }
+
+  /** Bring the nested watches in line with the directories that exist now. */
+  const syncNested = async (watchImpl: FsWatch): Promise<void> => {
+    const found = new Set<string>()
+    let overflow = false
+    for (const base of refBases) {
+      const remaining = NESTED_REF_DIRS_MAX - found.size
+      const dirs = await listRefDirs(base, remaining)
+      for (const dir of dirs) {
+        if (found.size >= NESTED_REF_DIRS_MAX) {
+          overflow = true
+          break
+        }
+        found.add(dir)
+      }
+      if (overflow || dirs.length > remaining) {
+        overflow = true
+        break
+      }
+    }
+    if (closed) return
+    if (overflow && !limitReported) {
+      limitReported = true
+      reportFailure({
+        target: refsRoot,
+        code: 'watch-limit',
+        reason: `嵌套 refs 子目录超过 ${String(NESTED_REF_DIRS_MAX)} 个，多出的目录不监听，请降级为轮询`,
+      })
+    }
+    for (const dir of [...nested.keys()]) {
+      if (!found.has(dir)) releaseNested(dir)
+    }
+    const starting: Promise<void>[] = []
+    for (const dir of found) {
+      if (nested.has(dir)) continue
+      const pending = watchNested(watchImpl, dir)
+      if (pending !== undefined) starting.push(pending)
+    }
+    await Promise.allSettled(starting)
+  }
+
+  /**
+   * Serialized rescans: one runs at a time; a request during a run schedules exactly one
+   * more pass. The returned promise settles when the pass covering this request is done.
+   */
+  function requestRescan(): Promise<void> {
+    if (closed || fsWatch === undefined) return Promise.resolve()
+    if (rescanning !== undefined) {
+      rescanAgain = true
+      return rescanning
+    }
+    const watchImpl = fsWatch
+    rescanning = (async () => {
+      do {
+        rescanAgain = false
+        await syncNested(watchImpl).catch(() => undefined)
+      } while (rescanAgain && !closed)
+    })().finally(() => {
+      rescanning = undefined
+    })
+    return rescanning
   }
 
   if (!fsWatch) {
@@ -249,6 +415,9 @@ export function watchRepo(options: WatchRepoOptions): RepoWatch {
     }
   }
 
+  // Nested refs directories (TD-5): enumerated after the fixed targets are registered.
+  initTasks.push(requestRescan())
+
   const ready = Promise.allSettled(initTasks).then(() => undefined)
 
   const close = (): Promise<void> => {
@@ -260,7 +429,9 @@ export function watchRepo(options: WatchRepoOptions): RepoWatch {
     }
     pendingEvents.clear()
     closing = (async () => {
-      for (const dispose of disposers.splice(0)) {
+      const nestedDisposers = [...nested.values()].filter((dispose) => dispose !== undefined)
+      nested.clear()
+      for (const dispose of [...disposers.splice(0), ...nestedDisposers]) {
         try {
           await dispose()
         } catch {

@@ -13,22 +13,25 @@ import type {
 } from '@deepseek-ai/dsh-client-connection'
 
 import type {
-  AddToVcsValue,
   BootstrapValue,
   BranchesValue,
   CommitDetailValue,
-  CommitResultValue,
+  ConflictCommandValue,
   ConsoleValue,
   DiffFileValue,
   LogValue,
-  PullForPushValue,
+  OperationStateValue,
   PushPreviewValue,
-  PushValue,
   RefsValue,
-  RollbackValue,
+  ResetPreviewValue,
+  RpcEndpointTypes,
+  StashFilesValue,
+  StashListValue,
   StatusValue,
+  WriteEndpoint,
   WritePolicyValue,
 } from '../shared/protocol.ts'
+import { isWriteEndpoint } from '../shared/protocol.ts'
 import type { GitConsole } from './console.ts'
 import type { RepoCache } from './cache.ts'
 import { createRepoCache } from './cache.ts'
@@ -38,10 +41,35 @@ import { isAbsolute, resolve as resolvePath } from 'node:path'
 
 import type { GitRunner, WriteOperation } from './git-executor.ts'
 import { GIT_BASE_ARGV, GitCommandFailure, bindWriteContext, messageOf } from './git-executor.ts'
+import {
+  checkoutOperation,
+  createBranchOperation,
+  deleteBranchOperation,
+  renameBranchOperation,
+} from './git/branch-write.ts'
+import { conflictCommandFor, resolveConflictOperation } from './git/conflict.ts'
 import { addToVcsOperation, amendMessageOperation, commitFilesOperation } from './git/commit-write.ts'
-import { pullForPushOperation } from './git/pull.ts'
+import { operationCommitOperation, operationControlOperation, readOperationState } from './git/operation.ts'
+import {
+  cherryPickOperation,
+  mergeOperation,
+  parseFullSha,
+  readResetPreview,
+  rebaseOperation,
+  resetOperation,
+  revertCommitOperation,
+} from './git/integrate.ts'
+import { pullForPushOperation, pullOperation } from './git/pull.ts'
+import { fetchOperation, resetToRemoteOperation, updateProjectOperation } from './git/update.ts'
 import { pushOperation, readPushPreview } from './git/push.ts'
 import { rollbackOperation } from './git/rollback.ts'
+import {
+  readStashFiles,
+  readStashList,
+  stashApplyOperation,
+  stashCreateOperation,
+  stashDropOperation,
+} from './git/stash.ts'
 import type { WriteQueue } from './write-queue.ts'
 import { createWriteQueue } from './write-queue.ts'
 import { readBranches } from './git/branches.ts'
@@ -67,18 +95,18 @@ const REFS_CACHE_KEY = 'refs'
 const COMMIT_CACHE_PREFIX = 'commit'
 const DIFF_CACHE_PREFIX = 'diff'
 const PUSH_PREVIEW_CACHE_KEY = 'pushPreview'
+const OPERATION_STATE_CACHE_KEY = 'operationState'
+const RESET_PREVIEW_CACHE_PREFIX = 'resetPreview'
+const STASH_LIST_CACHE_KEY = 'stashList'
+const STASH_FILES_CACHE_PREFIX = 'stashFiles'
 /** Longest accepted requestId (client-generated UUIDs are 36). */
 const MAX_REQUEST_ID_LENGTH = 100
 
-/** A2 write endpoints → their operations; tests override single entries. */
-export interface WriteOperations {
-  commitFiles: WriteOperation<unknown, Omit<CommitResultValue, 'version'>>
-  amendMessage: WriteOperation<unknown, Omit<CommitResultValue, 'version'>>
-  rollback: WriteOperation<unknown, Omit<RollbackValue, 'version'>>
-  addToVcs: WriteOperation<unknown, Omit<AddToVcsValue, 'version'>>
-  push: WriteOperation<unknown, Omit<PushValue, 'version'>>
-  pullForPush: WriteOperation<unknown, Omit<PullForPushValue, 'version'>>
-}
+/** A write endpoint's response without the version the RPC layer stamps on it. */
+export type WriteValue<E extends WriteEndpoint> = Omit<RpcEndpointTypes[E]['value'], 'version'>
+
+/** Write endpoints (A2 + A3) → their operations; tests override single entries. */
+export type WriteOperations = { [E in WriteEndpoint]: WriteOperation<unknown, WriteValue<E>> }
 
 const DEFAULT_WRITE_OPERATIONS: WriteOperations = {
   commitFiles: commitFilesOperation,
@@ -87,6 +115,25 @@ const DEFAULT_WRITE_OPERATIONS: WriteOperations = {
   addToVcs: addToVcsOperation,
   push: pushOperation,
   pullForPush: pullForPushOperation,
+  operationControl: operationControlOperation,
+  operationCommit: operationCommitOperation,
+  resolveConflict: resolveConflictOperation,
+  checkout: checkoutOperation,
+  createBranch: createBranchOperation,
+  renameBranch: renameBranchOperation,
+  deleteBranch: deleteBranchOperation,
+  merge: mergeOperation,
+  rebase: rebaseOperation,
+  cherryPick: cherryPickOperation,
+  revertCommit: revertCommitOperation,
+  reset: resetOperation,
+  fetch: fetchOperation,
+  pull: pullOperation,
+  updateProject: updateProjectOperation,
+  resetToRemote: resetToRemoteOperation,
+  stashCreate: stashCreateOperation,
+  stashApply: stashApplyOperation,
+  stashDrop: stashDropOperation,
 }
 
 /** Everything the handler needs; all session services are lazy and optional. */
@@ -280,14 +327,51 @@ export function createRpcRuntime(deps: RpcDeps): RpcRuntime {
           return await handleCached<PushPreviewValue>(deps, runtime, payload, signal, PUSH_PREVIEW_CACHE_KEY, (root) =>
             readPushPreview(deps.runner, root, { signal }),
           )
-        case 'commitFiles':
-        case 'amendMessage':
-        case 'rollback':
-        case 'addToVcs':
-        case 'push':
-        case 'pullForPush':
-          return await handleWrite<object>(deps, runtime, payload, signal, runtime.operations[endpoint])
+        case 'operationState':
+          return await handleCached<OperationStateValue>(
+            deps,
+            runtime,
+            payload,
+            signal,
+            OPERATION_STATE_CACHE_KEY,
+            (root) => readOperationState(deps.runner, root, { signal }),
+          )
+        case 'conflictCommand': {
+          const sessionId = parseSessionId(payload)
+          return ok<ConflictCommandValue>(conflictCommandFor(await repositoryRoot(deps, sessionId, signal)))
+        }
+        case 'resetPreview': {
+          parseSessionId(payload)
+          const sha = parseFullSha((payload as { sha?: unknown }).sha, 'sha')
+          return await handleCached<ResetPreviewValue>(
+            deps,
+            runtime,
+            payload,
+            signal,
+            `${RESET_PREVIEW_CACHE_PREFIX}:${sha}`,
+            (root) => readResetPreview(deps.runner, root, sha, { signal }),
+          )
+        }
+        case 'stashList':
+          return await handleCached<StashListValue>(deps, runtime, payload, signal, STASH_LIST_CACHE_KEY, (root) =>
+            readStashList(deps.runner, root, { signal }),
+          )
+        case 'stashFiles': {
+          parseSessionId(payload)
+          const sha = parseFullSha((payload as { sha?: unknown }).sha, 'sha')
+          return await handleCached<StashFilesValue>(
+            deps,
+            runtime,
+            payload,
+            signal,
+            `${STASH_FILES_CACHE_PREFIX}:${sha}`,
+            (root) => readStashFiles(deps.runner, root, sha, { signal }),
+          )
+        }
         default:
+          if (isWriteEndpoint(endpoint)) {
+            return await handleWrite<object>(deps, runtime, payload, signal, runtime.operations[endpoint])
+          }
           throw invalidPayload('unknown RPC endpoint', { endpoint })
       }
     } catch (error) {

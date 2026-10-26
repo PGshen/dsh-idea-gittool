@@ -1,0 +1,108 @@
+/* Conflict list overlay page (design §10.2). The frame is PushOverlayFrame's; colors only --dsw-* tokens. */
+.sides {
+  margin: 0;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+}
+
+.note {
+  margin: 0;
+  padding: 6px 8px;
+  border-left: 2px solid var(--dsw-alias-state-warn);
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+}
+
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.groupTitle {
+  margin: 0;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 4px 6px;
+  border-radius: 4px;
+}
+
+.row:hover {
+  background: var(--dsw-alias-bg-layer-1);
+}
+
+.mark {
+  width: 14px;
+  color: var(--dsw-alias-state-error-primary);
+  text-align: center;
+}
+
+.resolvedMark {
+  width: 14px;
+  color: var(--dsw-alias-state-success);
+  text-align: center;
+}
+
+.path {
+  flex: 1 1 160px;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--dsw-alias-label-primary);
+  font-family: var(--dsw-font-mono, monospace);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kind {
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border-left: 2px solid var(--dsw-alias-state-error-primary);
+  background: var(--dsw-alias-bg-layer-1);
+  font-size: 12px;
+}
+
+.confirmActions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.closeHint {
+  flex: 1 1 200px;
+  margin: 0;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+}
+
+.copied {
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+}

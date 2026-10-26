@@ -1,8 +1,8 @@
 /* 操作状态横幅（设计 §7.3），颜色只用 --dsw-* token。 */
 .banner {
   display: flex;
-  align-items: center;
-  gap: 6px;
+  flex-direction: column;
+  gap: 4px;
   min-width: 0;
   padding: 4px 10px;
   border-bottom: 0.5px solid var(--dsw-alias-border-l2);
@@ -46,4 +46,37 @@
 
 .spacer {
   flex: 1;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.step {
+  color: var(--dsw-alias-label-primary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.note {
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  border-left: 2px solid var(--dsw-alias-state-error-primary);
+  background: var(--dsw-alias-bg-base);
+}
+
+.confirmText {
+  flex: 1 1 200px;
+  color: var(--dsw-alias-label-primary);
 }

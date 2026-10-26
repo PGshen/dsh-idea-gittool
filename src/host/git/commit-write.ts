@@ -1,5 +1,6 @@
 // 提交写操作（A2 T2，设计 §8.2.4）：只提交勾选文件、仅改信息 Amend、加入 VCS。
-// - 只提交勾选文件：`commit --only -- <paths>`，其余暂存内容原样保留（AC2）；
+// - 只提交勾选文件：`commit --only`，其余暂存内容原样保留（AC2）；路径经 stdin
+//   （`--pathspec-from-file=- --pathspec-file-nul`）传入，不受 ARG_MAX 限制（A3 T1，TD-9）；
 //   未跟踪路径先 `add -N`，失败时只撤销本次 `add -N` 的路径，索引回到提交前（AC5）。
 // - 勾选路径已无改动或已消失 → `git/paths-changed`（status 是几秒前的快照，Agent 可能已改动）。
 // - hook 失败 → `git/hook-failed`，details 带脱敏、≤4KB 的输出摘要；永不 `--no-verify`。
@@ -15,6 +16,7 @@ import {
   outputSummary,
   parseCommitMessage,
   parseWritePaths,
+  pathspecArgs,
   payloadRecord,
   queryOk,
   readHead,
@@ -102,8 +104,13 @@ async function commitFailure(ctx: WriteContext, result: GitRunResult, paths: rea
   return generic
 }
 
-async function runCommit(ctx: WriteContext, args: readonly string[], paths: readonly string[]): Promise<void> {
-  const result = await ctx.git([...GIT_BASE_ARGV, 'commit', ...args])
+async function runCommit(
+  ctx: WriteContext,
+  args: readonly string[],
+  paths: readonly string[],
+  stdin?: string,
+): Promise<void> {
+  const result = await ctx.git([...GIT_BASE_ARGV, 'commit', ...args], stdin === undefined ? {} : { stdin })
   if (result.exitCode !== 0) throw await commitFailure(ctx, result, paths)
 }
 
@@ -127,17 +134,24 @@ export const commitFilesOperation: WriteOperation<CommitFilesInput, Omit<CommitR
     }
     const untracked = paths.filter((path) => states.get(path)?.x === '?')
 
+    // Paths travel on stdin (A3 T1, TD-9): 2000 long paths exceed ARG_MAX as argv.
+    const untrackedSpec = pathspecArgs(untracked)
     if (untracked.length > 0) {
-      const added = await ctx.git([...GIT_BASE_ARGV, 'add', '--intent-to-add', '--', ...untracked])
+      const added = await ctx.git([...GIT_BASE_ARGV, 'add', '--intent-to-add', ...untrackedSpec.args], {
+        stdin: untrackedSpec.stdin,
+      })
       if (added.exitCode !== 0) throw redactedFailure(added, 'git add --intent-to-add')
     }
     try {
-      const args = ['--only', ...(input.amend ? ['--amend'] : []), '-m', input.message, '--', ...paths]
-      await runCommit(ctx, args, paths)
+      const spec = pathspecArgs(paths)
+      const args = ['--only', ...(input.amend ? ['--amend'] : []), '-m', input.message, ...spec.args]
+      await runCommit(ctx, args, paths, spec.stdin)
     } catch (error) {
       if (untracked.length > 0) {
         // Undo exactly our intent-to-add entries so the index is back to its pre-commit state.
-        await ctx.git([...GIT_BASE_ARGV, 'reset', '-q', '--', ...untracked]).catch(() => undefined)
+        await ctx
+          .git([...GIT_BASE_ARGV, 'reset', '-q', ...untrackedSpec.args], { stdin: untrackedSpec.stdin })
+          .catch(() => undefined)
       }
       throw error
     }
@@ -178,7 +192,8 @@ export const addToVcsOperation: WriteOperation<AddToVcsInput, Omit<AddToVcsValue
     if (notUntracked.length > 0) {
       throw pathsChanged('only untracked files can be added; refresh and retry', notUntracked)
     }
-    const result = await ctx.git([...GIT_BASE_ARGV, 'add', '--', ...input.paths])
+    const spec = pathspecArgs(input.paths)
+    const result = await ctx.git([...GIT_BASE_ARGV, 'add', ...spec.args], { stdin: spec.stdin })
     if (result.exitCode !== 0) {
       if (/pathspec '.*' did not match/i.test(result.stderr)) {
         throw pathsChanged('some selected files no longer exist; refresh and retry', input.paths)

@@ -109,6 +109,25 @@ describe('pushOperation.parse', () => {
   })
 })
 
+describe('pushOperation.parse (TD-10)', () => {
+  const codeOf = (payload: Record<string, unknown>): string => {
+    try {
+      pushOperation.parse({ remote: 'origin', branch: 'main', ...payload })
+    } catch (error) {
+      if (error instanceof GitCommandFailure) return error.code
+      throw error
+    }
+    return 'ok'
+  }
+
+  it('accepts a full sha only together with forceWithLease', () => {
+    expect(codeOf({ forceWithLease: true, expectedRemoteSha: 'b'.repeat(40) })).toBe('ok')
+    expect(codeOf({ forceWithLease: true, expectedRemoteSha: 'abc123' })).toBe('git/invalid-payload')
+    expect(codeOf({ forceWithLease: true, expectedRemoteSha: 'HEAD' })).toBe('git/invalid-payload')
+    expect(codeOf({ expectedRemoteSha: 'b'.repeat(40) })).toBe('git/invalid-payload')
+  })
+})
+
 describe('pushOperation.run (local bare remote)', () => {
   it('pushes HEAD, then reports updated=false when up to date', async () => {
     const remote = setup()
@@ -193,6 +212,43 @@ describe('pushOperation.run (local bare remote)', () => {
     // The rejection fetched the remote tip, so the user has now "seen" it and the lease holds.
     await push(contextFor(remote.local), { remote: 'origin', branch: 'main', forceWithLease: true })
     expect(remoteHead(remote)).toBe(remote.local.git('rev-parse', 'HEAD').trim())
+  })
+
+  it('TD-10: a lease with an expected sha refuses once the remote moved past it, and reports remoteSha', async () => {
+    const remote = setup()
+    const seen = remoteHead(remote)
+    remote.local.write('mine.txt', 'mine\n')
+    remote.local.commit('mine')
+    const theirs = pushFromOther(remote.other, 'theirs.txt', 'theirs\n', 'theirs')
+    // The local tracking ref already knows theirs: a bare lease would pass, the explicit one must not.
+    remote.local.git('fetch', '-q', 'origin')
+
+    const failure = await failureOf(
+      push(contextFor(remote.local), { remote: 'origin', branch: 'main', forceWithLease: true, expectedRemoteSha: seen }),
+    )
+    expect(failure.code).toBe('git/rejected')
+    const details = failure.details as unknown as PushRejectedDetails
+    expect(details.reason).toBe('stale-lease')
+    expect(details.remoteSha).toBe(theirs)
+    expect(remoteHead(remote)).toBe(theirs)
+
+    // Retrying with the sha the rejection reported overwrites exactly that tip.
+    await push(contextFor(remote.local), {
+      remote: 'origin',
+      branch: 'main',
+      forceWithLease: true,
+      expectedRemoteSha: details.remoteSha,
+    })
+    expect(remoteHead(remote)).toBe(remote.local.git('rev-parse', 'HEAD').trim())
+  })
+
+  it('reports remoteSha on a non-fast-forward rejection', async () => {
+    const remote = setup()
+    const theirs = pushFromOther(remote.other, 'theirs.txt', 'x\n', 'their change')
+    remote.local.write('mine.txt', 'y\n')
+    remote.local.commit('my change')
+    const failure = await failureOf(push(contextFor(remote.local), { remote: 'origin', branch: 'main' }))
+    expect((failure.details as unknown as PushRejectedDetails).remoteSha).toBe(theirs)
   })
 
   it('classifies remote hook rejections, including protected branches', async () => {
@@ -282,6 +338,17 @@ describe('pushOperation.run (classification with scripted git output)', () => {
     expect(failure.code).toBe('git/exec-failed')
     expect(failure.message).not.toContain('hunter2')
     expect(JSON.stringify(failure.details)).not.toContain('hunter2')
+  })
+
+  it('TD-10: passes the expected sha as an explicit lease on the full branch ref', async () => {
+    const { ctx, calls } = scriptedContext(
+      (args) => remoteAndRefOk(args) ?? { stdout: '+\tHEAD:refs/heads/main\tforced update\nDone\n' },
+    )
+    const sha = 'a'.repeat(40)
+    await push(ctx, { remote: 'origin', branch: 'main', forceWithLease: true, expectedRemoteSha: sha })
+    const pushArgs = calls.find((args) => args[0] === 'push') ?? []
+    expect(pushArgs).toEqual(['push', '--porcelain', `--force-with-lease=refs/heads/main:${sha}`, '--', 'origin', 'HEAD:refs/heads/main'])
+    expect(pushArgs.some((arg) => arg === '--force' || arg === '-f')).toBe(false)
   })
 
   it('never passes --force or --no-verify', async () => {

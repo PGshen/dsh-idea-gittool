@@ -29,6 +29,49 @@ function makeRunner(): { run: GitRunner; fake: ReturnType<typeof createFakeSubpr
   return { run: createGitRunner(fake), fake }
 }
 
+describe('conflict kinds (A3 T1)', () => {
+  it('maps the seven unmerged XY codes to ConflictKind', () => {
+    const codes: Array<[string, string]> = [
+      ['UU', 'both-modified'],
+      ['AA', 'both-added'],
+      ['DD', 'both-deleted'],
+      ['AU', 'added-by-us'],
+      ['UA', 'added-by-them'],
+      ['DU', 'deleted-by-us'],
+      ['UD', 'deleted-by-them'],
+    ]
+    const raw = codes
+      .map(([xy], index) => `u ${xy} N... 100644 100644 100644 100644 aaa bbb ccc file-${String(index)}.txt`)
+      .join('\0')
+    const status = parseStatusPorcelainV2Z(`${raw}\0`)
+    expect(status.conflicts).toEqual(
+      codes.map(([, kind], index) => ({ path: `file-${String(index)}.txt`, status: 'U', conflict: kind })),
+    )
+  })
+
+  it('reads deleted-by-them and both-added from a real merge', async () => {
+    const repo = makeRepo()
+    repo.write('gone.txt', 'base\n')
+    repo.commit('base')
+    repo.git('checkout', '-q', '-b', 'other')
+    repo.git('rm', '-q', 'gone.txt')
+    repo.write('both.txt', 'other\n')
+    repo.commit('other')
+    repo.git('checkout', '-q', 'main')
+    repo.write('gone.txt', 'main\n')
+    repo.write('both.txt', 'main\n')
+    repo.commit('main')
+    expect(repo.gitResult('merge', 'other').status).not.toBe(0)
+
+    const status = await readStatus(makeRunner().run, repo.root)
+
+    expect(status.conflicts).toEqual([
+      { path: 'both.txt', status: 'U', conflict: 'both-added' },
+      { path: 'gone.txt', status: 'U', conflict: 'deleted-by-them' },
+    ])
+  })
+})
+
 describe('parseStatusPorcelainV2Z', () => {
   it('parses branch headers, staged/unstaged splits, renames, conflicts and untracked', () => {
     const head = 'a'.repeat(40)
@@ -62,7 +105,7 @@ describe('parseStatusPorcelainV2Z', () => {
       'file with space.txt',
     ])
     expect(status.unstaged[0]?.status).toBe('M')
-    expect(status.conflicts).toEqual([{ path: 'conflict.txt', status: 'U' }])
+    expect(status.conflicts).toEqual([{ path: 'conflict.txt', status: 'U', conflict: 'both-modified' }])
     expect(status.untracked).toEqual([{ path: 'untracked dir/file.txt', status: '?' }])
     expect(status.operation).toBeNull()
     expect(status.truncated).toBe(false)
@@ -204,6 +247,7 @@ describe('readStatus', () => {
 
     expect(status.conflicts.map((entry) => entry.path)).toEqual(['conflict.txt'])
     expect(status.conflicts[0]?.status).toBe('U')
+    expect(status.conflicts[0]?.conflict).toBe('both-modified')
     expect(status.operation).toBe('merge')
   })
 

@@ -1,0 +1,129 @@
+/* Forms of the integrate overlay pages (merge / rebase / pull / update project; design §11). The
+   frame (header, back button) is PushOverlayFrame's; sheets use BranchSheets.module.css. */
+.body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+  margin: 0;
+  padding: 12px;
+  overflow: auto;
+}
+
+.field {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+}
+
+.label {
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+}
+
+.control {
+  min-width: 0;
+  height: 26px;
+  padding: 0 6px;
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: 4px;
+  background: var(--dsw-alias-bg-base);
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
+  font-size: 12px;
+}
+
+.control:focus-visible {
+  outline: 1px solid var(--dsw-alias-brand-primary);
+  outline-offset: 1px;
+}
+
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.legend {
+  padding: 0;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.choice {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  cursor: pointer;
+}
+
+.choiceHint {
+  display: block;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+}
+
+.note {
+  margin: 0;
+  padding: 8px;
+  border-left: 2px solid var(--dsw-alias-state-warn);
+  background: var(--dsw-alias-bg-layer-1);
+}
+
+.danger {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border-left: 2px solid var(--dsw-alias-state-error-primary);
+  background: var(--dsw-alias-bg-layer-1);
+}
+
+.muted,
+.hint {
+  margin: 0;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+}
+
+.blockReason {
+  margin: 0;
+  color: var(--dsw-alias-state-error-primary);
+  font-size: 12px;
+}
+
+.error {
+  margin: 0;
+  color: var(--dsw-alias-state-error-primary);
+  font-size: 12px;
+}
+
+.check {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  cursor: pointer;
+}
+
+.footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+  margin-top: auto;
+  padding-top: 8px;
+  border-top: 0.5px solid var(--dsw-alias-border-l2);
+}
+
+.actions {
+  display: flex;
+  gap: 16px;
+}

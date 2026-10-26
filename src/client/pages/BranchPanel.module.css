@@ -285,3 +285,26 @@
   margin: 4px 0;
   background: var(--dsw-alias-border-l2);
 }
+
+.menuItem {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.menuItem[data-danger] {
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.menuItemDisabled {
+  color: var(--dsw-alias-label-tertiary);
+  cursor: not-allowed;
+}
+
+.menuItemDisabled:hover {
+  background: transparent;
+}
+
+.menuReason {
+  font-size: 11px;
+}

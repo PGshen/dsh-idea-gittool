@@ -1,13 +1,17 @@
 // T5a：Host 侧刷新模块的单测。覆盖 .git watch 目标计算、250ms 防抖合并、
 // watch 降级，以及每仓库单调 version 的缓存（cache.ts 的测试也放在本文件，
 // 避免占用计划之外的写作用域）。
+import { mkdirSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { createRepoCache } from '../../src/host/cache.ts'
+import { createTempRepo } from './fixtures.ts'
+import type { TempRepo } from './fixtures.ts'
 import {
   DEFAULT_DEBOUNCE_MS,
+  NESTED_REF_DIRS_MAX,
   fsWatchFromService,
   gitWatchTargets,
   watchRepo,
@@ -411,5 +415,125 @@ describe('fsWatchFromService（ctx.fs 适配）', () => {
     const watch = fsWatchFromService(service, new AbortController().signal)
 
     await expect(watch('/repo/.git/HEAD', () => {})).rejects.toThrow('not supported')
+  })
+})
+
+describe('嵌套 refs 目录监听（A3 T1，TD-5）', () => {
+  const repos: TempRepo[] = []
+  afterEach(() => {
+    while (repos.length > 0) repos.pop()?.cleanup()
+  })
+
+  function makeRepo(): TempRepo {
+    const repo = createTempRepo()
+    repos.push(repo)
+    return repo
+  }
+
+  const refsDir = (repo: TempRepo, ...parts: string[]): string => join(repo.root, '.git', 'refs', ...parts)
+
+  async function until(check: () => boolean): Promise<void> {
+    for (let attempt = 0; attempt < 200; attempt += 1) {
+      if (check()) return
+      await new Promise((resolve) => setTimeout(resolve, 10))
+    }
+    throw new Error('condition not reached')
+  }
+
+  it('启动时给 refs/heads、refs/remotes、refs/tags 下的每个子目录挂监听', async () => {
+    const repo = makeRepo()
+    repo.git('branch', 'feature/x')
+    repo.git('branch', 'team/a/b')
+    repo.git('update-ref', 'refs/remotes/origin/feature/x', 'HEAD')
+    repo.git('tag', 'rel/v1')
+    const fake = createFakeWatch()
+
+    const watch = watchRepo({ root: repo.root, onChange: () => undefined, fsWatch: fake.fsWatch })
+    await watch.ready
+
+    expect(fake.subscribed).toEqual(
+      expect.arrayContaining([
+        refsDir(repo, 'heads', 'feature'),
+        refsDir(repo, 'heads', 'team'),
+        refsDir(repo, 'heads', 'team', 'a'),
+        refsDir(repo, 'remotes', 'origin'),
+        refsDir(repo, 'remotes', 'origin', 'feature'),
+        refsDir(repo, 'tags', 'rel'),
+      ]),
+    )
+    expect(watch.degraded).toBe(false)
+    await watch.close()
+  })
+
+  it('嵌套分支更新、新建与删除都递增 version，并补挂/释放监听', async () => {
+    const repo = makeRepo()
+    repo.git('update-ref', 'refs/remotes/origin/feature/x', 'HEAD')
+    const fake = createFakeWatch()
+    const cache = createRepoCache()
+    const watch = watchRepo({
+      root: repo.root,
+      debounceMs: 5,
+      onChange: () => {
+        cache.bumpVersion(repo.root)
+      },
+      fsWatch: fake.fsWatch,
+    })
+    await watch.ready
+
+    // fetch updates refs/remotes/origin/feature/x: only the nested directory sees it.
+    repo.git('update-ref', 'refs/remotes/origin/feature/x', 'HEAD')
+    fake.fire(refsDir(repo, 'remotes', 'origin', 'feature'))
+    await until(() => cache.versionOf(repo.root) === 1)
+
+    // New nested branch: refs/heads sees the new directory, the rescan adopts it.
+    repo.git('branch', 'feature/y')
+    fake.fire(refsDir(repo, 'heads'))
+    await until(() => cache.versionOf(repo.root) === 2)
+    await until(() => fake.subscribed.includes(refsDir(repo, 'heads', 'feature')))
+    fake.fire(refsDir(repo, 'heads', 'feature'))
+    await until(() => cache.versionOf(repo.root) === 3)
+
+    // Deleting the last branch removes the directory: its watch is released.
+    repo.git('branch', '-D', 'feature/y')
+    rmSync(refsDir(repo, 'heads', 'feature'), { recursive: true, force: true })
+    fake.fire(refsDir(repo, 'heads'))
+    await until(() => cache.versionOf(repo.root) === 4)
+    await until(() => fake.closed.includes(refsDir(repo, 'heads', 'feature')))
+    expect(watch.degraded).toBe(false)
+    await watch.close()
+  })
+
+  it(`超过 ${String(NESTED_REF_DIRS_MAX)} 个子目录时记 watch-limit 并降级`, async () => {
+    const repo = makeRepo()
+    for (let index = 0; index <= NESTED_REF_DIRS_MAX; index += 1) {
+      mkdirSync(refsDir(repo, 'heads', `group-${String(index)}`), { recursive: true })
+    }
+    const fake = createFakeWatch()
+    const failures: WatchFailure[][] = []
+
+    const watch = watchRepo({
+      root: repo.root,
+      onChange: () => undefined,
+      fsWatch: fake.fsWatch,
+      onDegraded: (list) => failures.push([...list]),
+    })
+    await watch.ready
+
+    const nested = fake.subscribed.filter((target) => target.startsWith(`${refsDir(repo, 'heads')}/`))
+    expect(nested).toHaveLength(NESTED_REF_DIRS_MAX)
+    expect(watch.degraded).toBe(true)
+    expect(watch.failures.map((failure) => failure.code)).toEqual(['watch-limit'])
+    expect(failures).toHaveLength(1)
+    await watch.close()
+  })
+
+  it('仓库没有 refs/remotes 目录时不降级', async () => {
+    const repo = makeRepo()
+    const fake = createFakeWatch()
+    const watch = watchRepo({ root: repo.root, onChange: () => undefined, fsWatch: fake.fsWatch })
+    await watch.ready
+    expect(watch.degraded).toBe(false)
+    expect(watch.failures).toEqual([])
+    await watch.close()
   })
 })

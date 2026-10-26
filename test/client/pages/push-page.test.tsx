@@ -17,6 +17,7 @@ import {
   PushPageView,
 } from '../../../src/client/pages/PushPage.tsx'
 import type { PushPageViewProps } from '../../../src/client/pages/PushPage.tsx'
+import { shouldAutoSubmit } from '../../../src/client/pages/PushPage.tsx'
 import {
   PushRejectedView,
   WriteErrorNotice,
@@ -403,5 +404,16 @@ describe('PushPage container (first render)', () => {
     )
     expect(html).toContain(zh['rejected.reason.fetch-first'])
     expect(client.pullForPush).not.toHaveBeenCalled()
+  })
+})
+
+describe('shouldAutoSubmit（评审 I3/I4：提交并推送在 Push 页内执行）', () => {
+  const ready = { view: 'push', previewStatus: 'ready' } as const
+  it('submits once when asked, after the preview is ready, on the push view', () => {
+    expect(shouldAutoSubmit(true, false, ready)).toBe(true)
+    expect(shouldAutoSubmit(true, true, ready)).toBe(false)
+    expect(shouldAutoSubmit(false, false, ready)).toBe(false)
+    expect(shouldAutoSubmit(true, false, { view: 'push', previewStatus: 'loading' })).toBe(false)
+    expect(shouldAutoSubmit(true, false, { view: 'rejected', previewStatus: 'ready' })).toBe(false)
   })
 })

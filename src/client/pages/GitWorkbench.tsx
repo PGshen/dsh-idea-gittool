@@ -11,7 +11,6 @@ import type {
   CommitSummary,
   DiffRequest,
   FileEntry,
-  PushRejectedDetails,
   RefEntry,
   StatusValue,
 } from '../../shared/protocol.ts'
@@ -21,7 +20,6 @@ import type { GitClient } from '../git-client.ts'
 import { newRequestId } from '../git-client.ts'
 import { createChangesStore, uncommittedCount, useChangesState } from '../store/changes-store.ts'
 import { createCommitStore, useCommitState } from '../store/commit-store.ts'
-import { parseRejectedDetails, splitUpstream } from '../store/push-store.ts'
 import type { RollbackTarget } from '../store/push-store.ts'
 import type { DiffOpenScope } from './ChangesTree.tsx'
 import { CommitPanel } from './CommitPanel.tsx'
@@ -65,9 +63,22 @@ interface OpenDiff {
   source: DiffSourcePart[]
 }
 
-/** Push 覆盖页的打开方式：普通打开，或直接停在 Push Rejected（提交并推送被拒）。 */
+/** Push 覆盖页的打开方式：普通打开，或打开后立即推送（提交并推送）。 */
 interface OpenPush {
-  initialRejection?: PushRejectedDetails
+  autoSubmit?: boolean
+}
+
+/**
+ * 「提交并推送」能否直接推（评审 I3）：只在 upstream 是同名远程分支时。
+ * `git switch -c fix origin/main` 让 fix 的 upstream 指向 main，此时要打开 Push 页让用户选目标，
+ * 与 git 默认的 `push.default=simple` 一致。
+ */
+export function directPushAllowed(status: StatusValue | null): boolean {
+  if (status === null || status.detached || status.branch === null || status.upstream === null) return false
+  const suffix = `/${status.branch}`
+  if (!status.upstream.endsWith(suffix)) return false
+  const remote = status.upstream.slice(0, -suffix.length)
+  return remote !== '' && !remote.includes('/')
 }
 
 /** 提交页打开工作区/暂存区 diff 时，Diff 覆盖层可切换的同组文件。 */
@@ -316,27 +327,10 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
     void Promise.all([onRefresh(), logStore.refresh()]).then(() => { logStore.jumpTo(result.sha) })
   }, [logStore, onRefresh])
 
-  /** 提交并推送：有 upstream 直接推送；被拒停在 Push Rejected，其它失败打开 Push 页由用户处理。 */
-  const pushAfterCommit = useCallback(async (openPushPage: boolean): Promise<void> => {
-    const upstream = status?.upstream ?? null
-    if (openPushPage || upstream === null) {
-      openPush({})
-      return
-    }
-    const preview = await client.pushPreview(sessionId)
-    const target = preview.ok ? splitUpstream(upstream, preview.value.remotes) : null
-    if (target === null) {
-      openPush({})
-      return
-    }
-    const result = await client.push({ sessionId, requestId: newRequestId(), ...target })
-    if (result.ok) {
-      void onRefresh()
-      return
-    }
-    if (result.error.code === 'git/rejected') openPush({ initialRejection: parseRejectedDetails(result.error, target) })
-    else openPush({})
-  }, [client, onRefresh, openPush, sessionId, status?.upstream])
+  /** 提交并推送：在 Push 页里执行（进度、认证命令、错误、被拒都在那里呈现）；非同名 upstream 时只打开不自动推。 */
+  const pushAfterCommit = useCallback((openPushPage: boolean): void => {
+    openPush(!openPushPage && directPushAllowed(status) ? { autoSubmit: true } : {})
+  }, [openPush, status])
 
   const addToVcs = useCallback(async (paths: string[]): Promise<void> => {
     const result = await client.addToVcs({ sessionId, requestId: newRequestId(), paths })
@@ -437,7 +431,7 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
             onAddToVcs={paths => { void addToVcs(paths) }}
             onCopyPath={path => { void globalThis.navigator?.clipboard?.writeText(path) }}
             onCommitted={onCommitted}
-            onPushAfterCommit={(_result, options) => { void pushAfterCommit(options.openPushPage) }}
+            onPushAfterCommit={(_result, options) => { pushAfterCommit(options.openPushPage) }}
             onShowConsole={() => { setConsoleOpen(true) }}
             onRefresh={() => { void onRefresh() }}
           />
@@ -463,7 +457,7 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
             repoRoot={value.repoRoot}
             client={client}
             readOnlyReason={readOnlyReason}
-            {...(push.initialRejection === undefined ? {} : { initialRejection: push.initialRejection })}
+            {...(push.autoSubmit === true ? { autoSubmit: true } : {})}
             onClose={() => { setPush(null) }}
             onPushed={() => { void onRefresh() }}
             onConflict={() => {

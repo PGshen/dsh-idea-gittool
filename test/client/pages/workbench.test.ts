@@ -1,6 +1,6 @@
 // A1 工作台接线：日志选择 → 详情动作、Diff 文件列表展开。
 import { describe, expect, it } from 'vitest'
-import { changeFilesFor, commitFeedbackIsStale, detailActionFor, diffFilesOf, logRefreshKey, rollbackTargetsFor } from '../../../src/client/pages/GitWorkbench.tsx'
+import { changeFilesFor, commitFeedbackIsStale, directPushAllowed, detailActionFor, diffFilesOf, logRefreshKey, rollbackTargetsFor } from '../../../src/client/pages/GitWorkbench.tsx'
 import type { CommitDetailValue, CommitSummary, StatusValue } from '../../../src/shared/protocol.ts'
 
 function summary(sha: string): CommitSummary {
@@ -112,5 +112,21 @@ describe('commitFeedbackIsStale（A2 走查问题 3）', () => {
     expect(commitFeedbackIsStale('ed51451aaa', 'ed51451aaa')).toBe(false)
     expect(commitFeedbackIsStale(null, '426a6a2bbb')).toBe(false)
     expect(commitFeedbackIsStale('ed51451aaa', null)).toBe(false)
+  })
+})
+
+describe('directPushAllowed（评审 I3）', () => {
+  const base = status()
+  it('只有 upstream 分支名与本地分支同名时才直接推送', () => {
+    expect(directPushAllowed({ ...base, branch: 'main', upstream: 'origin/main' })).toBe(true)
+    expect(directPushAllowed({ ...base, branch: 'fix', upstream: 'origin/main' })).toBe(false)
+    expect(directPushAllowed({ ...base, branch: 'feature/x', upstream: 'origin/feature/x' })).toBe(true)
+    expect(directPushAllowed({ ...base, branch: 'x', upstream: 'origin/feature/x' })).toBe(false)
+  })
+
+  it('无 upstream、detached 或无状态时打开 Push 页', () => {
+    expect(directPushAllowed({ ...base, upstream: null })).toBe(false)
+    expect(directPushAllowed({ ...base, detached: true, branch: null, upstream: 'origin/main' })).toBe(false)
+    expect(directPushAllowed(null)).toBe(false)
   })
 })

@@ -224,6 +224,8 @@ export interface PushPageProps {
   newRequestId?: () => string
   /** Inject a prepared store (tests). */
   store?: PushStore
+  /** Push immediately once the preview is ready ("commit and push" to the same-named upstream). */
+  autoSubmit?: boolean
 }
 
 /** Apply the side effects of a finished action: success / conflict leave the overlay. */
@@ -238,6 +240,18 @@ export function handlePushOutcome(
     callbacks.onConflict(outcome.error)
     callbacks.onClose()
   }
+}
+
+/**
+ * "Commit and push" opens this page with `autoSubmit` (评审 I3/I4): the push runs once, as soon
+ * as the preview is ready, so progress, auth commands, errors and rejections all show here.
+ */
+export function shouldAutoSubmit(
+  autoSubmit: boolean,
+  alreadySubmitted: boolean,
+  state: Pick<PushState, 'view' | 'previewStatus'>,
+): boolean {
+  return autoSubmit && !alreadySubmitted && state.view === 'push' && state.previewStatus === 'ready'
 }
 
 /** Esc dispatcher shared by both views: back one level, close, or ignore while busy. */
@@ -305,6 +319,12 @@ export function PushPage(props: PushPageProps): ReactNode {
       onClose: close,
     })
   }
+  const autoSubmitted = useRef(false)
+  useEffect(() => {
+    if (!shouldAutoSubmit(props.autoSubmit === true, autoSubmitted.current, state)) return
+    autoSubmitted.current = true
+    void store.submit().then(finish)
+  })
   const back = (): void => {
     store.backToPush()
     if (store.getState().previewStatus === 'idle') void store.load()

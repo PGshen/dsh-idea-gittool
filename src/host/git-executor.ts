@@ -355,6 +355,11 @@ export interface WriteOperation<I, V extends object> {
   run(ctx: WriteContext, input: I): Promise<V>
 }
 
+/** Thrown by endpoints registered ahead of their implementation (B1 T1 registers T2/T3's endpoints). */
+export function notImplemented(endpoint: string): GitCommandFailure {
+  return new GitCommandFailure('git/exec-failed', 'not implemented', { endpoint })
+}
+
 /** Bind a runner to one repository, confinement and request signal. */
 export function bindWriteContext(
   run: GitRunner,

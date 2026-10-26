@@ -20,6 +20,7 @@ SDK 和组件库更新很快，AI 的训练知识可能已经过时。本目录�
 | 文件 | 内容 | 状态 |
 |---|---|---|
 | [DSH 集成可行性调研](dsh-integration-feasibility.md) | 独立双面 bundle、`__ModuleLoader__` 产物、通用 RPC、`ctx.subprocess` + 沙箱、安装/热更、文档预览扩展点 | ✅ 已按 DSH `0.2.1-rc.2` 源码核实，并在 §13 记录 M0/A1 实测（构建、挂载、RPC、watch、HMR，2026-10-25） |
+| [Git 行为实测](git-behavior.md) | resolve-undo、`checkout -m` 还原冲突解决（合并/变基/拣选、删除类冲突）、经索引写回（`hash-object --path` → `update-index --cacheinfo` → `checkout-index -f`，autocrlf、执行位、confine 拒绝） | ✅ git 2.50.1 本机 + Seatbelt 等价复现（B1 T1，2026-10-26） |
 | [参考项目功能清单](reference-feature-inventory.md) | IdeaGitTool v0.4.2 的功能、UI 结构、可移植纯逻辑层与 VS Code 强绑定部分 | ✅ 已按参考仓库 `v0.4.2` 源码核实（2026-10-25）；移植可行性待 M0 后逐项确认 |
 | [assets/reference-ideagittool-log.jpg](assets/reference-ideagittool-log.jpg) | 参考项目日志页截图（产品设计 §8.1 引用） | 截图证据，无版本标记 |
 
@@ -39,4 +40,10 @@ A2 新增（T1 spike 已用等价 Seatbelt profile 复现，见 §13「写执行
 
 - [x] 经 3081 Host 的 `sandbox.confine` 端到端执行 commit/push（2026-10-26，见 A2 计划验证记录）
 
-升级 DSH 后重跑 §13 清单。
+B1 新增（T1 源码查证，浏览器实测在 B1 T6，见 [可行性调研 §14](dsh-integration-feasibility.md)）：
+
+- [x] DSH web 主页面无 CSP，CodeMirror（style-mod）运行时 `<style>` 不受阻（源码）
+- [ ] CodeMirror 6 在右侧栏 tab 内挂载、HMR 后不重复挂载（T6 实机）
+- [ ] `useTabInfo().sidebar.fullscreen` 能及时反映 `toggleFullscreen` 结果（T6 实机）
+
+升级 DSH 后重跑 §13、§14 清单；升级 git 后重跑 `.evidence/b1/spike.mjs`（[git-behavior.md](git-behavior.md)）。

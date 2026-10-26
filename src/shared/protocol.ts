@@ -5,8 +5,8 @@
 export const RPC_CHANNEL = '/dsh-git'
 
 /**
- * 全部端点。A1 读端点；A2 写端点与推送预览；A3 端点在 T1 一次登记（契约冻结），
- * 未实现的先返回 `git/exec-failed`（`not implemented`），由 T2–T5 逐个替换。
+ * 全部端点。A1 读端点；A2 写端点与推送预览；A3 端点在 T1 一次登记（契约冻结）；
+ * B1 合并端点在 B1 T1 登记。未实现的先返回 `git/exec-failed`（`not implemented`），由后续任务逐个替换。
  * 每个端点的请求/响应类型见文末 {@link RpcEndpointTypes}。
  */
 export const RPC_ENDPOINTS = [
@@ -55,12 +55,17 @@ export const RPC_ENDPOINTS = [
   'stashCreate',
   'stashApply',
   'stashDrop',
+  // B1 三栏合并（T1 登记；T2 读、T3 写）
+  'mergeFile',
+  'mergeDraftSave',
+  'mergeApply',
+  'unresolveConflict',
 ] as const
 
 export type RpcEndpoint = (typeof RPC_ENDPOINTS)[number]
 
 /**
- * 写端点（A2 + A3）：都要求 `requestId`，经每仓库写队列与写门禁执行，只读模式下拒绝。
+ * 写端点（A2 + A3 + B1）：都要求 `requestId`，经每仓库写队列与写门禁执行，只读模式下拒绝。
  * 客户端用 {@link WriteEndpoint} 约束写动作入口（A3 T6 `actions.run`）。
  */
 export const WRITE_ENDPOINTS = [
@@ -89,6 +94,9 @@ export const WRITE_ENDPOINTS = [
   'stashCreate',
   'stashApply',
   'stashDrop',
+  'mergeDraftSave',
+  'mergeApply',
+  'unresolveConflict',
 ] as const satisfies readonly RpcEndpoint[]
 
 export type WriteEndpoint = (typeof WRITE_ENDPOINTS)[number]
@@ -1102,6 +1110,114 @@ export interface StashDropValue {
   version?: number
 }
 
+// --- 三栏合并（B1） ---------------------------------------------------------------
+
+/**
+ * 一个冲突文件的三方 blob sha（索引 stage 1/2/3；已解决路径取自 resolve-undo）。
+ * 某一侧不存在（删除类冲突、双方新增没有 base）时为 null。
+ */
+export interface MergeStageShas {
+  base: string | null
+  ours: string | null
+  theirs: string | null
+}
+
+/** 合并块的状态（与客户端合并模型的状态机一一对应）。 */
+export const MERGE_CHUNK_STATES = [
+  'pending',
+  'left',
+  'right',
+  'both-left-first',
+  'both-right-first',
+  'ignored',
+  'edited',
+] as const
+
+export type MergeChunkState = (typeof MERGE_CHUNK_STATES)[number]
+
+/** {@link MergeDraft.version} 的当前取值；格式变化时递增，旧草稿按作废处理。 */
+export const MERGE_DRAFT_VERSION = 1
+
+/**
+ * 「保存并关闭」的半成品（Host 存为 `refs/worktree/dsh-git/merge-draft/<sha1(path)>` → JSON blob，ADR 0008）。
+ * `stages` 与当前索引三方不符时作废（`MergeFileValue.draftStale`）。
+ */
+export interface MergeDraft {
+  version: typeof MERGE_DRAFT_VERSION
+  stages: MergeStageShas
+  result: string
+  /** 与 diff3 分块一一对应（按块序号），加载时块数不一致即作废。 */
+  chunks: Array<{ state: MergeChunkState; leftDone: boolean; rightDone: boolean }>
+  /** ISO 8601 时间。 */
+  savedAt: string
+}
+
+/** 三方中的一侧。`text` 为 null 表示二进制或超过上限（窗口降级为二选一）。 */
+export interface MergeSide {
+  blob: string
+  text: string | null
+  binary: boolean
+  /** blob 字节数。 */
+  size: number
+}
+
+/** `mergeFile`（读）：路径必须是未解决冲突，或本次操作中已解决（三方来自 resolve-undo）。 */
+export interface MergeFileRequest extends RpcRequest {
+  path: string
+}
+
+export interface MergeFileValue {
+  path: string
+  kind: ConflictKind
+  base: MergeSide | null
+  ours: MergeSide | null
+  theirs: MergeSide | null
+  /** 任一侧超过大小/行数上限。 */
+  tooLarge: boolean
+  /** 工作区文件的 `hash-object`（经 clean filter）；文件不存在为 null。`mergeApply` 据此判断加载后是否被改。 */
+  worktreeSha: string | null
+  draft: MergeDraft | null
+  /** 存在草稿但 `stages` 与当前三方不符（已作废，`draft` 为 null）。 */
+  draftStale: boolean
+  /** 已解决路径：三方来自 resolve-undo。 */
+  resolved: boolean
+  version?: number
+}
+
+/** `mergeDraftSave`：`draft.stages` 与当前索引不符 → `git/stale-target`（target `conflict`）。 */
+export interface MergeDraftSaveRequest extends WriteRequest {
+  path: string
+  draft: MergeDraft
+}
+
+export interface MergeDraftSaveValue {
+  path: string
+  version?: number
+}
+
+/**
+ * `mergeApply`：把 Result 写回并标记已解决（经索引：`hash-object -w --stdin --path` →
+ * `update-index --cacheinfo` → `checkout-index -f`）。三方或工作区哈希不符 → `git/stale-target`；
+ * 成功后删除该路径草稿。响应同 {@link ResolveConflictValue}。
+ */
+export interface MergeApplyRequest extends WriteRequest {
+  path: string
+  result: string
+  stages: MergeStageShas
+  expectedWorktreeSha: string | null
+}
+
+/**
+ * `unresolveConflict`：`git checkout -m -- <path>` 还原冲突解决。路径不在已解决列表 → `git/stale-target`；
+ * 没有 resolve-undo 信息 → `git/exec-failed`（提示在终端处理）。草稿保留。
+ */
+export interface UnresolveConflictRequest extends WriteRequest {
+  path: string
+}
+
+/** 与 {@link ResolveConflictValue} 同形：`remaining` 是执行后剩余的未解决冲突数。 */
+export type UnresolveConflictValue = ResolveConflictValue
+
 // --- 端点 → 请求/响应 ---------------------------------------------------------
 
 /**
@@ -1148,6 +1264,10 @@ export interface RpcEndpointTypes {
   stashCreate: { request: StashCreateRequest; value: StashCreateValue }
   stashApply: { request: StashApplyRequest; value: StashApplyValue }
   stashDrop: { request: StashDropRequest; value: StashDropValue }
+  mergeFile: { request: MergeFileRequest; value: MergeFileValue }
+  mergeDraftSave: { request: MergeDraftSaveRequest; value: MergeDraftSaveValue }
+  mergeApply: { request: MergeApplyRequest; value: ResolveConflictValue }
+  unresolveConflict: { request: UnresolveConflictRequest; value: UnresolveConflictValue }
 }
 
 /** 编译期检查：{@link RpcEndpointTypes} 恰好覆盖 {@link RpcEndpoint}，写端点请求都带 requestId。 */

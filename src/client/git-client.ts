@@ -19,6 +19,8 @@ import type {
   GitError,
   LogRequest,
   LogValue,
+  MergeFileRequest,
+  MergeFileValue,
   OperationStateValue,
   PullForPushRequest,
   PullForPushValue,
@@ -91,6 +93,11 @@ export interface GitClient {
   stashCreate: WriteMethod<'stashCreate'>
   stashApply: WriteMethod<'stashApply'>
   stashDrop: WriteMethod<'stashDrop'>
+  // B1 three-way merge: the read feeds the merge window; writes go through the action store.
+  mergeFile(request: MergeFileRequest, signal?: AbortSignal): Promise<RpcResult<MergeFileValue>>
+  mergeDraftSave: WriteMethod<'mergeDraftSave'>
+  mergeApply: WriteMethod<'mergeApply'>
+  unresolveConflict: WriteMethod<'unresolveConflict'>
 }
 
 /** Compile-time check: GitClient covers every write endpoint with the protocol's types. */
@@ -177,5 +184,9 @@ export function createGitClient(_ctx: unknown): GitClient {
     stashCreate: write('stashCreate'),
     stashApply: write('stashApply'),
     stashDrop: write('stashDrop'),
+    mergeFile: (request, signal) => call<MergeFileValue>('mergeFile', request, signal),
+    mergeDraftSave: write('mergeDraftSave'),
+    mergeApply: write('mergeApply'),
+    unresolveConflict: write('unresolveConflict'),
   }
 }

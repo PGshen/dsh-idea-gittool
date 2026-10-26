@@ -517,6 +517,32 @@ describe('createRpcHandler / A1 read endpoints', () => {
   })
 })
 
+/** B1 endpoints registered by T1 ahead of their implementation; T2 (mergeFile) and T3 (writes) empty this list. */
+const B1_PENDING = ['mergeFile', 'mergeDraftSave', 'mergeApply', 'unresolveConflict'] as const
+
+describe('endpoint registry (B1 T1)', () => {
+  it('registers every B1 endpoint and answers git/exec-failed "not implemented" until it lands', async () => {
+    const { handler } = makeHandler()
+    expect(RPC_ENDPOINTS).toEqual(expect.arrayContaining([...B1_PENDING]))
+    for (const endpoint of B1_PENDING) {
+      const error = errorOf(await handler(endpoint, { sessionId: 'session-1', requestId: 'r-1', path: 'a.txt' }, SIGNAL))
+      expect({ endpoint, code: error.code, message: error.message }).toEqual({
+        endpoint,
+        code: 'git/exec-failed',
+        message: 'not implemented',
+      })
+    }
+  })
+
+  it('B1 write endpoints still require a requestId before anything else', async () => {
+    const { handler } = makeHandler()
+    for (const endpoint of ['mergeDraftSave', 'mergeApply', 'unresolveConflict']) {
+      const error = errorOf(await handler(endpoint, { sessionId: 'session-1', path: 'a.txt' }, SIGNAL))
+      expect({ endpoint, code: error.code }).toEqual({ endpoint, code: 'git/invalid-payload' })
+    }
+  })
+})
+
 describe('endpoint registry (A3 T1)', () => {
   it('routes every registered endpoint (none answers "unknown RPC endpoint")', async () => {
     const { handler } = makeHandler()
@@ -527,9 +553,10 @@ describe('endpoint registry (A3 T1)', () => {
     expect(errorOf(await handler('nope', { sessionId: 'session-1' }, SIGNAL)).message).toBe('unknown RPC endpoint')
   })
 
-  it('implements every registered endpoint (none answers "not implemented")', async () => {
+  it('implements every registered endpoint (none answers "not implemented") except B1 pending ones', async () => {
     const { handler } = makeHandler()
     for (const endpoint of RPC_ENDPOINTS) {
+      if ((B1_PENDING as readonly string[]).includes(endpoint)) continue
       const result = await handler(endpoint, { sessionId: 'session-1', requestId: 'r-1' }, SIGNAL)
       if (!result.ok) expect(result.error.message, endpoint).not.toBe('not implemented')
     }

@@ -4,7 +4,7 @@
 //
 // CSS Modules（ADR 0005）：esbuild 的 local-css 处理 *.module.css，样式文本在构建期
 // 收集并内联进单个 client.js；factory 执行时注入/更新一个 <style data-plugin-css>（HMR 重跑会替换内容）。
-import { readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
 import { build, context } from 'esbuild'
 
 const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8'))
@@ -41,6 +41,8 @@ const emitClientBundle = {
       const css = files.find(file => file.path.endsWith('.css'))?.text ?? ''
       // 函数形式的替换值：CSS 里出现 `$&`、`$'` 等时不会被当成替换模式（评审 M3）。
       const text = js.text.replace(JSON.stringify(CSS_TOKEN), () => JSON.stringify(css))
+      // write: false skips esbuild's own mkdir; a fresh checkout (or worktree) has no lib/ yet.
+      mkdirSync('lib', { recursive: true })
       writeFileSync('lib/client.js', text)
       if (css.length > 0) writeFileSync('lib/client.css', css)
       else rmSync('lib/client.css', { force: true })

@@ -35,3 +35,26 @@ describe('createGitClient', () => {
     expect(fetch).toHaveBeenLastCalledWith('dsh-git/stashDrop', expect.anything())
   })
 })
+
+describe('createGitClient / B1 merge endpoints', () => {
+  it('posts mergeFile and the three merge writes to their endpoint paths', async () => {
+    const fetch = vi.fn(async () => new Response(JSON.stringify({ ok: true, value: { path: 'a.txt' } })))
+    vi.stubGlobal('fetch', fetch)
+    const client = createGitClient(undefined)
+    const stages = { base: null, ours: 'o'.repeat(40), theirs: 't'.repeat(40) }
+
+    await client.mergeFile({ sessionId: 's', path: 'a.txt' })
+    expect(fetch).toHaveBeenLastCalledWith('dsh-git/mergeFile', expect.objectContaining({
+      body: JSON.stringify({ sessionId: 's', path: 'a.txt' }),
+    }))
+    const draft = { version: 1 as const, stages, result: 'x\n', chunks: [{ state: 'pending' as const, leftDone: false, rightDone: false }], savedAt: '2026-10-26T00:00:00.000Z' }
+    await client.mergeDraftSave({ sessionId: 's', requestId: 'r', path: 'a.txt', draft })
+    expect(fetch).toHaveBeenLastCalledWith('dsh-git/mergeDraftSave', expect.objectContaining({
+      body: JSON.stringify({ sessionId: 's', requestId: 'r', path: 'a.txt', draft }),
+    }))
+    await client.mergeApply({ sessionId: 's', requestId: 'r', path: 'a.txt', result: 'x\n', stages, expectedWorktreeSha: null })
+    expect(fetch).toHaveBeenLastCalledWith('dsh-git/mergeApply', expect.anything())
+    await client.unresolveConflict({ sessionId: 's', requestId: 'r', path: 'a.txt' })
+    expect(fetch).toHaveBeenLastCalledWith('dsh-git/unresolveConflict', expect.anything())
+  })
+})

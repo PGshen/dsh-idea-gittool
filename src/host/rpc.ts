@@ -40,7 +40,7 @@ import { watchRepo } from './watch.ts'
 import { isAbsolute, resolve as resolvePath } from 'node:path'
 
 import type { GitRunner, WriteOperation } from './git-executor.ts'
-import { GIT_BASE_ARGV, GitCommandFailure, bindWriteContext, messageOf } from './git-executor.ts'
+import { GIT_BASE_ARGV, GitCommandFailure, bindWriteContext, messageOf, notImplemented } from './git-executor.ts'
 import {
   checkoutOperation,
   createBranchOperation,
@@ -105,8 +105,23 @@ const MAX_REQUEST_ID_LENGTH = 100
 /** A write endpoint's response without the version the RPC layer stamps on it. */
 export type WriteValue<E extends WriteEndpoint> = Omit<RpcEndpointTypes[E]['value'], 'version'>
 
-/** Write endpoints (A2 + A3) → their operations; tests override single entries. */
+/** Write endpoints (A2 + A3 + B1) → their operations; tests override single entries. */
 export type WriteOperations = { [E in WriteEndpoint]: WriteOperation<unknown, WriteValue<E>> }
+
+/**
+ * Placeholder for a write endpoint registered ahead of its implementation (B1 T1):
+ * refuses at parse time (after sessionId/requestId, before the queue and gate), so nothing runs.
+ */
+function pendingOperation<E extends WriteEndpoint>(endpoint: E): WriteOperation<unknown, WriteValue<E>> {
+  return {
+    parse() {
+      throw notImplemented(endpoint)
+    },
+    run() {
+      return Promise.reject(notImplemented(endpoint))
+    },
+  }
+}
 
 const DEFAULT_WRITE_OPERATIONS: WriteOperations = {
   commitFiles: commitFilesOperation,
@@ -134,6 +149,10 @@ const DEFAULT_WRITE_OPERATIONS: WriteOperations = {
   stashCreate: stashCreateOperation,
   stashApply: stashApplyOperation,
   stashDrop: stashDropOperation,
+  // B1: replaced by T3.
+  mergeDraftSave: pendingOperation('mergeDraftSave'),
+  mergeApply: pendingOperation('mergeApply'),
+  unresolveConflict: pendingOperation('unresolveConflict'),
 }
 
 /** Everything the handler needs; all session services are lazy and optional. */
@@ -368,6 +387,10 @@ export function createRpcRuntime(deps: RpcDeps): RpcRuntime {
             (root) => readStashFiles(deps.runner, root, sha, { signal }),
           )
         }
+        // B1 read endpoint registered in T1; T2 replaces this case.
+        case 'mergeFile':
+          parseSessionId(payload)
+          throw notImplemented(endpoint)
         default:
           if (isWriteEndpoint(endpoint)) {
             return await handleWrite<object>(deps, runtime, payload, signal, runtime.operations[endpoint])

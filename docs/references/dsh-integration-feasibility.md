@@ -1036,3 +1036,28 @@ stdin 与长路径（A3 T1 spike，2026-10-26，git 2.50.1 / macOS Seatbelt，AR
 | `stash store` 同一个 sha 重复存入时 reflog 不新增条目；`diff-tree --stdin -r --name-only -z` 读 `<stash> <第一父>` 行，只为有改动的贮藏输出 `<sha>\0<path>\0…` | ✅ 2026-10-26 | 本机实测 |
 
 依赖与类型：DSH 类型用 `link:` 指向本机 checkout；`webServer` 服务的类型包是 **`@deepseek-ai/dsh-host-webserver`**（不是 `dsh-webserver`）；`ctx.connection` 的 Host 半边类型来自 `@deepseek-ai/dsh-client-connection`。
+
+## 14. B1 三栏合并 spike（2026-10-26，DSH checkout `687f282e86`，源码查证）
+
+本节是 B1 T1 的 DSH 侧结论；git 行为（resolve-undo、`checkout -m`、经索引写回）见 [git-behavior.md](git-behavior.md)。浏览器实测按控制者裁定推迟到 B1 T6，标「待 T6 实测」的条目届时更新。
+
+CodeMirror 6（假设 1）：
+
+| 结论 | 状态 | 证据 |
+|---|---|---|
+| 引入 `@codemirror/state@6.7.6`、`@codemirror/view@6.43.15`、`@codemirror/commands@6.11.1`（devDependencies，esbuild 内联进 `lib/client.js`）。`commands` 会带上 `@codemirror/language` 与 `@lezer/{common,highlight,lr}`，共新增 12 个包 | ✅ 2026-10-26 | `pnpm add -D`；`pnpm-lock.yaml` |
+| DSH web 主页面**没有 Content-Security-Policy**：index 由 `frontend-static` 以 `res.writeHead(200, { 'content-type': type })` 返回，不带 CSP 头；`apps/web/index.html` 没有 CSP `<meta>`；注入表本身就渲染内联 `<script>`/`<style>`。仓库里的 CSP 只出现在别的文档上（媒体引用 `sandbox; default-src 'none'`、文档预览 basic-html 的 iframe、桌面端独立页面、账号登录页） | ✅ 2026-10-26 源码 | `packages/host/frontend-static/src/index.ts:104,118`；`apps/web/index.html:4-13`；`packages/host/webserver/src/injections.ts:58-65`；`packages/api/session-controller/src/media-references.ts:19`；`packages/client/ui-sidebar-documentpreview/src/client/html/basic-document.ts:18-19` |
+| 因此 `style-mod` 运行时插入的 `<style>`（`StyleSet` 对 document 根走 `createElement("style")` 分支）不受阻；本插件自己的 `<style data-plugin-css>` 也是同一种运行时注入，A1 起在 3081 上一直生效（§13 HMR 行） | ✅ 源码 / ⏳ 待 T6 实测 | `node_modules/style-mod/src/style-mod.js:92-101`；`build.mjs` banner |
+| HMR 重跑 factory 时 bundle 内联的是一份**新的** style-mod：它的样式集键是 `Symbol("styleSet")`（非全局），新实例第一次挂载会再插一个 `<style>`，旧的留在 `<head>`（只在开发热更时累积，内容是同一主题规则，不影响显示）；类名计数器键是 `Symbol.for(...)`（全局），新旧实例不会撞名。EditorView 的销毁由 React 卸载时 `view.destroy()` 负责，T5/T6 组件测试覆盖「不重复挂载」 | ✅ 源码 / ⏳ 待 T6 实测 | `style-mod.js:2-3,60-61,82-84` |
+| 单测环境没有 DOM（vitest 未配置 jsdom/happy-dom，组件测试都用 `renderToStaticMarkup`），T1 不写挂载测试；引入 DOM 环境属于计划外依赖，T5/T6 需要时另议 | ✅ 2026-10-26 | `package.json` 无 jsdom/happy-dom，`test/client/*.test.tsx` |
+| 体积：T1 只登记依赖、尚未 import，`lib/client.js` 726,695 → 726,900 字节（+205，gzip 143,022 → 143,059）。按计划会用到的 API（`EditorState/StateField/StateEffect/RangeSetBuilder`、`EditorView/Decoration/keymap/lineNumbers/ViewPlugin/WidgetType`、`history/defaultKeymap/historyKeymap/undo/redo`）单独打包、与 client 同配置（不压缩）为 **594,973 字节（gzip 147,738）**，压缩后 277,957（gzip 90,539）；大头是 view 321 KB、state 114 KB、lezer/common 49 KB、commands 48 KB、language 34 KB | ✅ 2026-10-26 | `.evidence/b1/probe/build.mjs`；真实增量在 T6 引入后复测 |
+
+宿主全屏（假设 4）：
+
+| 结论 | 状态 | 证据 |
+|---|---|---|
+| `ctx.sidebarRight` 服务没有公开的「当前是否全屏」读取：公开面只有 `toggleFullscreen(target)`；判定用的 `mountedSurface()` 是 private，`autoFullscreen` 在 `SidebarRightHost` 上、不在服务上 | ✅ 2026-10-26 源码 | `ui-sidebar-right/src/client/service.ts:128-134,618-625,705` |
+| **但 tab 正文有公开的读取**：框架注入的 `useTabInfo()` 返回 `sidebar: { expanded, fullscreen }`，其中 `fullscreen = autoFullscreen \|\| layout.mode === 'fullscreen'`（含视口 <768px 的自动全屏），README 把它列为 tab 正文的公开信息。本插件 `GitBody` 已经在用 `useTabInfo()` | ✅ 2026-10-26 源码 / ⏳ 待 T6 实测 | `ui-sidebar-right/src/client/tab-info.ts:15,42`；`shell/SidebarRight.tsx:200-210,360-361`；`ui-sidebar-right/README.md:84`；`src/client/GitBody.tsx:39` |
+| 备选判定：面板根元素带 `data-sidebar-right-panel="fullscreen" \| "push"`，全屏时 `style.width = 100vw`。原计划的「面板根元素宽度 ≥ `window.innerWidth - 1`」与此等价但更脆（Windows 标题栏模式下全屏面板会让出侧栏宽度 `--dsh-windows-sidebar-width`，宽度判定会误判为非全屏） | ✅ 源码 / ⏳ 待 T6 实测 | `shell/SidebarRight.tsx:310-313`；`README.md:46` |
+| 建议 T6 的判定顺序：`useTabInfo().sidebar.fullscreen` 为主；实测若在 `toggleFullscreen` 之后不及时更新，再退到 DOM 属性，最后才用宽度启发式。AC10 的「视口 <768px 不调用」用 `window.innerWidth < 768` 判断（与 `SidebarRight.tsx:360` 同阈值；那里的 `viewportWidth` 是 frame 宽度，T6 实测两者是否一致） | ⏳ 待 T6 实测 | — |
+| `toggleFullscreen(target)` 需要一个当前 dock pane 的 target：`focusedTarget(element)` / `commandTarget(element)` 可以传入本插件的根元素；浮动 pane、过期 target、面板未展开时直接返回不动作；自动全屏时调用会**收起面板**（§2.3 已记）。全屏与普通模式共用同一棵内容树，切换不重挂载 tab（README:39） | ✅ 2026-10-26 源码 | `service.ts:504-534,618-625`；`ui-sidebar-right/README.md:39,55` |

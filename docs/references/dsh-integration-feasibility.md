@@ -1010,6 +1010,7 @@ Git 与构建行为（A1 实测，git 2.50.1）：
 | macOS 自带 git 的 `credential.helper=osxkeychain` 配在 **Xcode 的系统 gitconfig**（`/Applications/Xcode.app/.../git-core/gitconfig`）；读命令用的 `GIT_CONFIG_NOSYSTEM=1` 会让它不可见 | ✅ 2026-10-26 | spike 3a/3b |
 | **osxkeychain 在 `workspace-write` confine 下不可用**：`git credential-osxkeychain get` 返回 `failed to get: -67674`（Module Directory Service error）。根因是 Security 框架要写 `getconf DARWIN_USER_CACHE_DIR`（`/private/var/folders/<..>/C`），而 profile 只放行 `os.tmpdir()`（同目录下的 `T`）；只多放行 `C` 即恢复。结果：依赖钥匙串的 HTTPS 推送在 confine 下得到 `could not read Username ...: terminal prompts disabled` | ✅ 2026-10-26 | spike 3c + 二分放行目录 |
 | **经 3081 Host 端到端复验**：`workspace-write` 会话里提交、推送到工作区内 bare 远程成功；推送到工作区外 bare 远程得到 `git/sandbox-denied`（`remote unpack failed`），与上面的等价复现一致 | ✅ 2026-10-26 | A2 计划「验证记录」 |
+| 同理，hook 或 git 子进程写 `~/.cache`、`~/Library/Caches` 等工作区外目录（pre-commit 框架、prettier 缓存）在 `workspace-write` confine 下会失败；表现为 hook 自身报错 | ⚠️ 2026-10-26 推断，未实测 | A2 代码评审 |
 | 无凭据的 HTTPS 认证失败在 `GIT_TERMINAL_PROMPT=0` 下立即返回 `fatal: could not read Username for '<url>': terminal prompts disabled`（退出 128），不会挂起 | ✅ 2026-10-26 | spike 3d |
 
 依赖与类型：DSH 类型用 `link:` 指向本机 checkout；`webServer` 服务的类型包是 **`@deepseek-ai/dsh-host-webserver`**（不是 `dsh-webserver`）；`ctx.connection` 的 Host 半边类型来自 `@deepseek-ai/dsh-client-connection`。

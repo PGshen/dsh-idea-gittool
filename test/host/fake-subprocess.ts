@@ -34,7 +34,11 @@ export interface FakeSubprocess {
   spawn: (spec: SubprocessSpawnSpec) => SubprocessHandle
 }
 
-export function createFakeSubprocess(options: { executable?: string } = {}): FakeSubprocess {
+/**
+ * `withholdStdin`: simulate a seam that spawns but hands back no `stdin` writable even though
+ * `'pipe'` was requested (the child's fd 0 is an open pipe nobody can write to).
+ */
+export function createFakeSubprocess(options: { executable?: string; withholdStdin?: boolean } = {}): FakeSubprocess {
   const spawns: RecordedSpawn[] = []
   const fake: FakeSubprocess = {
     spawns,
@@ -46,7 +50,10 @@ export function createFakeSubprocess(options: { executable?: string } = {}): Fak
     spawn: (spec) => {
       const recorded: RecordedSpawn = { spec }
       spawns.push(recorded)
-      return spawnCollected(spec, recorded)
+      const handle = spawnCollected(spec, recorded)
+      if (options.withholdStdin !== true || handle.stdin === undefined) return handle
+      // The pipe stays open but unreachable: git blocks on fd 0 until it is terminated.
+      return { ...handle, stdin: undefined }
     },
   }
   return fake

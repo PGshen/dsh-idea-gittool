@@ -282,12 +282,20 @@ export function createGitRunner(
 
     if (options.stdin !== undefined) {
       const input = child.stdin
-      if (input !== undefined) {
-        // A child that exits without reading (bad option, early failure) closes the pipe:
-        // EPIPE is expected then and the exit facts carry the real failure.
-        input.on('error', () => undefined)
-        input.end(options.stdin)
+      if (input === undefined) {
+        // Never let git run on an empty stdin: an empty `--pathspec-from-file=-` means "no
+        // pathspec", e.g. `reset -q` unstages the whole index, `commit --only --amend` amends
+        // the message only. Kill the child before it can act and fail the call.
+        child.terminate()
+        await child.waitForExit().catch(() => false)
+        throw new GitCommandFailure('git/exec-failed', 'subprocess did not provide a stdin pipe', {
+          argv: [...argv],
+        })
       }
+      // A child that exits without reading (bad option, early failure) closes the pipe:
+      // EPIPE is expected then and the exit facts carry the real failure.
+      input.on('error', () => undefined)
+      input.end(options.stdin)
     }
 
     try {

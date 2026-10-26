@@ -183,6 +183,31 @@ describe('createGitRunner stdin (A3 T1)', () => {
     expect(fake.spawns.at(-1)?.stdinWritten).toBe('a\0b\0')
   })
 
+  it('fails instead of running git on an empty stdin when the seam returns no stdin pipe', async () => {
+    const repo = makeRepo()
+    repo.write('a.txt', 'a\n')
+    repo.git('add', 'a.txt')
+    const fake = createFakeSubprocess({ withholdStdin: true })
+    const run = createGitRunner(fake)
+
+    let failure: unknown
+    try {
+      await run(['reset', '-q', '--pathspec-from-file=-', '--pathspec-file-nul'], {
+        cwd: repo.root,
+        mode: 'write',
+        confine: { kind: 'unconfined' },
+        stdin: 'a.txt\0',
+      })
+    } catch (error) {
+      failure = error
+    }
+
+    expect(failure).toBeInstanceOf(GitCommandFailure)
+    expect((failure as GitCommandFailure).code).toBe('git/exec-failed')
+    // Empty pathspec would have unstaged the whole index; staging must be untouched.
+    expect(repo.git('diff', '--cached', '--name-only').trim()).toBe('a.txt')
+  })
+
   it('keeps stdin ignored when no input is given', async () => {
     const repo = makeRepo()
     const fake = createFakeSubprocess()

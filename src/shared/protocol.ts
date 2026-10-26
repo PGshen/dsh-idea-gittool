@@ -648,7 +648,8 @@ export const DIRTY_PATHS_LIMIT = 50
 
 /** `git/dirty-worktree`。 */
 export interface DirtyWorktreeDetails {
-  operation: SmartOperationKind
+  /** 发起的智能操作；`resetToRemote`（不是智能操作、不提供贮藏）返回该错误时省略。 */
+  operation?: SmartOperationKind
   /** 未提交的已跟踪改动（最多 {@link DIRTY_PATHS_LIMIT} 条）。 */
   paths: string[]
   /** 改动总数（可能大于 `paths.length`）。 */
@@ -855,6 +856,11 @@ export interface DeleteBranchRequest extends WriteRequest {
   name: string
   /** true 用 `-D`（客户端在 `git/not-merged` 后二次确认）。 */
   force: boolean
+  /**
+   * 用户看到的分支 tip（来自 branches 列表）。给出时 Host 在执行时重新读取分支，
+   * 不一致 → `git/stale-target`（`target: 'branch'`），不删除意料之外的提交。
+   */
+  expectedSha?: string
 }
 
 export interface DeleteBranchValue {
@@ -904,6 +910,11 @@ export interface ResetRequest extends WriteRequest {
   sha: string
   mode: ResetMode
   confirmHard?: boolean
+  /**
+   * 预览时的 HEAD（{@link ResetPreviewValue.head}）。给出时 Host 在重置前重新读取 HEAD，
+   * 不一致 → `git/stale-target`（`target: 'head'`），避免按过期预览丢弃提交。
+   */
+  expectedHead?: string
 }
 
 export interface ResetValue {
@@ -920,6 +931,8 @@ export interface ResetPreviewRequest extends RpcRequest {
 }
 
 export interface ResetPreviewValue {
+  /** 生成预览时的 HEAD；重置时回传为 {@link ResetRequest.expectedHead}。 */
+  head: string
   /** hard 重置会丢弃的未提交改动数（已跟踪文件）。 */
   discardCount: number
   /** 从 HEAD 可达、从目标不可达的提交（最多 {@link RESET_PREVIEW_COMMIT_LIMIT} 条）。 */

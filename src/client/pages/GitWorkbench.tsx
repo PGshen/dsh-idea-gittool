@@ -1,6 +1,7 @@
 // Git tab 的工作台：A1 的日志页、分支面板、提交详情、Diff 覆盖层、状态栏与控制台，
 // A2 的提交页（变更树 + 提交信息）、Push / Push Rejected 覆盖页与回滚确认。
 // 各页面与 store 都是注入式的；这里只负责创建 store、发 RPC、在版本变化时刷新，以及页面间导航。
+// A3 T6：覆盖层只有一个槽位（workbench-overlay），写动作统一经 action store（`actions.run`）。
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import type {
@@ -9,7 +10,6 @@ import type {
   CommitFileEntry,
   CommitResultValue,
   CommitSummary,
-  DiffRequest,
   FileEntry,
   RefEntry,
   StatusValue,
@@ -18,6 +18,7 @@ import { ConsoleDrawer, CONSOLE_DEFAULT_HEIGHT } from '../console/ConsoleDrawer.
 import { createConsoleStore, useConsoleState } from '../console/console-store.ts'
 import type { GitClient } from '../git-client.ts'
 import { newRequestId } from '../git-client.ts'
+import { createActionStore, useActionState } from '../store/action-store.ts'
 import { createChangesStore, uncommittedCount, useChangesState } from '../store/changes-store.ts'
 import { createCommitStore, useCommitState } from '../store/commit-store.ts'
 import type { CommitPhase } from '../store/commit-store.ts'
@@ -37,13 +38,15 @@ import { BranchPanel } from './BranchPanel.tsx'
 import { createBranchesStore, useBranchesState } from './branch-store.ts'
 import { CommitDetail } from './CommitDetail.tsx'
 import { DiffViewer } from './DiffViewer.tsx'
-import type { DiffSourcePart } from './DiffViewer.tsx'
+import { DirtyWorktreeSheet } from './DirtyWorktreeSheet.tsx'
 import css from './GitWorkbench.module.css'
 import { LogPage } from './LogPage.tsx'
 import type { LogSelection } from './LogPage.tsx'
 import { OperationBanner, bannerFromStatus } from './OperationBanner.tsx'
 import { RepoBar } from './RepoBar.tsx'
 import { StatusBar } from './StatusBar.tsx'
+import { handleOverlayEscape, useWorkbenchOverlay } from './workbench-overlay.ts'
+import type { WorkbenchOverlay } from './workbench-overlay.ts'
 
 export interface GitWorkbenchProps {
   sessionId: string
@@ -58,16 +61,8 @@ export interface GitWorkbenchProps {
   lastRefreshAt: number | null
 }
 
-interface OpenDiff {
-  request: DiffRequest
-  files: CommitFileEntry[]
-  source: DiffSourcePart[]
-}
-
 /** Push 覆盖页的打开方式：普通打开，或打开后立即推送（提交并推送）。 */
-interface OpenPush {
-  autoSubmit?: boolean
-}
+type OpenPush = Omit<Extract<WorkbenchOverlay, { kind: 'push' }>, 'kind'>
 
 /**
  * 「提交并推送」能否直接推（评审 I3）：只在 upstream 是同名远程分支时。
@@ -198,17 +193,41 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
     if (committedSha === null) statusSawCommit.current = false
   }, [commitStore, committedSha, statusHead])
   const [page, setPage] = useState<WorkbenchPage>('log')
-  const [push, setPush] = useState<OpenPush | null>(null)
-  const [rollback, setRollback] = useState<RollbackTarget[] | null>(null)
+  const [consoleOpen, setConsoleOpen] = useState(false)
+
+  // 写动作框架（A3 T6）：回调经 ref 取最新值，store 只随会话重建。
+  const actionCallbacks = useRef<{ onRefresh: () => Promise<unknown>; openOverlay: (overlay: WorkbenchOverlay) => void }>({
+    onRefresh,
+    openOverlay: () => undefined,
+  })
+  actionCallbacks.current.onRefresh = onRefresh
+  const actions = useMemo(() => createActionStore({
+    client,
+    sessionId,
+    onAskStash: () => { actionCallbacks.current.openOverlay({ kind: 'dirtyWorktree' }) },
+    onConflict: () => {
+      void actionCallbacks.current.onRefresh()
+      actionCallbacks.current.openOverlay({ kind: 'conflicts' })
+    },
+    onSuccess: () => { void actionCallbacks.current.onRefresh() },
+  }), [client, sessionId])
+  const actionState = useActionState(actions)
+  // 覆盖层同一时刻只有一个（设计 §5.3）：打开新的替换旧的；离开智能操作询问即视为取消。
+  const overlays = useWorkbenchOverlay((left, next) => {
+    if (left.kind === 'dirtyWorktree' && next?.kind !== 'dirtyWorktree') actions.cancelStash()
+  })
+  actionCallbacks.current.openOverlay = overlays.open
+  const overlay = overlays.overlay
+  const diff = overlay?.kind === 'diff' ? overlay : null
+  const push = overlay?.kind === 'push' ? overlay : null
+  const rollback = overlay?.kind === 'rollback' ? overlay.targets : null
 
   const detail = useDetailState(detailStore)
   const branches = useBranchesState(branchesStore)
   const consoleState = useConsoleState(consoleStore)
 
   const [refsBySha, setRefsBySha] = useState<Record<string, RefEntry[]> | undefined>(undefined)
-  const [diff, setDiff] = useState<OpenDiff | null>(null)
   const [selectedFile, setSelectedFile] = useState<{ path: string; parentSha?: string } | undefined>(undefined)
-  const [consoleOpen, setConsoleOpen] = useState(false)
   const [consoleHeight, setConsoleHeight] = useState(CONSOLE_DEFAULT_HEIGHT)
   const [refreshing, setRefreshing] = useState(false)
 
@@ -298,7 +317,8 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
   const openFile = useCallback((commit: CommitDetailValue, file: CommitFileEntry, parentSha?: string) => {
     const parent = parentSha ?? file.parentSha
     setSelectedFile(parent === undefined ? { path: file.path } : { path: file.path, parentSha: parent })
-    setDiff({
+    overlays.open({
+      kind: 'diff',
       request: {
         sessionId,
         scope: 'commit',
@@ -309,7 +329,7 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
       files: diffFilesOf(commit),
       source: [text('diff.source.log'), commit.shortSha],
     })
-  }, [sessionId])
+  }, [overlays.open, sessionId])
 
   const onOpenCommit = useCallback((commit: CommitSummary) => {
     // Enter/双击：打开该提交的第一个变更文件；详情未就绪时先加载。
@@ -327,23 +347,19 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
     logStore.jumpTo(sha)
   }, [logStore])
 
-  // 覆盖层同一时刻只有一个（设计 §5.3）：打开一个就关掉其余。
   const openPush = useCallback((open: OpenPush) => {
     clearStaleCommitNotice()
-    setDiff(null)
-    setRollback(null)
-    setPush(open)
-  }, [clearStaleCommitNotice])
+    overlays.open({ kind: 'push', ...open })
+  }, [clearStaleCommitNotice, overlays.open])
 
   const openWorktreeDiff = useCallback((path: string, scope: DiffOpenScope) => {
-    setPush(null)
-    setRollback(null)
-    setDiff({
+    overlays.open({
+      kind: 'diff',
       request: { sessionId, scope, path },
       files: changeFilesFor(status, scope),
       source: [text('diff.source.commit'), text(scope === 'staged' ? 'diff.source.staged' : 'diff.source.worktree')],
     })
-  }, [sessionId, status])
+  }, [overlays.open, sessionId, status])
 
   const onCommitted = useCallback((result: CommitResultValue) => {
     // 刷新状态与日志后在日志里定位新 HEAD（切回日志页时可见）。
@@ -425,7 +441,7 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
         ahead={status?.ahead ?? 0}
       />
       <PageTabs page={page} onChange={setPage} uncommittedCount={uncommittedCount(status)} />
-      <div className={css.content}>
+      <div className={css.content} onKeyDown={event => { handleOverlayEscape(event, overlays.route(), overlays.close) }}>
         {page === 'log' ? (
           <LogPage
             store={logStore}
@@ -449,9 +465,7 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
             onOpenDiff={openWorktreeDiff}
             onRollback={paths => {
               clearStaleCommitNotice()
-              setDiff(null)
-              setPush(null)
-              setRollback(rollbackTargetsFor(status, paths))
+              overlays.open({ kind: 'rollback', targets: rollbackTargetsFor(status, paths) })
             }}
             onAddToVcs={paths => { void addToVcs(paths) }}
             onCopyPath={path => { void globalThis.navigator?.clipboard?.writeText(path) }}
@@ -473,7 +487,7 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
                 ? { path: file.path }
                 : { path: file.path, parentSha: request.parent })
             }}
-            onClose={() => { setDiff(null) }}
+            onClose={() => { overlays.closeIf('diff') }}
           />
         )}
         {push === null || value.repoRoot === null ? null : (
@@ -483,7 +497,7 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
             client={client}
             readOnlyReason={readOnlyReason}
             {...(push.autoSubmit === true ? { autoSubmit: true } : {})}
-            onClose={() => { setPush(null) }}
+            onClose={() => { overlays.closeIf('push') }}
             onPushed={() => { void onRefresh() }}
             onConflict={() => {
               void onRefresh()
@@ -499,10 +513,20 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
             targets={rollback}
             client={client}
             readOnlyReason={readOnlyReason}
-            onClose={() => { setRollback(null) }}
+            onClose={() => { overlays.closeIf('rollback') }}
             onDone={() => { void onRefresh() }}
             onShowConsole={() => { setConsoleOpen(true) }}
             onCopy={text => { void globalThis.navigator?.clipboard?.writeText(text) }}
+          />
+        )}
+        {overlay?.kind !== 'dirtyWorktree' || actionState.ask === null ? null : (
+          <DirtyWorktreeSheet
+            ask={actionState.ask}
+            onStash={() => {
+              actions.confirmStash()
+              overlays.closeIf('dirtyWorktree')
+            }}
+            onCancel={() => { overlays.closeIf('dirtyWorktree') }}
           />
         )}
       </div>

@@ -13,13 +13,19 @@ import type {
 } from '@deepseek-ai/dsh-client-connection'
 
 import type {
+  AddToVcsValue,
   BootstrapValue,
   BranchesValue,
   CommitDetailValue,
+  CommitResultValue,
   ConsoleValue,
   DiffFileValue,
   LogValue,
+  PullForPushValue,
+  PushPreviewValue,
+  PushValue,
   RefsValue,
+  RollbackValue,
   StatusValue,
   WritePolicyValue,
 } from '../shared/protocol.ts'
@@ -28,8 +34,14 @@ import type { RepoCache } from './cache.ts'
 import { createRepoCache } from './cache.ts'
 import type { FsWatch, RepoWatch } from './watch.ts'
 import { watchRepo } from './watch.ts'
-import type { GitRunner } from './git-executor.ts'
-import { GitCommandFailure, messageOf } from './git-executor.ts'
+import type { GitRunner, WriteOperation } from './git-executor.ts'
+import { GitCommandFailure, bindWriteContext, messageOf } from './git-executor.ts'
+import { addToVcsOperation, amendMessageOperation, commitFilesOperation } from './git/commit-write.ts'
+import { pullForPushOperation } from './git/pull.ts'
+import { pushOperation, readPushPreview } from './git/push.ts'
+import { rollbackOperation } from './git/rollback.ts'
+import type { WriteQueue } from './write-queue.ts'
+import { createWriteQueue } from './write-queue.ts'
 import { readBranches } from './git/branches.ts'
 import { readCommit } from './git/commit.ts'
 import type { DiffQuery } from './git/diff.ts'
@@ -38,8 +50,8 @@ import type { LogQuery } from './git/log.ts'
 import { logFilterSignature, normalizeLogFilters, readLog } from './git/log.ts'
 import { readRefs } from './git/refs.ts'
 import { readStatus } from './git/status.ts'
-import type { SandboxGateDeps, SandboxLike, SandboxPolicySource } from './sandbox-gate.ts'
-import { evaluateWritePolicy } from './sandbox-gate.ts'
+import type { SandboxGateDeps, SandboxLike, SandboxPolicySource, WriteAccess } from './sandbox-gate.ts'
+import { assertWritable, evaluateWritePolicy, resolveWriteAccess } from './sandbox-gate.ts'
 import type { SessionSources } from './repo-resolver.ts'
 import { resolveRepository } from './repo-resolver.ts'
 
@@ -52,6 +64,28 @@ const BRANCHES_CACHE_KEY = 'branches'
 const REFS_CACHE_KEY = 'refs'
 const COMMIT_CACHE_PREFIX = 'commit'
 const DIFF_CACHE_PREFIX = 'diff'
+const PUSH_PREVIEW_CACHE_KEY = 'pushPreview'
+/** Longest accepted requestId (client-generated UUIDs are 36). */
+const MAX_REQUEST_ID_LENGTH = 100
+
+/** A2 write endpoints → their operations; tests override single entries. */
+export interface WriteOperations {
+  commitFiles: WriteOperation<unknown, Omit<CommitResultValue, 'version'>>
+  amendMessage: WriteOperation<unknown, Omit<CommitResultValue, 'version'>>
+  rollback: WriteOperation<unknown, Omit<RollbackValue, 'version'>>
+  addToVcs: WriteOperation<unknown, Omit<AddToVcsValue, 'version'>>
+  push: WriteOperation<unknown, Omit<PushValue, 'version'>>
+  pullForPush: WriteOperation<unknown, Omit<PullForPushValue, 'version'>>
+}
+
+const DEFAULT_WRITE_OPERATIONS: WriteOperations = {
+  commitFiles: commitFilesOperation,
+  amendMessage: amendMessageOperation,
+  rollback: rollbackOperation,
+  addToVcs: addToVcsOperation,
+  push: pushOperation,
+  pullForPush: pullForPushOperation,
+}
 
 /** Everything the handler needs; all session services are lazy and optional. */
 export interface RpcDeps extends SessionSources {
@@ -74,6 +108,8 @@ export interface RpcDeps extends SessionSources {
   now?: (() => number) | undefined
   /** Git console buffer fed by the instrumented runner; absent → empty console (A1). */
   console?: GitConsole | undefined
+  /** Test seam: replaces individual write operations (A2). */
+  writeOperations?: Partial<WriteOperations> | undefined
 }
 
 /** The RPC handler shape used by `ctx.connection.rpc.handle` (peer unused today). */
@@ -95,6 +131,9 @@ interface HandlerRuntime {
   ensureWatch: (repoRoot: string) => RepoWatch | undefined
   /** Git version, probed once per runtime; undefined when the probe failed. */
   gitVersion: (cwd: string, signal: AbortSignal) => Promise<string | undefined>
+  /** Per-repository serial write queue with requestId de-duplication (A2). */
+  writes: WriteQueue
+  operations: WriteOperations
 }
 
 /** `git version 2.50.1 (Apple Git-155)` → `2.50.1`. */
@@ -152,7 +191,13 @@ export function createRpcRuntime(deps: RpcDeps): RpcRuntime {
     return version
   }
 
-  const runtime: HandlerRuntime = { cache: cacheOf, ensureWatch, gitVersion }
+  const runtime: HandlerRuntime = {
+    cache: cacheOf,
+    ensureWatch,
+    gitVersion,
+    writes: createWriteQueue(),
+    operations: { ...DEFAULT_WRITE_OPERATIONS, ...deps.writeOperations },
+  }
 
   const handler: GitRpcHandler = async (endpoint, payload, signal) => {
     try {
@@ -195,6 +240,17 @@ export function createRpcRuntime(deps: RpcDeps): RpcRuntime {
         }
         case 'console':
           return await handleConsole(deps, payload, signal)
+        case 'pushPreview':
+          return await handleCached<PushPreviewValue>(deps, runtime, payload, signal, PUSH_PREVIEW_CACHE_KEY, (root) =>
+            readPushPreview(deps.runner, root, { signal }),
+          )
+        case 'commitFiles':
+        case 'amendMessage':
+        case 'rollback':
+        case 'addToVcs':
+        case 'push':
+        case 'pullForPush':
+          return await handleWrite<object>(deps, runtime, payload, signal, runtime.operations[endpoint])
         default:
           throw invalidPayload('unknown RPC endpoint', { endpoint })
       }
@@ -244,6 +300,7 @@ async function handleBootstrap(
   const status = await cachedStatus(deps, runtime, resolution.root, signal, version)
   const writePolicy = await resolveWritePolicy(deps, resolution.root, sessionId, signal)
   const gitVersion = await runtime.gitVersion(resolution.root, signal)
+  const pendingWrites = runtime.writes.pending(resolution.root)
   return ok<BootstrapValue>({
     sessionId,
     repoRoot: resolution.root,
@@ -251,7 +308,43 @@ async function handleBootstrap(
     writePolicy,
     version,
     ...(gitVersion === undefined ? {} : { gitVersion }),
+    ...(pendingWrites > 0 ? { pendingWrites } : {}),
   })
+}
+
+/**
+ * Generic write endpoint (A2 T1):
+ * payload validation → repository → per-repo queue (requestId de-dup) → fresh gate
+ * evaluation → operation under the session's confinement → version bump.
+ * The gate runs inside the queue so a write never executes on a stale decision,
+ * and the version is bumped on failure too: a failed write may still have touched state.
+ */
+async function handleWrite<V extends object>(
+  deps: RpcDeps,
+  runtime: HandlerRuntime,
+  payload: unknown,
+  signal: AbortSignal,
+  operation: WriteOperation<unknown, V>,
+): Promise<ConnectionRpcHandlerResult> {
+  const sessionId = parseSessionId(payload)
+  const requestId = parseRequestId(payload)
+  const input = operation.parse(payload)
+  const root = await repositoryRoot(deps, sessionId, signal)
+  const value = await runtime.writes.run(root, requestId, async () => {
+    const access = await resolveWriteAccessFor(deps, root, sessionId, signal)
+    assertWritable(access.policy)
+    if (access.confiner === undefined) {
+      throw new GitCommandFailure('git/sandbox-denied', 'write confinement is unavailable (fail closed)', {})
+    }
+    try {
+      const result = await operation.run(bindWriteContext(deps.runner, root, access.confiner, signal), input)
+      return { ...result, version: runtime.cache().bumpVersion(root) }
+    } catch (error) {
+      runtime.cache().bumpVersion(root)
+      throw error
+    }
+  })
+  return ok(value)
 }
 
 async function handleStatus(
@@ -390,6 +483,33 @@ async function resolveWritePolicy(
     sandbox: deps.sandbox,
   }
   return await evaluateWritePolicy({ repoRoot, sessionId }, gateDeps, { signal })
+}
+
+/** Gate decision for a write; the `writePolicy` test seam yields no confiner (writes refused). */
+async function resolveWriteAccessFor(
+  deps: RpcDeps,
+  repoRoot: string,
+  sessionId: string,
+  signal: AbortSignal,
+): Promise<WriteAccess> {
+  if (deps.writePolicy !== undefined) return { policy: await deps.writePolicy({ repoRoot, sessionId }) }
+  const gateDeps: SandboxGateDeps = {
+    sessions: deps.sessions,
+    sandboxPolicy: deps.sandboxPolicy,
+    sandbox: deps.sandbox,
+  }
+  return await resolveWriteAccess({ repoRoot, sessionId }, gateDeps, { signal })
+}
+
+function parseRequestId(payload: unknown): string {
+  const requestId: unknown = (payload as { requestId?: unknown }).requestId
+  if (typeof requestId !== 'string' || requestId.trim() === '') {
+    throw invalidPayload('requestId must be a non-empty string', {})
+  }
+  if (requestId.length > MAX_REQUEST_ID_LENGTH) {
+    throw invalidPayload('requestId is too long', { length: requestId.length })
+  }
+  return requestId
 }
 
 function parseSessionId(payload: unknown): string {

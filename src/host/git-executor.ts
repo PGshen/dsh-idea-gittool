@@ -4,6 +4,7 @@
 
 import type { SubprocessHandle, SubprocessRuntime } from '@deepseek-ai/dsh-subprocess'
 
+import { GIT_NETWORK_TIMEOUT_MS, GIT_WRITE_TIMEOUT_MS } from '../shared/protocol.ts'
 import type { GitErrorCode } from '../shared/protocol.ts'
 import type { GitConsole } from './console.ts'
 
@@ -56,6 +57,40 @@ export const GIT_READ_ENV: Readonly<NodeJS.ProcessEnv> = Object.freeze({
   LC_ALL: 'C',
 })
 
+/**
+ * Write/network environment (A2 T1 spike, references §13「写执行与沙箱」):
+ * - same selector tombstones, no prompts, literal pathspecs, stable locale;
+ * - system config stays visible: it carries user intent such as the credential helper;
+ * - `GIT_OPTIONAL_LOCKS` is removed (tombstoned) so an inherited value cannot leak in.
+ */
+export const GIT_WRITE_ENV: Readonly<NodeJS.ProcessEnv> = Object.freeze({
+  ...Object.fromEntries(CLEARED_GIT_ENV_KEYS.map((key) => [key, undefined])),
+  GIT_CONFIG_COUNT: '0',
+  GIT_TERMINAL_PROMPT: '0',
+  GIT_OPTIONAL_LOCKS: undefined,
+  GIT_LITERAL_PATHSPECS: '1',
+  LC_ALL: 'C',
+})
+
+/** Execution class of one command: decides timeout, environment and confinement. */
+export type GitRunMode = 'read' | 'write' | 'network'
+
+/** Default deadline for a mode (设计 §16.4: read 8s, local write 60s, network 180s). */
+export function timeoutForMode(mode: GitRunMode): number {
+  if (mode === 'write') return GIT_WRITE_TIMEOUT_MS
+  if (mode === 'network') return GIT_NETWORK_TIMEOUT_MS
+  return GIT_TIMEOUT_MS
+}
+
+/**
+ * How a write/network command is confined. `unconfined` exists only for
+ * `danger-full-access` sessions; anything else must wrap the argv in `sandbox.confine`.
+ * A write without a confiner is refused before spawning (fail closed).
+ */
+export type GitConfiner =
+  | { kind: 'confined'; wrap: (argv: readonly string[], signal: AbortSignal) => Promise<readonly string[]> }
+  | { kind: 'unconfined' }
+
 /** Global arguments every read-only command starts with (argv, never a shell string). */
 export const GIT_BASE_ARGV: readonly string[] = ['--no-pager', '-c', 'core.fsmonitor=false']
 
@@ -76,6 +111,10 @@ export interface GitRunResult {
 export interface GitRunOptions {
   cwd: string
   signal?: AbortSignal | undefined
+  /** Defaults to `read`; `write`/`network` require {@link GitRunOptions.confine}. */
+  mode?: GitRunMode | undefined
+  /** Confinement for write/network commands; ignored in read mode. */
+  confine?: GitConfiner | undefined
   timeoutMs?: number | undefined
   stdoutMaxBytes?: number | undefined
   stderrMaxBytes?: number | undefined
@@ -122,7 +161,11 @@ export function failureFromExit(result: GitRunResult, label: string): GitCommand
   const message = firstLine ?? `${label} exited with ${String(result.exitCode)}`
   const code: GitErrorCode = /not a git repository/i.test(stderr)
     ? 'git/not-a-repository'
-    : 'git/exec-failed'
+    : /index\.lock'?: File exists/i.test(stderr)
+      ? 'git/locked'
+      : /Operation not permitted/i.test(stderr)
+        ? 'git/sandbox-denied'
+        : 'git/exec-failed'
   return new GitCommandFailure(code, message, {
     exitCode: result.exitCode,
     stderr: stderr.slice(0, 2000),
@@ -139,7 +182,8 @@ export function createGitRunner(
   const defaultStderrMaxBytes = defaults.stderrMaxBytes ?? GIT_STDERR_MAX_BYTES
 
   return async function runGit(argv, options) {
-    const timeoutMs = options.timeoutMs ?? defaultTimeoutMs
+    const mode = options.mode ?? 'read'
+    const timeoutMs = options.timeoutMs ?? (mode === 'read' ? defaultTimeoutMs : timeoutForMode(mode))
     const stdoutMaxBytes = options.stdoutMaxBytes ?? defaultStdoutMaxBytes
     const stderrMaxBytes = options.stderrMaxBytes ?? defaultStderrMaxBytes
     const deadline = AbortSignal.timeout(timeoutMs)
@@ -177,12 +221,33 @@ export function createGitRunner(
       )
     }
 
+    let command: readonly string[] = [program, ...argv]
+    if (mode !== 'read') {
+      const confine = options.confine
+      if (confine === undefined) {
+        throw new GitCommandFailure('git/sandbox-denied', 'write command has no sandbox confinement (fail closed)', {
+          argv: [...argv],
+        })
+      }
+      if (confine.kind === 'confined') {
+        try {
+          command = await confine.wrap(command, lifetime)
+        } catch (error) {
+          const aborted = classifyAbort(error)
+          if (aborted.code === 'git/timeout' || aborted.details?.cancelled === true) throw aborted
+          throw new GitCommandFailure('git/sandbox-denied', `sandbox confine failed: ${messageOf(error)}`, {
+            argv: [...argv],
+          })
+        }
+      }
+    }
+
     let child: SubprocessHandle
     try {
       child = subprocess.spawn({
-        argv: [program, ...argv],
+        argv: [...command],
         cwd: options.cwd,
-        env: GIT_READ_ENV,
+        env: mode === 'read' ? GIT_READ_ENV : GIT_WRITE_ENV,
         signal: lifetime,
         graceMs: GIT_GRACE_MS,
         stdio: {
@@ -223,6 +288,59 @@ export function createGitRunner(
       child.terminate()
       await child.waitForExit().catch(() => false)
     }
+  }
+}
+
+/**
+ * What a write operation sees: the repository, the request's cancellation, and a
+ * git function already bound to the repository and the session's confinement.
+ * Write operations (src/host/git/*-write) receive this instead of the raw runner.
+ */
+export interface WriteContext {
+  readonly repoRoot: string
+  readonly signal: AbortSignal
+  /** Run git in the repository; `mode` defaults to `write` (confined). */
+  git: (
+    argv: readonly string[],
+    options?: { mode?: GitRunMode; timeoutMs?: number; stdoutMaxBytes?: number },
+  ) => Promise<GitRunResult>
+}
+
+/**
+ * One write endpoint: `parse` validates the payload (throwing `git/invalid-payload`)
+ * before the gate is evaluated; `run` executes under the write queue and gate.
+ * The RPC layer adds `version` to the returned value.
+ */
+export interface WriteOperation<I, V extends object> {
+  parse(payload: unknown): I
+  // Method syntax on purpose: the RPC table stores operations with differing input types.
+  run(ctx: WriteContext, input: I): Promise<V>
+}
+
+/** Thrown by write endpoints whose implementation has not landed yet. */
+export function notImplemented(endpoint: string): GitCommandFailure {
+  return new GitCommandFailure('git/exec-failed', `${endpoint} is not implemented yet`, { endpoint })
+}
+
+/** Bind a runner to one repository, confinement and request signal. */
+export function bindWriteContext(
+  run: GitRunner,
+  repoRoot: string,
+  confine: GitConfiner,
+  signal: AbortSignal,
+): WriteContext {
+  return {
+    repoRoot,
+    signal,
+    git: (argv, options = {}) =>
+      run(argv, {
+        cwd: repoRoot,
+        signal,
+        confine,
+        mode: options.mode ?? 'write',
+        timeoutMs: options.timeoutMs,
+        stdoutMaxBytes: options.stdoutMaxBytes,
+      }),
   }
 }
 

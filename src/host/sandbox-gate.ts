@@ -9,6 +9,7 @@ import type { SandboxExecutionPolicy, SandboxPolicy } from '@deepseek-ai/dsh-san
 import type { Session, SessionId } from '@deepseek-ai/dsh-session'
 
 import type { WritePolicyValue } from '../shared/protocol.ts'
+import type { GitConfiner } from './git-executor.ts'
 import { GitCommandFailure } from './git-executor.ts'
 import type { SessionsLike } from './repo-resolver.ts'
 
@@ -69,42 +70,63 @@ export async function evaluateWritePolicy(
   deps: SandboxGateDeps,
   options: EvaluateWritePolicyOptions = {},
 ): Promise<WritePolicyValue> {
+  return (await resolveWriteAccess(input, deps, options)).policy
+}
+
+/** The gate decision plus, when writable, how each write command must be confined. */
+export interface WriteAccess {
+  policy: WritePolicyValue
+  /** Present exactly when `policy.mode === 'read-write'`. */
+  confiner?: GitConfiner | undefined
+}
+
+/**
+ * Evaluate the gate for one write request (A2: every write re-evaluates, never reusing
+ * the bootstrap answer) and return the confiner the write commands must run under.
+ * `danger-full-access` runs unconfined; `workspace-write` wraps every argv in
+ * `sandbox.confine` and fails closed if a later wrap reports partial enforcement.
+ */
+export async function resolveWriteAccess(
+  input: WritePolicyInput,
+  deps: SandboxGateDeps,
+  options: EvaluateWritePolicyOptions = {},
+): Promise<WriteAccess> {
   const session = deps.sessions?.()?.get(input.sessionId as SessionId)
   if (session === undefined) {
-    return readOnly(REASONS.sessionNotLive)
+    return { policy: readOnly(REASONS.sessionNotLive) }
   }
 
   const policySource = deps.sandboxPolicy?.()
   if (policySource === undefined) {
-    return readOnly(REASONS.policyUnavailable)
+    return { policy: readOnly(REASONS.policyUnavailable) }
   }
 
   let policy: SandboxExecutionPolicy
   try {
     policy = policySource.resolve({ session })
   } catch {
-    return readOnly(REASONS.resolveFailed, policySource.workspaceRoot)
+    return { policy: readOnly(REASONS.resolveFailed, policySource.workspaceRoot) }
   }
 
   if (policy.mode === 'danger-full-access') {
-    return { mode: 'read-write', workspaceRoot: policy.workspaceRoot }
+    return { policy: { mode: 'read-write', workspaceRoot: policy.workspaceRoot }, confiner: { kind: 'unconfined' } }
   }
   if (policy.mode === 'read-only') {
-    return readOnly(REASONS.readOnlyMode, policy.workspaceRoot)
+    return { policy: readOnly(REASONS.readOnlyMode, policy.workspaceRoot) }
   }
 
   // workspace-write: the whole repository (including .git) must sit inside the boundary.
   try {
     if (!(await isInside(policy.workspaceRoot, input.repoRoot))) {
-      return readOnly(REASONS.repoOutsideWorkspace, policy.workspaceRoot)
+      return { policy: readOnly(REASONS.repoOutsideWorkspace, policy.workspaceRoot) }
     }
   } catch {
-    return readOnly(REASONS.repoOutsideWorkspace, policy.workspaceRoot)
+    return { policy: readOnly(REASONS.repoOutsideWorkspace, policy.workspaceRoot) }
   }
 
   const sandbox = deps.sandbox?.()
   if (sandbox === undefined) {
-    return readOnly(REASONS.sandboxUnavailable, policy.workspaceRoot)
+    return { policy: readOnly(REASONS.sandboxUnavailable, policy.workspaceRoot) }
   }
 
   const confinedPolicy: SandboxPolicy = { ...policy, mode: policy.mode }
@@ -113,13 +135,22 @@ export async function evaluateWritePolicy(
     const confined = await sandbox.confine(['git', '--version'], confinedPolicy, options.signal)
     enforcement = confined.enforcement
   } catch {
-    return readOnly(REASONS.confineFailed, policy.workspaceRoot)
+    return { policy: readOnly(REASONS.confineFailed, policy.workspaceRoot) }
   }
   if (enforcement !== 'full') {
-    return readOnly(REASONS.partialEnforcement, policy.workspaceRoot)
+    return { policy: readOnly(REASONS.partialEnforcement, policy.workspaceRoot) }
   }
 
-  return { mode: 'read-write', workspaceRoot: policy.workspaceRoot }
+  const confiner: GitConfiner = {
+    kind: 'confined',
+    wrap: async (argv, signal) => {
+      const confined = await sandbox.confine(argv, confinedPolicy, signal)
+      // The probe said `full`; a backend that degrades later must not run the write.
+      if (confined.enforcement !== 'full') throw new Error(REASONS.partialEnforcement)
+      return confined.argv
+    },
+  }
+  return { policy: { mode: 'read-write', workspaceRoot: policy.workspaceRoot }, confiner }
 }
 
 /**

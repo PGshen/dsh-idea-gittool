@@ -35,4 +35,8 @@ M0/A1 已逐条确认，结论与证据见 [可行性调研 §13](dsh-integratio
 - [x] `sidebar.right.tab.document.actions` slot 与 `openTab('git.blame')` 可用
 - [x] client 产物按内容 rev 热更、factory 重跑；Host 改动需重启 `dsh web`
 
+A2 新增（T1 spike 已用等价 Seatbelt profile 复现，见 §13「写执行与沙箱」）：
+
+- [ ] 经 3081 Host 的 `sandbox.confine` 端到端执行 commit/push（A2 T8）
+
 升级 DSH 后重跑 §13 清单。

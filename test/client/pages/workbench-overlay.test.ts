@@ -17,6 +17,8 @@ import {
 import type { FocusTarget, OverlayController, WorkbenchOverlay } from '../../../src/client/pages/workbench-overlay.ts'
 import { createActionStore } from '../../../src/client/store/action-store.ts'
 import type { ActionClient, ActionStore } from '../../../src/client/store/action-store.ts'
+import { conflictListSync, createAutoOpenTracker } from '../../../src/client/store/conflict-store.ts'
+import { mergeState } from './operation-fixtures.ts'
 import type { IntegrateValue, RpcResult } from '../../../src/shared/protocol.ts'
 
 function target(connected = true): FocusTarget & { focus: ReturnType<typeof vi.fn<() => void>> } {
@@ -351,4 +353,50 @@ describe('T7: leave guard (a dirty merge window asks before another entry replac
     overlays.closeIf('push')
     expect(overlays.route().overlay).toBeNull()
   })
+})
+
+describe('B1 L4: first 「解决冲突…」 click after a page load', () => {
+  // L4 saw the first click do nothing. The cause was the DSH sign-in dialog's transparent mask (the
+  // click landed on it and closed the dialog); this pins that the workbench wiring itself (status
+  // sync, auto-open tracker, leave guard) never swallows or undoes that first open.
+  const CONFLICTS: WorkbenchOverlay = { kind: 'conflicts' }
+  for (const clickBeforeState of [true, false]) {
+    it(`mounted mid-merge, clicked ${clickBeforeState ? 'before' : 'after'} operationState loaded: the list opens and stays`, () => {
+      const onChange = vi.fn()
+      const guard = vi.fn((current: WorkbenchOverlay) => current.kind === 'mergeWindow')
+      const overlays = createOverlayController({ onChange, guard })
+      const tracker = createAutoOpenTracker()
+      let listActive = false
+      const statusArrived = (): void => {
+        const sync = conflictListSync(listActive, 'merge', 4)
+        listActive = sync.active
+        if (sync.close) {
+          overlays.closeIf('conflicts')
+          overlays.closeIf('mergeWindow')
+        }
+      }
+      const stateArrived = (): void => {
+        if (tracker.observe(mergeState()) && overlays.route().overlay === null) overlays.open(CONFLICTS, null)
+      }
+      const click = (): void => {
+        overlays.open(CONFLICTS, null)
+        tracker.noteOpened()
+      }
+
+      statusArrived()
+      if (clickBeforeState) {
+        click()
+        stateArrived()
+      } else {
+        stateArrived()
+        click()
+      }
+      statusArrived()
+      stateArrived()
+
+      expect(overlays.route().overlay).toEqual(CONFLICTS)
+      expect(onChange).toHaveBeenCalledTimes(1)
+      expect(guard).not.toHaveBeenCalled()
+    })
+  }
 })

@@ -20,6 +20,7 @@ import type { GitClient } from '../git-client.ts'
 import { newRequestId } from '../git-client.ts'
 import { createChangesStore, uncommittedCount, useChangesState } from '../store/changes-store.ts'
 import { createCommitStore, useCommitState } from '../store/commit-store.ts'
+import type { CommitPhase } from '../store/commit-store.ts'
 import type { RollbackTarget } from '../store/push-store.ts'
 import type { DiffOpenScope } from './ChangesTree.tsx'
 import { CommitPanel } from './CommitPanel.tsx'
@@ -90,6 +91,19 @@ export function changeFilesFor(status: StatusValue | null, scope: DiffOpenScope)
 /** 「已提交 <sha>」提示是否过期：HEAD 已移走（如推送被拒后拉取变基）时不再显示旧哈希。 */
 export function commitFeedbackIsStale(committedSha: string | null, head: string | null): boolean {
   return committedSha !== null && head !== null && committedSha !== head
+}
+
+/**
+ * 提交是否刚变为失败（验收演示问题 2）：失败时也要刷新一次 bootstrap，否则提交进行中那次轮询
+ * 带回的 `pendingWrites=1` 会让「等待当前操作完成」多停留一个轮询周期。
+ */
+export function commitFailedJustNow(previous: CommitPhase, next: CommitPhase): boolean {
+  return next === 'failure' && previous !== 'failure'
+}
+
+/** 开始其它写操作时是否清掉提交页的提示（验收演示问题 3）：旧的失败提示不该跟着后续操作一直挂着。 */
+export function commitNoticeClearsOnOtherWrite(phase: CommitPhase): boolean {
+  return phase === 'failure'
 }
 
 /** 回滚目标：未跟踪文件只能删除，需要危险确认。 */
@@ -167,6 +181,14 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
   const changes = useChangesState(changesStore)
   const commit = useCommitState(commitStore)
   const statusSawCommit = useRef(false)
+  const previousPhase = useRef<CommitPhase>(commit.phase)
+  useEffect(() => {
+    if (commitFailedJustNow(previousPhase.current, commit.phase)) void onRefresh()
+    previousPhase.current = commit.phase
+  }, [commit.phase, onRefresh])
+  const clearStaleCommitNotice = useCallback(() => {
+    if (commitNoticeClearsOnOtherWrite(commitStore.getState().phase)) commitStore.dismiss()
+  }, [commitStore])
   const committedSha = commit.phase === 'success' ? (commit.lastCommit?.sha ?? null) : null
   const statusHead = status?.head ?? null
   useEffect(() => {
@@ -307,10 +329,11 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
 
   // 覆盖层同一时刻只有一个（设计 §5.3）：打开一个就关掉其余。
   const openPush = useCallback((open: OpenPush) => {
+    clearStaleCommitNotice()
     setDiff(null)
     setRollback(null)
     setPush(open)
-  }, [])
+  }, [clearStaleCommitNotice])
 
   const openWorktreeDiff = useCallback((path: string, scope: DiffOpenScope) => {
     setPush(null)
@@ -333,11 +356,12 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
   }, [openPush, status])
 
   const addToVcs = useCallback(async (paths: string[]): Promise<void> => {
+    clearStaleCommitNotice()
     const result = await client.addToVcs({ sessionId, requestId: newRequestId(), paths })
     // 失败原因在 Git 控制台里（每条命令都有记录）。
     if (!result.ok) setConsoleOpen(true)
     void onRefresh()
-  }, [client, onRefresh, sessionId])
+  }, [clearStaleCommitNotice, client, onRefresh, sessionId])
 
   const readOnlyReason = readOnlyMessage(t, value.writePolicy, 'readOnly.title')
 
@@ -424,6 +448,7 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
             {...(value.pendingWrites === undefined ? {} : { pendingWrites: value.pendingWrites })}
             onOpenDiff={openWorktreeDiff}
             onRollback={paths => {
+              clearStaleCommitNotice()
               setDiff(null)
               setPush(null)
               setRollback(rollbackTargetsFor(status, paths))

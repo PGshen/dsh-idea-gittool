@@ -1,6 +1,6 @@
 // A1 工作台接线：日志选择 → 详情动作、Diff 文件列表展开。
 import { describe, expect, it } from 'vitest'
-import { changeFilesFor, commitFeedbackIsStale, directPushAllowed, detailActionFor, diffFilesOf, logRefreshKey, rollbackTargetsFor } from '../../../src/client/pages/GitWorkbench.tsx'
+import { changeFilesFor, commitFailedJustNow, commitFeedbackIsStale, commitNoticeClearsOnOtherWrite, directPushAllowed, detailActionFor, diffFilesOf, logRefreshKey, rollbackTargetsFor } from '../../../src/client/pages/GitWorkbench.tsx'
 import type { CommitDetailValue, CommitSummary, StatusValue } from '../../../src/shared/protocol.ts'
 
 function summary(sha: string): CommitSummary {
@@ -128,5 +128,19 @@ describe('directPushAllowed（评审 I3）', () => {
     expect(directPushAllowed({ ...base, upstream: null })).toBe(false)
     expect(directPushAllowed({ ...base, detached: true, branch: null, upstream: 'origin/main' })).toBe(false)
     expect(directPushAllowed(null)).toBe(false)
+  })
+})
+
+describe('演示问题 2/3：提交提示的刷新与清除', () => {
+  it('提交刚失败时刷新一次（带回 pendingWrites=0），持续失败不重复刷新', () => {
+    expect(commitFailedJustNow('submitting', 'failure')).toBe(true)
+    expect(commitFailedJustNow('failure', 'failure')).toBe(false)
+    expect(commitFailedJustNow('submitting', 'success')).toBe(false)
+  })
+
+  it('开始其它写操作（推送、回滚、加入 VCS）时清掉旧的失败提示，成功提示保留', () => {
+    expect(commitNoticeClearsOnOtherWrite('failure')).toBe(true)
+    expect(commitNoticeClearsOnOtherWrite('success')).toBe(false)
+    expect(commitNoticeClearsOnOtherWrite('idle')).toBe(false)
   })
 })

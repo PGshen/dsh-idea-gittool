@@ -168,12 +168,14 @@ export interface MergeConfirmBarProps {
   t: Translate
   confirm: MergeConfirm
   busy: boolean
+  /** Saving the draft is a write: disabled in read-only mode. */
+  blockReason: string | null
   onConfirmApply: () => void
   onCancel: () => void
   onLeaveAnswer: (answer: LeaveAnswer) => void
 }
 
-export function MergeConfirmBar({ t, confirm, busy, onConfirmApply, onCancel, onLeaveAnswer }: MergeConfirmBarProps): ReactNode {
+export function MergeConfirmBar({ t, confirm, busy, blockReason, onConfirmApply, onCancel, onLeaveAnswer }: MergeConfirmBarProps): ReactNode {
   if (confirm.kind === 'apply') {
     const message = t('merge.apply.confirm', { count: confirm.unresolved })
     return (
@@ -193,7 +195,16 @@ export function MergeConfirmBar({ t, confirm, busy, onConfirmApply, onCancel, on
       <span className={css.confirmActions}>
         <Button data-merge-leave="cancel" onClick={() => { onLeaveAnswer('cancel') }}>{t('action.cancel')}</Button>
         <Button tone="danger" disabled={busy} data-merge-leave="discard" onClick={() => { onLeaveAnswer('discard') }}>{t('merge.leave.discard')}</Button>
-        <Button tone="primary" disabled={busy} data-autofocus data-merge-leave="save" onClick={() => { onLeaveAnswer('save') }}>{t('merge.leave.save')}</Button>
+        <Button
+          tone="primary"
+          disabled={busy || blockReason !== null}
+          title={blockReason ?? undefined}
+          data-autofocus
+          data-merge-leave="save"
+          onClick={() => { onLeaveAnswer('save') }}
+        >
+          {t('merge.leave.save')}
+        </Button>
       </span>
     </div>
   )

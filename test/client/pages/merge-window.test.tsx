@@ -165,6 +165,9 @@ describe('MergeWindowView: questions and notices', () => {
     const html = view(await loaded(), mergeState(), { blockReason: 'RO' })
     expect(html).toMatch(/<button[^>]*disabled=""[^>]*title="RO"[^>]*data-merge-save/)
     expect(html).toMatch(/<button[^>]*disabled=""[^>]*title="RO"[^>]*data-merge-apply/)
+    const leave = view(await loaded(), mergeState(), { blockReason: 'RO', ui: { ...UI, confirm: { kind: 'leave', target: { kind: 'close' } } } })
+    expect(leave).toMatch(/<button[^>]*disabled=""[^>]*title="RO"[^>]*data-merge-leave="save"/)
+    expect(leave).toMatch(/<button(?![^>]*disabled)[^>]*data-merge-leave="discard"/)
   })
 
   it('loading and load failure', () => {

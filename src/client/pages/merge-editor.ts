@@ -7,14 +7,14 @@
 // Controller ruling 11: undo/redo belong to the merge store, so CodeMirror's history extension is not
 // used. Every document change the window dispatches from the model carries MODEL_CHANGE and is never
 // reported back as a user edit.
-import { Annotation, EditorState, RangeSet, RangeSetBuilder, StateEffect, StateField } from '@codemirror/state'
+import { Annotation, Compartment, EditorState, RangeSet, RangeSetBuilder, StateEffect, StateField } from '@codemirror/state'
 import type { ChangeSet, Extension, Transaction, TransactionSpec } from '@codemirror/state'
 import { Decoration, EditorView, GutterMarker, gutter, keymap, lineNumbers } from '@codemirror/view'
 import type { DecorationSet } from '@codemirror/view'
 import { defaultKeymap } from '@codemirror/commands'
 import { isChunkResolved, isManuallyEdited } from '../merge/merge-model.ts'
 import type { MergeModel, MergeSideName, ModelChunk, Range } from '../merge/merge-model.ts'
-import type { MergeAction } from '../store/merge-store.ts'
+import type { MergeAction, MergeStatus } from '../store/merge-store.ts'
 
 export type MergePane = 'left' | 'result' | 'right'
 
@@ -63,6 +63,48 @@ export function editsOfChanges(changes: ChangeSet): TextEdit[] {
 export function userEdits(tr: Transaction): TextEdit[] {
   if (!tr.docChanged || tr.annotation(MODEL_CHANGE) === true) return []
   return editsOfChanges(tr.changes)
+}
+
+/**
+ * The Result accepts typing only while the store is `ready`: during save / apply `store.edit` is
+ * ignored, so a keystroke the editor kept would silently diverge from the model.
+ */
+export function resultEditable(status: MergeStatus): boolean {
+  return status === 'ready'
+}
+
+/** Extensions that lock (read-only, not editable) or unlock the Result editor. */
+export function resultLock(editable: boolean): Extension {
+  return editable ? [] : [EditorState.readOnly.of(true), EditorView.editable.of(false)]
+}
+
+/**
+ * Runs `apply` with the latest arguments. While `busy()` (CodeMirror is inside an update) the call is
+ * deferred once; the deferred run uses the arguments of the most recent call, so it never replays an
+ * older model over a newer one.
+ */
+export function createCoalescedUpdate<T>(
+  apply: (args: T) => void,
+  busy: () => boolean,
+  schedule: (callback: () => void) => void = queueMicrotask,
+): (args: T) => void {
+  let latest: { args: T } | null = null
+  let pending = false
+  const run = (args: T): void => {
+    latest = { args }
+    if (busy()) {
+      if (!pending) {
+        pending = true
+        schedule(() => {
+          pending = false
+          if (latest !== null) run(latest.args)
+        })
+      }
+      return
+    }
+    apply(args)
+  }
+  return run
 }
 
 // ---------------------------------------------------------------------------
@@ -265,6 +307,8 @@ export interface MergePaneHandle {
   readonly view: EditorView
   /** Follow the model: Result text (Result pane), colours and gutter buttons. */
   update(model: MergeModel, current: number | null): void
+  /** Result pane: lock / unlock typing (see {@link resultEditable}). */
+  setEditable(editable: boolean): void
   destroy(): void
 }
 
@@ -369,7 +413,9 @@ export function createMergePane(options: MergePaneOptions): MergePaneHandle {
     EditorView.editorAttributes.of({ class: options.classes.editor }),
     EditorView.contentAttributes.of({ 'aria-label': options.ariaLabel }),
   ]
-  if (!options.editable) extensions.push(EditorState.readOnly.of(true))
+  const editability = new Compartment()
+  if (options.pane === 'result') extensions.push(editability.of(resultLock(options.editable)))
+  else if (!options.editable) extensions.push(EditorState.readOnly.of(true))
   if (options.pane !== 'result') {
     extensions.push(gutter({
       class: options.classes.gutter,
@@ -397,21 +443,28 @@ export function createMergePane(options: MergePaneOptions): MergePaneHandle {
   const onScroll = options.onScroll
   if (onScroll !== undefined) view.scrollDOM.addEventListener('scroll', onScroll, { passive: true })
   let destroyed = false
+  const update = createCoalescedUpdate<{ model: MergeModel; current: number | null }>(({ model, current }) => {
+    if (destroyed) return
+    if (options.pane === 'result') {
+      const spec = syncSpec(view.state, model.result)
+      if (spec !== null) view.dispatch(spec)
+    }
+    const state = view.state
+    const marks = chunkMarks(model, options.pane, current)
+    view.dispatch({ effects: setMarks.of({ deco: lineDecorations(state, marks, options.classes), gutter: gutterMarkers(state, model, options) }) })
+  }, () => reporting)
+  let editable = options.editable
   const handle: MergePaneHandle = {
     view,
-    update: (model, current) => {
-      if (destroyed) return
-      if (reporting) {
-        queueMicrotask(() => { handle.update(model, current) })
-        return
+    update: (model, current) => { update({ model, current }) },
+    setEditable: (next) => {
+      if (destroyed || options.pane !== 'result' || next === editable) return
+      editable = next
+      const reconfigure = (): void => {
+        if (!destroyed) view.dispatch({ effects: editability.reconfigure(resultLock(editable)) })
       }
-      if (options.pane === 'result') {
-        const spec = syncSpec(view.state, model.result)
-        if (spec !== null) view.dispatch(spec)
-      }
-      const state = view.state
-      const marks = chunkMarks(model, options.pane, current)
-      view.dispatch({ effects: setMarks.of({ deco: lineDecorations(state, marks, options.classes), gutter: gutterMarkers(state, model, options) }) })
+      if (reporting) queueMicrotask(reconfigure)
+      else reconfigure()
     },
     destroy: () => {
       destroyed = true

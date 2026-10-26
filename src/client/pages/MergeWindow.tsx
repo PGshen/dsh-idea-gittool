@@ -21,7 +21,7 @@ import { useMergeState } from '../store/merge-store.ts'
 import type { MergeAction, MergeStore, MergeStoreState } from '../store/merge-store.ts'
 import { Button } from '../ui/Button.tsx'
 import { useInitialFocus } from './integrate-parts.tsx'
-import { createMergePane, createScrollLock, gutterAction, mapLine, revealLine, scrollToLine, topLine } from './merge-editor.ts'
+import { createMergePane, createScrollLock, gutterAction, mapLine, resultEditable, revealLine, scrollToLine, topLine } from './merge-editor.ts'
 import type { MergePane, MergePaneClasses, MergePaneHandle } from './merge-editor.ts'
 import { useMergeFullscreen } from './merge-fullscreen.ts'
 import type { SidebarFullscreen } from './merge-fullscreen.ts'
@@ -198,6 +198,7 @@ export function MergeWindowView(props: MergeWindowViewProps): ReactNode {
               t={t}
               confirm={ui.confirm}
               busy={busy}
+              blockReason={blockReason}
               onConfirmApply={handlers.onConfirmApply}
               onCancel={handlers.onCancelConfirm}
               onLeaveAnswer={handlers.onLeaveAnswer}
@@ -345,8 +346,16 @@ function MergeFileSession(props: MergeWindowProps): ReactNode {
       labels: { accept: leftAccept, ignore: leftIgnore }, onGutter, onScroll: onScroll('left'),
     })
     handles.result = createMergePane({
-      parent: hosts.result, pane: 'result', doc: model.result, editable: true, ariaLabel: resultName, classes,
-      onEdits: (edits) => { for (const edit of edits) store.edit(edit.from, edit.to, edit.insert) },
+      parent: hosts.result, pane: 'result', doc: model.result, editable: resultEditable(store.getState().status), ariaLabel: resultName, classes,
+      onEdits: (edits) => {
+        for (const edit of edits) store.edit(edit.from, edit.to, edit.insert)
+        // Safety net: an edit the store did not take (not ready) must not stay only in the editor.
+        const latest = store.getState().model
+        const result = handles.result
+        if (latest !== null && result !== undefined && latest.result !== result.view.state.doc.toString()) {
+          result.update(latest, controller.getState().currentChunk)
+        }
+      },
       onScroll: onScroll('result'),
     })
     handles.right = createMergePane({
@@ -373,6 +382,9 @@ function MergeFileSession(props: MergeWindowProps): ReactNode {
     if (model === null || handles === null) return
     for (const handle of Object.values(handles)) handle.update(model, currentChunk)
   }, [currentChunk, model])
+
+  const editable = resultEditable(state.status)
+  useEffect(() => { panes.current?.result?.setEditable(editable) }, [editable, model])
 
   const paths = props.operation?.conflicts.map(entry => entry.path) ?? []
   const prev = adjacentPath(paths, path, 'prev')

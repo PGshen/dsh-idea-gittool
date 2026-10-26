@@ -9,16 +9,20 @@ import { applyEdit, createModel, resolveWhole } from '../../../src/client/merge/
 import {
   MODEL_CHANGE,
   chunkMarks,
+  createCoalescedUpdate,
   createScrollLock,
   docSyncChange,
   gutterAction,
   gutterActions,
   lineClasses,
   mapLine,
+  resultEditable,
+  resultLock,
   syncSpec,
   userEdits,
 } from '../../../src/client/pages/merge-editor.ts'
 import { createMergeStore } from '../../../src/client/store/merge-store.ts'
+import type { ActionOutcome } from '../../../src/client/store/action-store.ts'
 import type { MergeStoreDeps } from '../../../src/client/store/merge-store.ts'
 import type { MergeFileValue, MergeSide, RpcResult } from '../../../src/shared/protocol.ts'
 
@@ -256,5 +260,97 @@ describe('createScrollLock', () => {
     tick()
     tick()
     expect(lock.begin('left')).toBe(true)
+  })
+})
+
+describe('Result lock while saving / applying (fix round 1)', () => {
+  it('only a ready store accepts typing; the lock makes the editor state read-only', () => {
+    expect(resultEditable('ready')).toBe(true)
+    for (const status of ['idle', 'loading', 'saving', 'applying', 'error'] as const) expect(resultEditable(status)).toBe(false)
+    expect(EditorState.create({ extensions: resultLock(false) }).readOnly).toBe(true)
+    expect(EditorState.create({ extensions: resultLock(true) }).readOnly).toBe(false)
+  })
+
+  it('typing during a save never diverges from the model', async () => {
+    const side = (body: string, blob: string): MergeSide => ({ blob, text: body, binary: false, size: body.length })
+    const value: MergeFileValue = {
+      path: 'a.txt', kind: 'both-modified',
+      base: side(CONFLICT.base, '1'.repeat(40)), ours: side(CONFLICT.ours, '2'.repeat(40)), theirs: side(CONFLICT.theirs, '3'.repeat(40)),
+      tooLarge: false, worktreeSha: null, draft: null, draftStale: false, resolved: false,
+    }
+    let finishSave!: (outcome: ActionOutcome<never>) => void
+    const store = createMergeStore({
+      loadFile: async () => ({ ok: true, value }) as RpcResult<MergeFileValue>,
+      actions: { run: vi.fn(() => new Promise<ActionOutcome<never>>((resolve) => { finishSave = resolve })) } as unknown as MergeStoreDeps['actions'],
+    })
+    await store.open('a.txt')
+    store.dispatch({ type: 'accept', id: 0, side: 'left' })
+    let state = EditorState.create({ doc: store.getState().model!.result, extensions: resultLock(resultEditable(store.getState().status)) })
+    /** CodeMirror's input path: nothing is typed into a read-only state; edits go to the store; then the safety net. */
+    const type = (from: number, insert: string): void => {
+      if (state.readOnly) return
+      const tr = state.update({ changes: { from, insert } })
+      state = tr.state
+      for (const edit of userEdits(tr)) store.edit(edit.from, edit.to, edit.insert)
+      const spec = syncSpec(state, store.getState().model!.result)
+      if (spec !== null) state = state.update(spec).state
+    }
+    const relock = (): void => {
+      state = EditorState.create({ doc: state.doc, extensions: resultLock(resultEditable(store.getState().status)) })
+    }
+
+    const saving = store.saveAndClose()
+    expect(store.getState().status).toBe('saving')
+    relock()
+    type(0, 'lost?')
+    expect(state.doc.toString()).toBe(store.getState().model!.result)
+
+    // Even if a keystroke slips through the lock, the safety net puts the editor back on the model.
+    state = EditorState.create({ doc: state.doc })
+    type(0, 'slipped')
+    expect(state.doc.toString()).toBe(store.getState().model!.result)
+    expect(store.getState().model!.result).toBe('one\nOURS\nthree\n')
+
+    finishSave({ kind: 'done', value: { path: 'a.txt', version: 2 } } as unknown as ActionOutcome<never>)
+    await saving
+    relock()
+    expect(state.readOnly).toBe(false)
+    type(0, 'X')
+    type(1, 'Y')
+    expect(store.getState().model!.result).toBe('XYone\nOURS\nthree\n')
+    expect(state.doc.toString()).toBe(store.getState().model!.result)
+  })
+})
+
+describe('createCoalescedUpdate', () => {
+  it('defers once while busy and replays only the latest arguments', () => {
+    const applied: string[] = []
+    const queued: Array<() => void> = []
+    let busy = true
+    const update = createCoalescedUpdate<string>((value) => { applied.push(value) }, () => busy, (callback) => { queued.push(callback) })
+    update('old')
+    update('older-newer')
+    expect(applied).toEqual([])
+    expect(queued).toHaveLength(1)
+    busy = false
+    update('newest')
+    for (const callback of queued.splice(0)) callback()
+    // The deferred run must not put an older model back over the newer synchronous update.
+    expect(applied).toEqual(['newest', 'newest'])
+  })
+
+  it('reschedules when still busy at replay time', () => {
+    const applied: number[] = []
+    const queued: Array<() => void> = []
+    let busy = true
+    const update = createCoalescedUpdate<number>((value) => { applied.push(value) }, () => busy, (callback) => { queued.push(callback) })
+    update(1)
+    queued.shift()!()
+    expect(applied).toEqual([])
+    expect(queued).toHaveLength(1)
+    update(2)
+    busy = false
+    queued.shift()!()
+    expect(applied).toEqual([2])
   })
 })

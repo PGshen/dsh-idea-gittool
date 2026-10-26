@@ -62,6 +62,12 @@ export function savePrefs(storage: KeyValueStorage | null, prefs: IntegratePrefs
   }
 }
 
+/** Carry 6: remember soft / mixed after a reset; a hard reset leaves the remembered choice alone. */
+export function rememberResetMode(storage: KeyValueStorage | null, mode: ResetMode): void {
+  if (mode === 'hard') return
+  savePrefs(storage, { ...loadPrefs(storage), reset: mode })
+}
+
 export interface MergePayload {
   ref: string
   noFf?: true

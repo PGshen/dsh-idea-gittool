@@ -9,6 +9,7 @@ import {
   mergeRequestOf,
   pullDefaults,
   resolveRemoteRef,
+  rememberResetMode,
   savePrefs,
 } from '../../../src/client/store/integrate-store.ts'
 import type { StatusValue } from '../../../src/shared/protocol.ts'
@@ -102,5 +103,24 @@ describe('hasTrackedChanges', () => {
     expect(hasTrackedChanges(status({ untracked: [file] }))).toBe(false)
     expect(hasTrackedChanges(status({ unstaged: [file] }))).toBe(true)
     expect(hasTrackedChanges(status({ staged: [file] }))).toBe(true)
+  })
+})
+
+describe('carry 6: remembering the reset mode', () => {
+  it('a hard reset never overwrites the remembered soft / mixed choice', () => {
+    const storage = memoryStorage()
+    savePrefs(storage, { ...DEFAULT_PREFS, reset: 'soft' })
+    rememberResetMode(storage, 'hard')
+    expect(loadPrefs(storage).reset).toBe('soft')
+    rememberResetMode(storage, 'mixed')
+    expect(loadPrefs(storage).reset).toBe('mixed')
+    rememberResetMode(storage, 'soft')
+    expect(loadPrefs(storage).reset).toBe('soft')
+  })
+
+  it('hard writes nothing at all', () => {
+    const storage = memoryStorage()
+    rememberResetMode(storage, 'hard')
+    expect(storage.data.size).toBe(0)
   })
 })

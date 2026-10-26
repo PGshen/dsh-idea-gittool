@@ -51,3 +51,16 @@ export function pickState(operation: 'cherry-pick' | 'revert', overrides: Partia
 export function idleState(): OperationStateValue {
   return { operation: null, ours: { label: 'main' }, theirs: { label: '' }, conflicts: [], resolved: [], pendingStash: false }
 }
+
+/** Carry 4: integrate/pull finished, restoring the stash conflicted (no operation, unmerged entries). */
+export function stashPopState(overrides: Partial<OperationStateValue> = {}): OperationStateValue {
+  return {
+    operation: null,
+    ours: { label: 'main', ref: 'refs/heads/main', sha: HEAD_SHA },
+    theirs: { label: '' },
+    conflicts: [conflictEntry('src/a.ts'), conflictEntry('src/new.ts', 'added-by-them')],
+    resolved: [],
+    pendingStash: false,
+    ...overrides,
+  }
+}

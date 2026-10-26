@@ -278,6 +278,14 @@ function NormalCommitPanel(props: CommitPanelProps): ReactNode {
             {t('commit.amend')}
           </label>
           <span className={css.spacer} />
+          {/* Carry 4: unmerged files without an operation (restoring a stash conflicted). */}
+          {(props.status?.conflicts.length ?? 0) > 0 && props.onResolveConflicts !== undefined
+            ? (
+                <Button data-resolve-conflicts onClick={(event) => { props.onResolveConflicts?.(event.currentTarget) }}>
+                  {t('commit.op.resolve')}
+                </Button>
+              )
+            : null}
           <Button
             tone="primary"
             disabled={!gate.canSubmit}

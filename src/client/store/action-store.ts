@@ -186,6 +186,14 @@ export function actionErrorText(error: GitError): LocalizedText {
       const key = typeof target === 'string' ? STALE_TARGET_KEY[target as StaleTargetDetails['target']] : undefined
       return text(key ?? 'action.error.git/stale-target')
     }
+    case 'git/exec-failed': {
+      // Carry 3: an empty cherry-pick / revert stops in the operation; the banner skips or aborts.
+      const operation = details['operation']
+      if (details['reason'] === 'empty' && typeof operation === 'string') {
+        return text(operation === 'rebase' || operation === 'cherry-pick' ? 'action.error.empty' : 'action.error.empty.abortOnly')
+      }
+      break
+    }
     case 'git/invalid-payload': {
       const reason = details['reason']
       const key = typeof reason === 'string' ? INVALID_REASON_KEY[reason] : undefined
@@ -282,7 +290,9 @@ export function createActionStore(deps: ActionStoreDeps): ActionStore {
     let result = await send(endpoint, payload, {})
     const operation = options.smartStash
     const trigger = options.trigger ?? null
-    if (!result.ok && result.error.code === 'git/dirty-worktree' && operation !== undefined) {
+    // Carry 2: without `details.operation` (resetToRemote, or untracked files in the way) a stash
+    // cannot help, so the question is never asked.
+    if (!result.ok && result.error.code === 'git/dirty-worktree' && operation !== undefined && detailsOf(result.error)['operation'] !== undefined) {
       const reply = await ask({ key, endpoint, operation, ...dirtyDetails(result.error), trigger })
       if (reply === 'cancel') return { kind: 'cancelled' }
       setPending(key, 'running')

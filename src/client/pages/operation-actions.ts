@@ -39,6 +39,14 @@ export function mergeMessageOf(value: OperationStateValue, edited: string): stri
   return `Merge branch '${value.theirs.label}' into ${value.ours.label}`
 }
 
+/**
+ * Commit page prefill in a merge (carry 10): MERGE_MSG, else the same default wording the
+ * conflict list commits with. Undefined outside a merge.
+ */
+export function mergePrefill(value: OperationStateValue | null): string | undefined {
+  return value?.operation === 'merge' ? mergeMessageOf(value, '') : undefined
+}
+
 /** "Accept and finish" of the conflict list: merge → merge commit, the others → continue. */
 export function finishOperation(deps: OperationDeps, value: OperationStateValue, message: string): Promise<ActionOutcome<unknown>> {
   return value.operation === 'merge' ? commitMerge(deps, message) : controlOperation(deps, 'continue')

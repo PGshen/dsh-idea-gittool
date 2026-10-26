@@ -41,7 +41,7 @@ export type WorkbenchOverlay =
   | { kind: 'commitOp'; op: 'cherryPick' | 'revert'; sha: string; shortSha: string; subject: string }
   /** `sha` is the branch tip the user saw (delete sends it as `expectedSha`). */
   | { kind: 'branchSheet'; mode: BranchSheetMode; branch?: string; startPoint?: string; sha?: string; revision?: string }
-  | { kind: 'smartCheckout'; target: CheckoutTarget; paths: string[] }
+  | { kind: 'smartCheckout'; target: CheckoutTarget; paths: string[]; untracked?: string[] }
   /** "Uncommitted changes" question of the action store (DirtyWorktreeSheet reads the ask). */
   | { kind: 'dirtyWorktree' }
 

@@ -229,6 +229,13 @@ describe('createBranchActionRunner', () => {
     expect(deps.onOutcome).not.toHaveBeenCalled()
   })
 
+  it('carry 1: would-overwrite with untracked files passes them to the smart sheet', async () => {
+    const error: GitError = { code: 'git/would-overwrite', message: 'x', details: { paths: [], untracked: ['out.js', 7] } }
+    const { runner, opened } = makeRunner(async () => ({ kind: 'failed', error, message: text('action.error.fallback') }))
+    await runner.run('checkout', login, trigger)
+    expect(opened[0]?.overlay).toEqual({ kind: 'smartCheckout', target: { kind: 'local', name: 'feat/login' }, paths: [], untracked: ['out.js'] })
+  })
+
   it('other checkout failures go to the notice instead of the smart sheet', async () => {
     const error: GitError = { code: 'git/exec-failed', message: 'boom' }
     const { runner, opened, deps } = makeRunner(async () => ({ kind: 'failed', error, message: text('action.error.fallback') }))

@@ -7,8 +7,9 @@ import type { ConflictsPageViewProps } from '../../../src/client/pages/Conflicts
 import { OVERLAY_LEVEL } from '../../../src/client/pages/workbench-overlay.ts'
 import { text } from '../../../src/client/localized-text.ts'
 import type { OperationStateValue } from '../../../src/shared/protocol.ts'
-import { zhT } from '../i18n-helpers.tsx'
-import { conflictEntry, mergeState, pickState, rebaseState } from './operation-fixtures.ts'
+import { enT, zhT } from '../i18n-helpers.tsx'
+import { en, zh } from '../../../src/client/locales.ts'
+import { conflictEntry, mergeState, pickState, rebaseState, stashPopState } from './operation-fixtures.ts'
 
 const noop = (): void => {}
 
@@ -117,5 +118,44 @@ describe('ConflictsPageView', () => {
       />,
     )
     expect(html).toContain('data-conflict-retry')
+  })
+})
+
+describe('carry 4: conflicts from restoring the stash (operation null)', () => {
+  it('lists the files with 当前分支 / 贮藏的改动, mark resolved works, no continue / abort / finish, stash kept note', () => {
+    const html = view(stashPopState(), { onAbortRequest: noop })
+    expect(html).toContain('data-conflict-row="src/a.ts"')
+    expect(html).toContain('main（当前分支）')
+    expect(html).toContain('采用 main')
+    expect(html).toContain('采用 贮藏的改动')
+    expect(html).toContain('标记已解决')
+    expect(html).not.toContain('data-conflict-finish')
+    expect(html).not.toContain('data-conflict-abort')
+    expect(html).toContain(zh['conflict.stash.note'])
+    expect(html).toContain('data-stash-note')
+    expect(html).not.toContain(zh['conflict.closeHint'].slice(0, 8))
+  })
+
+  it('renders in English too', () => {
+    const html = view(stashPopState(), { t: enT })
+    expect(html).toContain(en['conflict.stash.note'])
+    expect(html).toContain('main (current branch)')
+    expect(html).toContain(en['conflict.stashLabel'])
+  })
+})
+
+describe('carry 8: 中止… in the footer (confirmed, same wording as the banner)', () => {
+  it('offers 中止… while an operation is in progress', () => {
+    const html = view(mergeState(), { onAbortRequest: noop })
+    expect(html).toMatch(/data-conflict-abort[^>]*>中止…|>中止…<\/button>/)
+    expect(html).not.toContain('data-abort-confirm')
+  })
+
+  it('asks with the banner sentence before aborting', () => {
+    const html = view(mergeState(), { onAbortRequest: noop, abortConfirming: true, onAbortCancel: noop, onAbort: noop })
+    expect(html).toContain('data-abort-confirm')
+    expect(html).toContain('会丢弃本次合并的进度，但保留工作区改动。')
+    expect(html).toContain('中止合并')
+    expect(html).toContain('data-conflict-abort-confirm')
   })
 })

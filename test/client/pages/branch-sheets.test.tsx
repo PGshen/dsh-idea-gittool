@@ -8,8 +8,8 @@ import type { BranchSheetOverlay, SheetForm } from '../../../src/client/pages/Br
 import { SmartCheckoutSheetView, submitSmartCheckout } from '../../../src/client/pages/SmartCheckoutSheet.tsx'
 import { text } from '../../../src/client/localized-text.ts'
 import type { ActionOutcome } from '../../../src/client/store/action-store.ts'
-import { zh } from '../../../src/client/locales.ts'
-import { zhT } from '../i18n-helpers.tsx'
+import { en, zh } from '../../../src/client/locales.ts'
+import { enT, zhT } from '../i18n-helpers.tsx'
 
 const trigger = { focus() {}, isConnected: true }
 const SHA = 'bbb1111222233334444555566667777888899991'
@@ -202,7 +202,7 @@ describe('submitSmartCheckout', () => {
 })
 
 describe('SmartCheckoutSheetView', () => {
-  const props = { t: zhT, target, paths: ['a.ts', 'b.ts'], forceConfirmed: false, busy: false, error: null, onStash: () => {}, onForce: () => {}, onCancel: () => {}, onForceConfirmChange: () => {} }
+  const props = { t: zhT, target, paths: ['a.ts', 'b.ts'], untracked: [] as string[], forceConfirmed: false, busy: false, error: null, onStash: () => {}, onForce: () => {}, onCancel: () => {}, onForceConfirmChange: () => {} }
 
   it('lists the overwritten files and offers stash / force / cancel', () => {
     const html = renderToStaticMarkup(<SmartCheckoutSheetView {...props} />)
@@ -220,6 +220,34 @@ describe('SmartCheckoutSheetView', () => {
     expect(locked).toContain('data-danger')
     const unlocked = renderToStaticMarkup(<SmartCheckoutSheetView {...props} forceConfirmed />)
     expect(unlocked).not.toMatch(/<button[^>]*data-force[^>]*disabled|<button[^>]*disabled[^>]*data-force/)
+  })
+
+  it('carry 1: force copy says ALL tracked changes are discarded (not only the listed ones)', () => {
+    const html = renderToStaticMarkup(<SmartCheckoutSheetView {...props} />)
+    expect(html).toContain(zh['branch.smart.forceConfirm'])
+    expect(zh['branch.smart.forceConfirm']).toContain('所有已跟踪文件')
+    expect(en['branch.smart.forceConfirm']).toContain('all local changes to tracked files')
+  })
+
+  it('carry 1: only untracked files in the way → no stash button, explains they block the checkout', () => {
+    const html = renderToStaticMarkup(<SmartCheckoutSheetView {...props} paths={[]} untracked={['build/out.js', 'tmp/']} />)
+    expect(html).not.toContain('data-primary')
+    expect(html).not.toContain('贮藏并签出')
+    expect(html).toContain('build/out.js')
+    expect(html).toContain('2 个未跟踪文件挡住了签出')
+    expect(html).toContain(zh['branch.smart.untrackedHint'])
+    expect(html).toContain(zh['branch.smart.forceConfirmUntracked'])
+    expect(html).not.toContain(zh['branch.smart.hint'].slice(0, 6))
+    expect(html).toContain('data-force')
+  })
+
+  it('carry 1: tracked + untracked → stash is offered, force copy also mentions the untracked files', () => {
+    const html = renderToStaticMarkup(<SmartCheckoutSheetView {...props} untracked={['new.txt']} />)
+    expect(html).toContain('贮藏并签出')
+    expect(html).toContain('new.txt')
+    expect(html).toContain(zh['branch.smart.forceConfirmUntracked'])
+    const english = renderToStaticMarkup(<SmartCheckoutSheetView {...props} t={enT} untracked={['new.txt']} />)
+    expect(english).toContain('overwrite the listed untracked files')
   })
 
   it('shows an error from a failed resend', () => {

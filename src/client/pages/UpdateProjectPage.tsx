@@ -93,12 +93,13 @@ export function UpdateProjectPageView(props: UpdateProjectViewProps): ReactNode 
                   checked={props.backup}
                   disabled={busy}
                   data-backup
-                  data-autofocus
                   onChange={event => props.onBackupChange(event.target.checked)}
                 />
                 <span>{t('integrate.update.rewritten.backup')}</span>
               </label>
-              {props.backup ? null : <p className={css.error} role="status">{t('integrate.update.rewritten.noBackup', { count: rewritten.localAhead })}</p>}
+              {props.backup
+                ? <p className={css.hint} data-backup-only>{t('integrate.update.rewritten.backupOnly')}</p>
+                : <p className={css.error} role="status">{t('integrate.update.rewritten.noBackup', { count: rewritten.localAhead })}</p>}
               <MessageLines t={t} error={props.error} />
               <IntegrateFooter
                 t={t}
@@ -106,6 +107,7 @@ export function UpdateProjectPageView(props: UpdateProjectViewProps): ReactNode 
                 busy={busy}
                 canSubmit
                 danger
+                focusCancel
                 onCancel={props.onBack}
               />
             </form>
@@ -127,13 +129,14 @@ export interface UpdateProjectPageProps {
 export function UpdateProjectPage({ status, block, actions, onOutcome, onNotice, onClose, storage }: UpdateProjectPageProps): ReactNode {
   const t = useT()
   const rootRef = useRef<HTMLDivElement | null>(null)
-  useInitialFocus(rootRef)
   const store = useMemo(() => (storage === undefined ? browserStorage() : storage), [storage])
   const [mode, setMode] = useState<PullMode>(() => loadPrefs(store).update)
   const [rewritten, setRewritten] = useState<{ localAhead: number } | null>(null)
   // Never remembered: the backup tick starts on every time the rewritten view appears.
   const [backup, setBackup] = useState(true)
   const { busy, error, clearError, run } = useFormRunner({ onOutcome, onNotice, onClose })
+  // Again when the rewritten view replaces the form: Cancel, not the reset, gets the focus (carry 5).
+  useInitialFocus(rootRef, rewritten !== null)
   const stashNote = hasTrackedChanges(status)
   const noUpstream = status === null || status.detached || status.upstream === null
 
@@ -150,7 +153,7 @@ export function UpdateProjectPage({ status, block, actions, onOutcome, onNotice,
 
   const resetToRemote = (trigger: FocusTarget | null): void => {
     if (busy) return
-    run(() => submitResetToRemote({ actions, trigger }, backup), {
+    run(() => submitResetToRemote({ actions, trigger }, backup, status), {
       closed: (outcome) => {
         const notice = backupNotice(outcome)
         if (notice === null) onOutcome(outcome)

@@ -10,7 +10,7 @@ import type { Translate } from '../i18n.tsx'
 import type { LocalizedText } from '../localized-text.ts'
 import type { ActionOutcome, ActionStore } from '../store/action-store.ts'
 import { actionErrorText } from '../store/action-store.ts'
-import { RESET_MODES, browserStorage, loadPrefs, savePrefs } from '../store/integrate-store.ts'
+import { RESET_MODES, browserStorage, loadPrefs, rememberResetMode } from '../store/integrate-store.ts'
 import type { KeyValueStorage } from '../store/push-store.ts'
 import { resetCanSubmit, submitReset } from './integrate-actions.ts'
 import type { ResetForm } from './integrate-actions.ts'
@@ -151,7 +151,7 @@ export function ResetSheet({ sha, loadPreview, actions, onOutcome, onClose, stor
 
   const submit = (trigger: FocusTarget | null): void => {
     if (busy || !resetCanSubmit(form, preview)) return
-    savePrefs(store, { ...loadPrefs(store), reset: form.mode === 'soft' ? 'soft' : 'mixed' })
+    rememberResetMode(store, form.mode)
     run(() => submitReset({ actions, trigger }, { ...form, sha }, preview), {
       // The preview is out of date: load it again and drop the tick, so the user sees the new
       // HEAD's consequences before confirming anything.

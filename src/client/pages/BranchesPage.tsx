@@ -3,11 +3,12 @@
 // single click selects and double click checks out. Writes go through `onAction` (BranchActionRunner).
 import { useMemo, useState } from 'react'
 import type { CSSProperties, MouseEvent, ReactNode } from 'react'
-import type { BranchEntry, BranchesValue, GitError } from '../../shared/protocol.ts'
+import type { BranchEntry, BranchesValue, GitError, RepoOperation } from '../../shared/protocol.ts'
 import { activeFocusTarget } from '../focus.ts'
 import type { FocusTarget } from '../focus.ts'
 import { useT } from '../i18n.tsx'
 import type { Translate } from '../i18n.tsx'
+import { OPERATION_KEY } from '../locales.ts'
 import { Button } from '../ui/Button.tsx'
 import { EmptyState } from '../ui/EmptyState.tsx'
 import { BranchContextMenu } from './BranchPanel.tsx'
@@ -62,6 +63,29 @@ interface MenuState { entry: BranchEntry; x: number; y: number; trigger: FocusTa
 function triggerOf(event: MouseEvent): FocusTarget | null {
   const element = event.currentTarget
   return typeof HTMLElement !== 'undefined' && element instanceof HTMLElement ? element : activeFocusTarget()
+}
+
+export interface BranchAbortConfirmProps {
+  t: Translate
+  operation: Exclude<RepoOperation, null>
+  onCancel: () => void
+  onConfirm: (trigger: FocusTarget | null) => void
+}
+
+/** Abort confirmation of the quick actions, worded like the banner's (carry 7). */
+export function BranchAbortConfirm({ t, operation, onCancel, onConfirm }: BranchAbortConfirmProps): ReactNode {
+  const name = t(OPERATION_KEY[operation])
+  return (
+    <div className={css.confirm} role="alert" data-abort-confirm>
+      <span>{t('banner.abort.confirm', { operation: name })}</span>
+      <span className={css.confirmActions}>
+        <Button onClick={onCancel}>{t('banner.abort.cancel')}</Button>
+        <Button tone="danger" onClick={(event) => { onConfirm(event.currentTarget) }} data-danger>
+          {t('banner.abort.confirmButton', { operation: name })}
+        </Button>
+      </span>
+    </div>
+  )
 }
 
 export function BranchesPage(props: BranchesPageProps): ReactNode {
@@ -197,22 +221,15 @@ export function BranchesPage(props: BranchesPageProps): ReactNode {
             )}
         {confirmingAbort && context.operation !== null
           ? (
-              <div className={css.confirm} role="alert" data-abort-confirm>
-                <span>{t('branch.quick.abortPrompt')}</span>
-                <span className={css.confirmActions}>
-                  <Button onClick={() => setConfirmingAbort(false)}>{t('branch.quick.abortCancel')}</Button>
-                  <Button
-                    tone="danger"
-                    onClick={(event) => {
-                      setConfirmingAbort(false)
-                      props.onQuickAction('abort', event.currentTarget)
-                    }}
-                    data-danger
-                  >
-                    {t('branch.quick.abortConfirm')}
-                  </Button>
-                </span>
-              </div>
+              <BranchAbortConfirm
+                t={t}
+                operation={context.operation}
+                onCancel={() => setConfirmingAbort(false)}
+                onConfirm={(trigger) => {
+                  setConfirmingAbort(false)
+                  props.onQuickAction('abort', trigger)
+                }}
+              />
             )
           : null}
         {tree}

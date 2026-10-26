@@ -231,6 +231,14 @@ describe('CommitPanel operation modes (A3 T9)', () => {
     expect(html).not.toContain('data-operation-mode')
   })
 
+  it('carry 4: conflicts without an operation (stash pop) offer 解决冲突… on the normal page', () => {
+    const status = statusFixture({ conflicts: [entry('src/a.ts', 'U')], unstaged: [entry('b.ts', 'M')] })
+    const { render } = setup({ status })
+    expect(render({ onResolveConflicts: () => {} })).toContain('data-resolve-conflicts')
+    expect(render()).not.toContain('data-resolve-conflicts')
+    expect(setup().render({ onResolveConflicts: () => {} })).not.toContain('data-resolve-conflicts')
+  })
+
   it('merge: checkboxes disabled, 合并提交 title, prefilled message, 提交合并', () => {
     const status = statusFixture({ operation: 'merge', staged: [entry('a.ts', 'M')] })
     const { commitStore, render } = setup({ status })

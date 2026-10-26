@@ -379,6 +379,21 @@ describe('operation state commit (A3 T9)', () => {
     expect(visibleMessage(fresh.getState())).toBe('B')
   })
 
+  it('carry 9: text typed before the first operationState load is not replaced by MERGE_MSG', () => {
+    const commit = store()
+    // Status already says "merge", operationState has not loaded yet (no key, no message).
+    commit.setOperation({ mode: 'merge', key: null })
+    commit.setMessage('typed early')
+    commit.setOperation({ mode: 'merge', message: "Merge branch 'f'", key: 'k1' })
+    expect(visibleMessage(commit.getState())).toBe('typed early')
+    expect(commit.getState()).toMatchObject({ operationKey: 'k1', operationEdited: true })
+    // Untouched: the prefill arrives as before.
+    const fresh = store()
+    fresh.setOperation({ mode: 'merge', key: null })
+    fresh.setOperation({ mode: 'merge', message: "Merge branch 'f'", key: 'k1' })
+    expect(visibleMessage(fresh.getState())).toBe("Merge branch 'f'")
+  })
+
   it('a new operation (other key) starts from its own MERGE_MSG', () => {
     const commit = store()
     commit.setOperation({ mode: 'merge', message: 'A', key: 'k1' })

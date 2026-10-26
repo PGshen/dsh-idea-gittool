@@ -5,15 +5,17 @@ import {
   conflictGroups,
   conflictKindText,
   conflictRowActions,
+  conflictListSync,
   conflictSides,
   createAutoOpenTracker,
   createConflictStore,
   operationIdentity,
+  withStashLabel,
 } from '../../../src/client/store/conflict-store.ts'
 import { render } from '../../../src/client/localized-text.ts'
 import type { OperationStateValue, RpcResult } from '../../../src/shared/protocol.ts'
 import { zhT } from '../i18n-helpers.tsx'
-import { conflictEntry, idleState, mergeState, pickState, rebaseState } from '../pages/operation-fixtures.ts'
+import { conflictEntry, idleState, mergeState, pickState, rebaseState, stashPopState } from '../pages/operation-fixtures.ts'
 
 const say = (value: Parameters<typeof render>[1]): string => render(zhT, value)
 
@@ -210,5 +212,52 @@ describe('auto-open tracker', () => {
     expect(tracker.observe(mergeState({ conflicts: [] }))).toBe(false)
     tracker.noteOpened()
     expect(tracker.observe(mergeState())).toBe(false)
+  })
+})
+
+describe('carry 4: conflicts left by restoring the stash (operation null)', () => {
+  it('sides are the current branch and the stashed changes; rows still offer both sides and mark resolved', () => {
+    const value = withStashLabel(stashPopState(), zhT('conflict.stashLabel'))
+    const sides = conflictSides(value)
+    expect(say(sides.ours.name)).toBe('main（当前分支）')
+    expect(say(sides.theirs.name)).toBe('贮藏的改动')
+    expect(say(sides.theirs.take)).toBe('采用 贮藏的改动')
+    expect(say(sides.theirs.title)).toContain('theirs')
+    expect(sides.note).toBeNull()
+    const [content] = value.conflicts
+    expect(conflictRowActions(content!, value).map(action => action.id)).toEqual(['ours', 'theirs', 'mark'])
+    expect(say(conflictKindText(value.conflicts[1]!, value))).toBe('贮藏的改动 新增')
+  })
+
+  it('withStashLabel only touches the no-operation case', () => {
+    const merge = mergeState()
+    expect(withStashLabel(merge, 'x')).toBe(merge)
+  })
+
+  it('the list stays loaded while unmerged entries remain without an operation, and closes when they are gone', () => {
+    // A merge finished, but popping the stash conflicted: keep (and reload) the list.
+    expect(conflictListSync(true, null, 2)).toEqual({ load: 'refresh', close: false, active: true })
+    expect(conflictListSync(false, null, 2)).toEqual({ load: 'refresh', close: false, active: true })
+    // All resolved: nothing left to show.
+    expect(conflictListSync(true, null, 0)).toEqual({ load: 'clear', close: true, active: false })
+    expect(conflictListSync(false, null, 0)).toEqual({ load: 'clear', close: false, active: false })
+    expect(conflictListSync(false, 'merge', 0)).toEqual({ load: 'refresh', close: false, active: true })
+  })
+})
+
+describe('carry 11: going idle forgets which operations were shown', () => {
+  it('restarting the same merge later auto-opens the list again', () => {
+    const tracker = createAutoOpenTracker()
+    tracker.observe(null)
+    expect(tracker.observe(mergeState())).toBe(true)
+    expect(tracker.observe(mergeState())).toBe(false)
+    tracker.observe(null)
+    expect(tracker.observe(mergeState())).toBe(true)
+  })
+
+  it('stash-pop conflicts (no operation) never auto-open by themselves', () => {
+    const tracker = createAutoOpenTracker()
+    tracker.observe(null)
+    expect(tracker.observe(stashPopState())).toBe(false)
   })
 })

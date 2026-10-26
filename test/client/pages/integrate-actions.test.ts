@@ -15,6 +15,8 @@ import {
   submitUpdateProject,
 } from '../../../src/client/pages/integrate-actions.ts'
 import { text } from '../../../src/client/localized-text.ts'
+import { en, zh } from '../../../src/client/locales.ts'
+import { statusFixture } from './changes-fixtures.ts'
 import type { ActionOutcome } from '../../../src/client/store/action-store.ts'
 import type { GitError, ResetPreviewValue } from '../../../src/shared/protocol.ts'
 
@@ -96,6 +98,23 @@ describe('update project', () => {
     const off = deps(done())
     await submitResetToRemote(off.deps, false)
     expect(off.run).toHaveBeenCalledWith('resetToRemote', { backup: false }, { trigger })
+  })
+
+  it('carry 2: reset to remote blocked by untracked/ignored files says "move or delete", not "commit or stash"', async () => {
+    const status = statusFixture({ unstaged: [{ path: 'src/a.ts', status: 'M' }] })
+    const blocked = failed('git/dirty-worktree', { paths: ['build/out.js', 'tmp/cache'], count: 2 })
+    const result = await submitResetToRemote(deps(blocked).deps, true, status)
+    expect(result).toEqual({ kind: 'error', message: text('integrate.update.resetInTheWay', { count: 2, paths: 'build/out.js, tmp/cache' }) })
+    expect(zh['integrate.update.resetInTheWay']).toContain('移走或删除')
+    expect(zh['integrate.update.resetInTheWay']).not.toContain('贮藏')
+    expect(en['integrate.update.resetInTheWay']).toContain('Move or delete')
+  })
+
+  it('carry 2: reset to remote blocked by tracked changes keeps the commit-or-stash wording', async () => {
+    const status = statusFixture({ unstaged: [{ path: 'src/a.ts', status: 'M' }] })
+    const blocked = failed('git/dirty-worktree', { paths: ['src/a.ts'], count: 1 })
+    const result = await submitResetToRemote(deps(blocked).deps, true, status)
+    expect(result).toEqual({ kind: 'error', message: text('integrate.update.resetDirty', { count: 1 }) })
   })
 
   it('the backup branch name becomes a notice', () => {

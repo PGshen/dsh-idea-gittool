@@ -2,7 +2,7 @@
 // De-duplication of repeated calls, dirty-worktree ask → stash resend with a new requestId,
 // cancel without a request, conflict routing, and error code → LocalizedText mapping.
 import { describe, expect, it, vi } from 'vitest'
-import { zh } from '../../../src/client/locales.ts'
+import { en, zh } from '../../../src/client/locales.ts'
 import { render } from '../../../src/client/localized-text.ts'
 import { zhT } from '../i18n-helpers.tsx'
 import type {
@@ -167,6 +167,19 @@ describe('createActionStore.run', () => {
     expect(actions.getState().ask).toBeNull()
   })
 
+  it('carry 2: a dirty-worktree answer without details.operation never asks, even with smartStash', async () => {
+    const merge = vi.fn(async () => ({
+      ok: false,
+      error: { code: 'git/dirty-worktree', message: 'dirty', details: { paths: ['out.js'], count: 1 } },
+    }) as const)
+    const onAskStash = vi.fn()
+    const actions = createActionStore({ client: fakeClient({ merge }), sessionId: 's1', newRequestId: ids(), onAskStash })
+    const outcome = await actions.run('merge', { ref: 'x' }, { smartStash: 'merge' })
+    expect(outcome.kind).toBe('failed')
+    expect(onAskStash).not.toHaveBeenCalled()
+    expect(merge).toHaveBeenCalledTimes(1)
+  })
+
   it('git/conflict → onConflict and a conflict outcome', async () => {
     const error: GitError = { code: 'git/conflict', message: 'conflict', details: { operation: 'merge', conflicts: 2, stashKept: true } }
     const merge = vi.fn(async () => ({ ok: false, error }) as RpcResult<IntegrateValue>)
@@ -250,6 +263,20 @@ describe('actionErrorText', () => {
     expect(actionErrorText(error('git/invalid-payload', { reason: 'no-upstream' }))).toEqual({ key: 'action.error.no-upstream' })
     expect(actionErrorText(error('git/invalid-payload'))).toEqual({ key: 'action.error.fallback', params: { code: 'git/invalid-payload', message: 'm' } })
     expect(actionErrorText(error('git/exec-failed'))).toEqual({ key: 'action.error.fallback', params: { code: 'git/exec-failed', message: 'm' } })
+  })
+
+  it('carry 3: an empty cherry-pick / revert points to the banner skip / abort', () => {
+    const pick = actionErrorText(error('git/exec-failed', { reason: 'empty', operation: 'cherry-pick' }))
+    expect(pick).toEqual({ key: 'action.error.empty' })
+    expect(zh['action.error.empty']).toContain('提交为空，请跳过或中止')
+    expect(en['action.error.empty']).toMatch(/empty.*Skip.*Abort/s)
+    const revert = actionErrorText(error('git/exec-failed', { reason: 'empty', operation: 'revert' }))
+    expect(revert).toEqual({ key: 'action.error.empty.abortOnly' })
+    expect(zh['action.error.empty.abortOnly']).toContain('提交为空')
+    expect(zh['action.error.empty.abortOnly']).toContain('中止')
+    expect(zh['action.error.empty.abortOnly']).not.toContain('跳过')
+    // Without an operation (nothing to skip / abort) the generic text stays.
+    expect(actionErrorText(error('git/exec-failed', { reason: 'empty' })).key).toBe('action.error.fallback')
   })
 
   it('every mapped key exists in the dictionary', () => {

@@ -24,10 +24,10 @@ import type { ActionOutcome } from '../store/action-store.ts'
 import { createChangesStore, uncommittedCount, useChangesState } from '../store/changes-store.ts'
 import { commitPageModeOf, createCommitStore, useCommitState, visibleMessage } from '../store/commit-store.ts'
 import type { CommitPhase } from '../store/commit-store.ts'
-import { createAutoOpenTracker, createConflictStore, operationIdentity, useConflictState } from '../store/conflict-store.ts'
+import { conflictListSync, createAutoOpenTracker, createConflictStore, operationIdentity, useConflictState } from '../store/conflict-store.ts'
 import type { OperationControlAction } from '../../shared/protocol.ts'
 import { ConflictsPage } from './ConflictsPage.tsx'
-import { controlOperation, operationBusy, operationOutcomeEffect, submitOperationStep } from './operation-actions.ts'
+import { controlOperation, mergePrefill, operationBusy, operationOutcomeEffect, submitOperationStep } from './operation-actions.ts'
 import type { OperationStepKind } from './operation-actions.ts'
 import type { RollbackTarget } from '../store/push-store.ts'
 import type { DiffOpenScope } from './ChangesTree.tsx'
@@ -431,20 +431,19 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
   const operation = status?.operation ?? null
   const statusKnown = status !== null
   const closeOverlayIf = overlays.closeIf
-  const previousOperation = useRef(operation)
+  const unmerged = status?.conflicts.length ?? 0
+  const listActive = useRef(false)
   useEffect(() => {
     if (!statusKnown) return
-    if (operation === null) {
-      conflictStore.clear()
-      autoOpen.observe(null)
-      // Finished or aborted elsewhere (terminal, Agent): the list has nothing left to show.
-      if (previousOperation.current !== null) closeOverlayIf('conflicts')
-      previousOperation.current = null
-      return
-    }
-    previousOperation.current = operation
-    void conflictStore.refresh()
-  }, [autoOpen, closeOverlayIf, conflictStore, operation, statusKnown, value.version])
+    if (operation === null) autoOpen.observe(null)
+    // Carry 4: unmerged entries without an operation (the stash pop after an integrate conflicted)
+    // keep the list loaded; it closes once nothing is left (finished or aborted elsewhere too).
+    const sync = conflictListSync(listActive.current, operation, unmerged)
+    listActive.current = sync.active
+    if (sync.close) closeOverlayIf('conflicts')
+    if (sync.load === 'clear') conflictStore.clear()
+    else void conflictStore.refresh()
+  }, [autoOpen, closeOverlayIf, conflictStore, operation, statusKnown, unmerged, value.version])
   const operationValue = conflictState.value
   const openOverlay = overlays.open
   const currentRoute = overlays.route
@@ -457,7 +456,7 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
   useEffect(() => { if (conflictsOpen) autoOpen.noteOpened() }, [autoOpen, conflictsOpen])
   const pageMode = commitPageModeOf(operation)
   const operationKey = operationValue === null ? null : operationIdentity(operationValue)
-  const mergeMsg = operationValue?.operation === 'merge' ? operationValue.message : undefined
+  const mergeMsg = mergePrefill(operationValue)
   useEffect(() => {
     commitStore.setOperation({ mode: pageMode, message: mergeMsg, key: operationKey })
   }, [commitStore, mergeMsg, operationKey, pageMode])
@@ -802,6 +801,7 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
             key={`${overlay.target.kind}:${overlay.target.name}`}
             target={overlay.target}
             paths={overlay.paths}
+            {...(overlay.untracked === undefined ? {} : { untracked: overlay.untracked })}
             actions={actions}
             onOutcome={reportOutcome}
             onClose={() => { overlays.closeIf('smartCheckout') }}
@@ -895,6 +895,7 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
             loadCommand={() => client.conflictCommand(sessionId)}
             copy={(command) => { void globalThis.navigator?.clipboard?.writeText(command) }}
             onFinished={applyOperationOutcome}
+            onAbort={(trigger) => { runOperationControl('abort', trigger) }}
             onClose={() => { overlays.closeIf('conflicts') }}
           />
         )}

@@ -123,6 +123,7 @@ const THEIRS_NAME: Record<Exclude<RepoOperation, null>, GitWorkbenchKey> = {
  * cherry-pick / revert ours = current branch, theirs = the commit.
  */
 export function conflictSides(value: OperationStateValue): ConflictSides {
+  if (value.operation === null) return stashPopSides(value)
   const rebase = value.operation === 'rebase'
   const oursName = text(rebase ? 'conflict.side.onto' : 'conflict.side.current', { label: value.ours.label })
   const theirsName = text(THEIRS_NAME[value.operation ?? 'merge'], { label: value.theirs.label })
@@ -139,6 +140,53 @@ export function conflictSides(value: OperationStateValue): ConflictSides {
     },
     note: rebase ? text('conflict.rebaseNote', { ours: value.ours.label, theirs: value.theirs.label }) : null,
   }
+}
+
+/**
+ * Carry 4: no operation but unmerged entries — restoring the stash after an integrate / pull
+ * conflicted. `git stash pop`: ours = HEAD (the current branch), theirs = the stashed changes.
+ */
+function stashPopSides(value: OperationStateValue): ConflictSides {
+  return {
+    ours: {
+      name: text('conflict.side.current', { label: value.ours.label }),
+      take: text('conflict.take', { label: value.ours.label }),
+      title: text('conflict.take.ours.title', { label: value.ours.label }),
+    },
+    theirs: {
+      name: text('conflict.stashLabel'),
+      take: text('conflict.take', { label: value.theirs.label }),
+      title: text('conflict.take.stash.title'),
+    },
+    note: null,
+  }
+}
+
+/**
+ * The Host leaves `theirs.label` empty without an operation; name it "the stashed changes"
+ * (`stashLabel`, already translated) so every row text has a side name.
+ */
+export function withStashLabel(value: OperationStateValue, stashLabel: string): OperationStateValue {
+  if (value.operation !== null || value.theirs.label !== '') return value
+  return { ...value, theirs: { ...value.theirs, label: stashLabel } }
+}
+
+export interface ConflictListSync {
+  /** Reload operationState, or drop the value. */
+  load: 'clear' | 'refresh'
+  /** The list had something to show and now has nothing: close it. */
+  close: boolean
+  /** Feed back as `previousActive` next time. */
+  active: boolean
+}
+
+/**
+ * What the conflict list does when the status changes: it is active while an operation runs or
+ * unmerged entries remain without one (carry 4: the stash pop after an integrate conflicted).
+ */
+export function conflictListSync(previousActive: boolean, operation: RepoOperation, conflicts: number): ConflictListSync {
+  const active = operation !== null || conflicts > 0
+  return { load: active ? 'refresh' : 'clear', close: previousActive && !active, active }
 }
 
 export type ConflictActionId = 'ours' | 'theirs' | 'keep' | 'delete' | 'mark'
@@ -234,7 +282,9 @@ export function createAutoOpenTracker(): AutoOpenTracker {
       const key = value === null ? null : operationIdentity(value)
       current = key
       if (key === null) {
+        // Carry 11: idle again — a later run of the same operation is a new one and may open.
         sawIdle = true
+        shown.clear()
         return false
       }
       if (pendingMark || !sawIdle) {

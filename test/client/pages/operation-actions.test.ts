@@ -5,6 +5,7 @@ import {
   controlOperation,
   finishOperation,
   mergeMessageOf,
+  mergePrefill,
   operationBusy,
   operationOutcomeEffect,
   resolveConflictFile,
@@ -144,5 +145,18 @@ describe('operationBusy', () => {
     expect(operationBusy({ 'fetch:{}': 'running' })).toBe(false)
     expect(operationBusy({ 'operationControl:{"action":"continue"}': 'running' })).toBe(true)
     expect(operationBusy({ 'operationCommit:{"message":"x"}': 'running' })).toBe(true)
+  })
+})
+
+describe('carry 10: commit page merge prefill', () => {
+  it('uses MERGE_MSG, else git\'s default wording from the side labels; nothing outside a merge', () => {
+    expect(mergePrefill(mergeState())).toBe("Merge branch 'feature' into main")
+    expect(mergePrefill(mergeState({ message: 'Custom MERGE_MSG' }))).toBe('Custom MERGE_MSG')
+    const withoutMessage = mergeState()
+    delete withoutMessage.message
+    expect(mergePrefill(withoutMessage)).toBe("Merge branch 'feature' into main")
+    expect(mergePrefill(mergeState({ theirs: { label: 'topic' }, ours: { label: 'dev' }, message: '  ' }))).toBe("Merge branch 'topic' into dev")
+    expect(mergePrefill(rebaseState())).toBeUndefined()
+    expect(mergePrefill(null)).toBeUndefined()
   })
 })

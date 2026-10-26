@@ -67,13 +67,17 @@ export interface FooterProps {
   danger?: boolean
   onCancel: () => void
   cancelLabel?: string
+  /** Initial focus on Cancel (dangerous forms: Enter must not fire the primary action). */
+  focusCancel?: boolean
 }
 
-export function IntegrateFooter({ t, label, busy, canSubmit, danger = false, onCancel, cancelLabel }: FooterProps): ReactNode {
+export function IntegrateFooter({ t, label, busy, canSubmit, danger = false, onCancel, cancelLabel, focusCancel = false }: FooterProps): ReactNode {
   return (
     <footer className={css.footer}>
       <span className={css.actions}>
-        <Button onClick={onCancel} disabled={busy} data-cancel>{cancelLabel ?? t('action.cancel')}</Button>
+        <Button onClick={onCancel} disabled={busy} data-cancel {...(focusCancel ? { 'data-autofocus': '' } : {})}>
+          {cancelLabel ?? t('action.cancel')}
+        </Button>
         <Button
           type="submit"
           tone={danger ? 'danger' : 'primary'}

@@ -12,7 +12,7 @@ import { OPERATION_KEY } from '../locales.ts'
 import { text } from '../localized-text.ts'
 import type { LocalizedText } from '../localized-text.ts'
 import type { ActionOutcome, ActionStore } from '../store/action-store.ts'
-import { conflictGroups, conflictKindText, conflictRowActions, conflictSides, useConflictState } from '../store/conflict-store.ts'
+import { conflictGroups, conflictKindText, conflictRowActions, conflictSides, useConflictState, withStashLabel } from '../store/conflict-store.ts'
 import type { ConflictStore, ConflictStoreState } from '../store/conflict-store.ts'
 import { Button } from '../ui/Button.tsx'
 import { finishOperation, mergeMessageOf, resolveConflictFile } from './operation-actions.ts'
@@ -41,6 +41,11 @@ export interface ConflictsPageViewProps {
   onFinish: (trigger: FocusTarget | null) => void
   onCopyCommand: (trigger: FocusTarget | null) => void
   onRetry: () => void
+  /** Footer 「中止…」 (carry 8): first click asks with the banner sentence. */
+  abortConfirming?: boolean
+  onAbortRequest?: (() => void) | undefined
+  onAbortCancel?: (() => void) | undefined
+  onAbort?: ((trigger: FocusTarget | null) => void) | undefined
 }
 
 const triggerOf = (event: MouseEvent<HTMLElement>): FocusTarget => event.currentTarget
@@ -55,6 +60,7 @@ export function ConflictsPageView(props: ConflictsPageViewProps): ReactNode {
     event.preventDefault()
     event.stopPropagation()
     if (markersPath !== null) props.onCancelMarkers()
+    else if (props.abortConfirming === true) props.onAbortCancel?.()
     else if (!busy) props.onClose()
   }
   const operationName = value?.operation === null || value?.operation === undefined ? null : t(OPERATION_KEY[value.operation])
@@ -71,7 +77,10 @@ export function ConflictsPageView(props: ConflictsPageViewProps): ReactNode {
         )
       : <p className={integrateCss.hint} aria-busy="true">{t('state.loading')}</p>
   } else {
-    const sides = conflictSides(value)
+    // Carry 4: without an operation the conflicts come from restoring the stash.
+    const stashPop = value.operation === null
+    const shown = withStashLabel(value, t('conflict.stashLabel'))
+    const sides = conflictSides(shown)
     const groups = conflictGroups(value)
     const unresolved = groups.unresolved.length
     const finishTitle = unresolved > 0
@@ -85,6 +94,7 @@ export function ConflictsPageView(props: ConflictsPageViewProps): ReactNode {
           {t('conflict.sides', { ours: t(sides.ours.name.key, sides.ours.name.params), theirs: t(sides.theirs.name.key, sides.theirs.name.params) })}
         </p>
         {sides.note === null ? null : <p className={css.note} data-rebase-note>{t(sides.note.key, sides.note.params)}</p>}
+        {stashPop ? <p className={css.note} data-stash-note>{t('conflict.stash.note')}</p> : null}
         <h3 className={css.groupTitle}>{t('conflict.unresolved', { count: unresolved })}</h3>
         {unresolved === 0
           ? <p className={integrateCss.hint}>{t('conflict.none')}</p>
@@ -92,14 +102,14 @@ export function ConflictsPageView(props: ConflictsPageViewProps): ReactNode {
               <ul className={css.group} aria-label={t('conflict.unresolved', { count: unresolved })}>
                 {groups.unresolved.map((entry) => {
                   const rowBusy = busyPath === entry.path
-                  const kind = conflictKindText(entry, value)
+                  const kind = conflictKindText(entry, shown)
                   return (
                     <li key={entry.path} className={css.row} data-conflict-row={entry.path} data-conflict-kind={entry.conflict ?? 'both-modified'}>
                       <span className={css.mark} aria-hidden="true">⚠</span>
                       <span className={css.path} title={entry.path}>{entry.path}</span>
                       <span className={css.kind}>{t(kind.key, kind.params)}</span>
                       <span className={css.buttons}>
-                        {conflictRowActions(entry, value).map(action => (
+                        {conflictRowActions(entry, shown).map(action => (
                           <Button
                             key={action.id}
                             tone={action.id === 'delete' ? 'danger' : 'ghost'}
@@ -147,23 +157,62 @@ export function ConflictsPageView(props: ConflictsPageViewProps): ReactNode {
               </div>
             )}
         {props.error === null ? null : <p className={integrateCss.error} role="alert">{t(props.error.key, props.error.params)}</p>}
+        {props.abortConfirming === true && !stashPop && operationName !== null
+          ? (
+              <div className={css.confirm} role="alert" data-abort-confirm>
+                <span>{t('banner.abort.confirm', { operation: operationName })}</span>
+                <span className={css.confirmActions}>
+                  <Button data-autofocus onClick={props.onAbortCancel}>{t('banner.abort.cancel')}</Button>
+                  <Button
+                    tone="danger"
+                    disabled={busy || blockReason !== null}
+                    data-conflict-abort-confirm
+                    data-danger
+                    onClick={(event) => { props.onAbort?.(triggerOf(event)) }}
+                  >
+                    {t('banner.abort.confirmButton', { operation: operationName })}
+                  </Button>
+                </span>
+              </div>
+            )
+          : null}
         <footer className={integrateCss.footer}>
-          {unresolved > 0 ? <p className={css.closeHint} data-close-hint>{t('conflict.closeHint', { count: unresolved })}</p> : null}
+          {unresolved > 0
+            ? <p className={css.closeHint} data-close-hint>{t(stashPop ? 'conflict.stash.closeHint' : 'conflict.closeHint', { count: unresolved })}</p>
+            : null}
           <Button onClick={props.onClose} disabled={finishBusy} data-conflict-close>{t('conflict.close')}</Button>
           <Button title={t('conflict.terminal.title')} data-conflict-terminal onClick={(event) => { props.onCopyCommand(triggerOf(event)) }}>
             {t('conflict.terminal')}
           </Button>
           {props.copied ? <span className={css.copied} role="status">{t('conflict.copied')}</span> : null}
-          <Button
-            tone="primary"
-            disabled={unresolved > 0 || busy || blockReason !== null}
-            title={blockReason ?? finishTitle}
-            aria-busy={finishBusy}
-            data-conflict-finish
-            onClick={(event) => { props.onFinish(triggerOf(event)) }}
-          >
-            {t('conflict.finish')}
-          </Button>
+          {stashPop || props.onAbortRequest === undefined
+            ? null
+            : (
+                <Button
+                  tone="danger"
+                  disabled={busy || blockReason !== null || props.abortConfirming === true}
+                  title={blockReason ?? undefined}
+                  data-conflict-abort
+                  data-danger
+                  onClick={props.onAbortRequest}
+                >
+                  {t('banner.abort')}
+                </Button>
+              )}
+          {stashPop
+            ? null
+            : (
+                <Button
+                  tone="primary"
+                  disabled={unresolved > 0 || busy || blockReason !== null}
+                  title={blockReason ?? finishTitle}
+                  aria-busy={finishBusy}
+                  data-conflict-finish
+                  onClick={(event) => { props.onFinish(triggerOf(event)) }}
+                >
+                  {t('conflict.finish')}
+                </Button>
+              )}
         </footer>
       </>
     )
@@ -195,15 +244,18 @@ export interface ConflictsPageProps {
   copy: (value: string) => void
   /** Accept and finish ended (the workbench maps it to notices / the log). */
   onFinished: (outcome: ActionOutcome<unknown>, step: 'commit' | 'continue') => void
+  /** Confirmed 「中止…」 of the footer (the workbench runs `operationControl abort`). */
+  onAbort?: (trigger: FocusTarget | null) => void
   onClose: () => void
 }
 
-export function ConflictsPage({ store, actions, mergeMessage, blockReason, loadCommand, copy, onFinished, onClose }: ConflictsPageProps): ReactNode {
+export function ConflictsPage({ store, actions, mergeMessage, blockReason, loadCommand, copy, onFinished, onAbort, onClose }: ConflictsPageProps): ReactNode {
   const t = useT()
   const state = useConflictState(store)
   const rootRef = useRef<HTMLDivElement | null>(null)
   const [markersPath, setMarkersPath] = useState<string | null>(null)
-  useInitialFocus(rootRef, markersPath)
+  const [abortConfirming, setAbortConfirming] = useState(false)
+  useInitialFocus(rootRef, `${markersPath ?? ''}|${String(abortConfirming)}`)
   const [busyPath, setBusyPath] = useState<string | null>(null)
   const [finishBusy, setFinishBusy] = useState(false)
   const [error, setError] = useState<LocalizedText | null>(null)
@@ -241,7 +293,7 @@ export function ConflictsPage({ store, actions, mergeMessage, blockReason, loadC
 
   const finish = (trigger: FocusTarget | null): void => {
     const value = state.value
-    if (value === null || finishBusy) return
+    if (value === null || value.operation === null || finishBusy) return
     setFinishBusy(true)
     setError(null)
     const step = value.operation === 'merge' ? 'commit' : 'continue'
@@ -287,6 +339,15 @@ export function ConflictsPage({ store, actions, mergeMessage, blockReason, loadC
       onFinish={finish}
       onCopyCommand={copyCommand}
       onRetry={() => { void store.refresh() }}
+      abortConfirming={abortConfirming}
+      onAbortRequest={onAbort === undefined ? undefined : () => { setAbortConfirming(true) }}
+      onAbortCancel={() => { setAbortConfirming(false) }}
+      onAbort={onAbort === undefined
+        ? undefined
+        : (trigger) => {
+            setAbortConfirming(false)
+            onAbort(trigger)
+          }}
     />
   )
 }

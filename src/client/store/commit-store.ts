@@ -444,7 +444,10 @@ export function createCommitStore(deps: CommitStoreDeps): CommitStore {
       return
     }
     const sameOperation = key === state.operationKey && mode === state.mode
-    const edited = sameOperation && state.operationEdited
+    // Carry 9: the status announced the mode before operationState loaded (key null); the first
+    // key belongs to that same operation, so an early edit survives the MERGE_MSG prefill.
+    const adopting = state.operationKey === null && key !== null && mode === state.mode
+    const edited = (sameOperation || adopting) && state.operationEdited
     const operationMessage = edited ? state.operationMessage : (message ?? (sameOperation ? state.operationMessage : ''))
     if (sameOperation && operationMessage === state.operationMessage) return
     emit({ mode, operationKey: key, operationEdited: edited, operationMessage })

@@ -283,9 +283,14 @@ export interface BranchActionRunner {
   control(action: OperationControlAction, trigger: FocusTarget | null): Promise<void>
 }
 
-function wouldOverwritePaths(details: Record<string, unknown> | undefined): string[] {
-  const paths = details?.['paths']
-  return Array.isArray(paths) ? paths.filter((path): path is string => typeof path === 'string') : []
+function stringList(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((path): path is string => typeof path === 'string') : []
+}
+
+/** The smartCheckout overlay for a `git/would-overwrite` refusal (tracked paths + blocking untracked files). */
+function smartCheckoutOverlay(target: CheckoutTarget, details: Record<string, unknown> | undefined): WorkbenchOverlay {
+  const untracked = stringList(details?.['untracked'])
+  return { kind: 'smartCheckout', target, paths: stringList(details?.['paths']), ...(untracked.length > 0 ? { untracked } : {}) }
 }
 
 export function createBranchActionRunner(deps: BranchActionRunnerDeps): BranchActionRunner {
@@ -297,7 +302,7 @@ export function createBranchActionRunner(deps: BranchActionRunnerDeps): BranchAc
     // Like IntelliJ: try the plain checkout; only a git refusal (it would overwrite local changes) asks.
     const outcome = await deps.actions.run('checkout', { target, mode: 'normal' }, { trigger })
     if (outcome.kind === 'failed' && outcome.error.code === 'git/would-overwrite') {
-      deps.openOverlay({ kind: 'smartCheckout', target, paths: wouldOverwritePaths(outcome.error.details) }, trigger)
+      deps.openOverlay(smartCheckoutOverlay(target, outcome.error.details), trigger)
       return 'smart'
     }
     if (options.report !== false) deps.onOutcome(outcome)

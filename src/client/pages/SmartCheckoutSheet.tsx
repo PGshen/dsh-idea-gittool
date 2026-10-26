@@ -1,6 +1,7 @@
 // Smart checkout (design §8.3.3, plan A3 T7): opened only when git refused a checkout because it
 // would overwrite local changes. Lists the files, then "stash and checkout" (restored afterwards),
-// "force checkout" (discards the changes, needs a confirmation) or cancel.
+// "force checkout" (discards the changes, needs a confirmation) or cancel. When only untracked
+// files are in the way, stashing cannot help (it only takes tracked changes): no stash button.
 import { useEffect, useRef, useState } from 'react'
 import type { KeyboardEvent, ReactNode, Ref } from 'react'
 import type { CheckoutMode, CheckoutTarget } from '../../shared/protocol.ts'
@@ -36,6 +37,8 @@ export interface SmartCheckoutSheetViewProps {
   t: Translate
   target: CheckoutTarget
   paths: string[]
+  /** Untracked files git refuses to overwrite (`WouldOverwriteDetails.untracked`). */
+  untracked: string[]
   forceConfirmed: boolean
   busy: boolean
   error: LocalizedText | null
@@ -48,9 +51,13 @@ export interface SmartCheckoutSheetViewProps {
 }
 
 export function SmartCheckoutSheetView(props: SmartCheckoutSheetViewProps): ReactNode {
-  const { t, target, paths, busy, error } = props
+  const { t, target, paths, untracked, busy, error } = props
   const visible = paths.slice(0, SMART_VISIBLE_PATHS)
   const more = paths.length - visible.length
+  const visibleUntracked = untracked.slice(0, SMART_VISIBLE_PATHS)
+  const moreUntracked = untracked.length - visibleUntracked.length
+  // Stash only takes tracked changes: useless when nothing tracked is in the way.
+  const canStash = paths.length > 0 || untracked.length === 0
   return (
     <div className={css.layer} data-smart-checkout>
       <div className={css.scrim} aria-hidden="true" onClick={props.onCancel} />
@@ -65,21 +72,35 @@ export function SmartCheckoutSheetView(props: SmartCheckoutSheetViewProps): Reac
       >
         <header className={css.header}>
           <strong>{t('branch.smart.title')}</strong>
-          <span className={css.muted}>{t('branch.smart.count', { count: paths.length })}</span>
+          {canStash ? <span className={css.muted}>{t('branch.smart.count', { count: paths.length })}</span> : null}
         </header>
         <div className={css.body}>
-          <ul className={css.files} aria-label={t('branch.smart.count', { count: paths.length })}>
-            {visible.map(path => <li key={path} className={css.file} title={path}>{path}</li>)}
-          </ul>
-          {more > 0 ? <p className={css.muted}>{t('dirty.more', { count: more })}</p> : null}
-          <p className={css.hint}>{t('branch.smart.hint', { target: target.name })}</p>
+          {canStash ? (
+            <>
+              <ul className={css.files} aria-label={t('branch.smart.count', { count: paths.length })}>
+                {visible.map(path => <li key={path} className={css.file} title={path}>{path}</li>)}
+              </ul>
+              {more > 0 ? <p className={css.muted}>{t('dirty.more', { count: more })}</p> : null}
+              <p className={css.hint}>{t('branch.smart.hint', { target: target.name })}</p>
+            </>
+          ) : null}
+          {untracked.length > 0 ? (
+            <div data-untracked-blocking>
+              <strong>{t('branch.smart.untrackedTitle', { count: untracked.length })}</strong>
+              <ul className={css.files} aria-label={t('branch.smart.untrackedTitle', { count: untracked.length })}>
+                {visibleUntracked.map(path => <li key={path} className={css.file} title={path}>{path}</li>)}
+              </ul>
+              {moreUntracked > 0 ? <p className={css.muted}>{t('dirty.more', { count: moreUntracked })}</p> : null}
+              <p className={css.hint}>{t('branch.smart.untrackedHint')}</p>
+            </div>
+          ) : null}
           <label className={css.check}>
             <input
               type="checkbox"
               checked={props.forceConfirmed}
               onChange={event => props.onForceConfirmChange(event.target.checked)}
             />
-            <span>{t('branch.smart.forceConfirm')}</span>
+            <span>{t(untracked.length > 0 ? 'branch.smart.forceConfirmUntracked' : 'branch.smart.forceConfirm')}</span>
           </label>
           {error === null ? null : <p className={css.error} role="alert">{t(error.key, error.params)}</p>}
           <footer className={css.footer}>
@@ -94,9 +115,11 @@ export function SmartCheckoutSheetView(props: SmartCheckoutSheetViewProps): Reac
               >
                 {t('branch.smart.force')}
               </Button>
-              <Button tone="primary" disabled={busy} onClick={event => props.onStash(event.currentTarget)} data-primary>
-                {busy ? t('branch.sheet.working') : t('branch.smart.stash')}
-              </Button>
+              {canStash ? (
+                <Button tone="primary" disabled={busy} onClick={event => props.onStash(event.currentTarget)} data-primary>
+                  {busy ? t('branch.sheet.working') : t('branch.smart.stash')}
+                </Button>
+              ) : null}
             </span>
           </footer>
         </div>
@@ -108,12 +131,13 @@ export function SmartCheckoutSheetView(props: SmartCheckoutSheetViewProps): Reac
 export interface SmartCheckoutSheetProps {
   target: CheckoutTarget
   paths: string[]
+  untracked?: string[]
   actions: Pick<ActionStore, 'run'>
   onOutcome: (outcome: ActionOutcome<unknown>) => void
   onClose: () => void
 }
 
-export function SmartCheckoutSheet({ target, paths, actions, onOutcome, onClose }: SmartCheckoutSheetProps): ReactNode {
+export function SmartCheckoutSheet({ target, paths, untracked = [], actions, onOutcome, onClose }: SmartCheckoutSheetProps): ReactNode {
   const t = useT()
   const rootRef = useRef<HTMLDivElement | null>(null)
   const [forceConfirmed, setForceConfirmed] = useState(false)
@@ -143,6 +167,7 @@ export function SmartCheckoutSheet({ target, paths, actions, onOutcome, onClose 
       t={t}
       target={target}
       paths={paths}
+      untracked={untracked}
       forceConfirmed={forceConfirmed}
       busy={busy}
       error={error}

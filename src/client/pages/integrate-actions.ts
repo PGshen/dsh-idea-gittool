@@ -7,6 +7,7 @@ import type {
   ResetMode,
   ResetPreviewValue,
   ResetToRemoteValue,
+  StatusValue,
 } from '../../shared/protocol.ts'
 import type { FocusTarget } from '../focus.ts'
 import { text } from '../localized-text.ts'
@@ -79,9 +80,28 @@ export async function submitUpdateProject(
   return settle(outcome)
 }
 
-/** Hard reset to the upstream after a force push; no stash is ever offered here. */
-export async function submitResetToRemote(deps: IntegrateDeps, backup: boolean): Promise<IntegrateResult> {
-  return settle(await deps.actions.run('resetToRemote', { backup }, { trigger: deps.trigger }))
+/** Paths listed inline in the "move or delete" message. */
+const IN_THE_WAY_LISTED = 5
+
+/**
+ * Hard reset to the upstream after a force push; no stash is ever offered here.
+ * `git/dirty-worktree` (no `operation`) comes either from tracked changes or from untracked /
+ * ignored files the reset would overwrite; `status` tells them apart (carry 2): untracked files
+ * must be moved or deleted, a stash cannot help.
+ */
+export async function submitResetToRemote(deps: IntegrateDeps, backup: boolean, status?: StatusValue | null): Promise<IntegrateResult> {
+  const outcome = await deps.actions.run('resetToRemote', { backup }, { trigger: deps.trigger })
+  if (outcome.kind === 'failed' && outcome.error.code === 'git/dirty-worktree') {
+    const details = outcome.error.details ?? {}
+    const raw = details['paths']
+    const paths = Array.isArray(raw) ? raw.filter((path): path is string => typeof path === 'string') : []
+    const count = typeof details['count'] === 'number' ? details['count'] : paths.length
+    const tracked = new Set([...(status?.staged ?? []), ...(status?.unstaged ?? []), ...(status?.conflicts ?? [])].map(entry => entry.path))
+    if (paths.some(path => tracked.has(path))) return { kind: 'error', message: text('integrate.update.resetDirty', { count }) }
+    const listed = paths.slice(0, IN_THE_WAY_LISTED).join(', ') + (paths.length > IN_THE_WAY_LISTED ? ', …' : '')
+    return { kind: 'error', message: text('integrate.update.resetInTheWay', { count, paths: listed }) }
+  }
+  return settle(outcome)
 }
 
 /** Notice naming the backup branch a reset-to-remote created. */

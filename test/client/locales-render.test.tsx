@@ -7,6 +7,27 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import type { ReactNode } from 'react'
 import { describe, expect, it } from 'vitest'
 import { ConsoleDrawer } from '../../src/client/console/ConsoleDrawer.tsx'
+import { ActionNotice } from '../../src/client/pages/ActionNotice.tsx'
+import { BranchContextMenu } from '../../src/client/pages/BranchPanel.tsx'
+import { BranchAbortConfirm, BranchesPage } from '../../src/client/pages/BranchesPage.tsx'
+import { BranchSheetView } from '../../src/client/pages/BranchSheets.tsx'
+import { CommitContextMenu } from '../../src/client/pages/CommitContextMenu.tsx'
+import { CommitOpSheetView } from '../../src/client/pages/CommitOpSheet.tsx'
+import { ConflictsPageView } from '../../src/client/pages/ConflictsPage.tsx'
+import type { ConflictsPageViewProps } from '../../src/client/pages/ConflictsPage.tsx'
+import { DirtyWorktreeSheetView } from '../../src/client/pages/DirtyWorktreeSheet.tsx'
+import { FetchSheetView } from '../../src/client/pages/FetchSheet.tsx'
+import { MergePageView } from '../../src/client/pages/MergePage.tsx'
+import { OperationBannerView } from '../../src/client/pages/OperationBanner.tsx'
+import { PullPageView } from '../../src/client/pages/PullPage.tsx'
+import { ResetSheetView } from '../../src/client/pages/ResetSheet.tsx'
+import { SmartCheckoutSheetView } from '../../src/client/pages/SmartCheckoutSheet.tsx'
+import { UpdateProjectPageView } from '../../src/client/pages/UpdateProjectPage.tsx'
+import { branchActions, quickActions } from '../../src/client/pages/branch-actions.ts'
+import { commitActions } from '../../src/client/pages/commit-actions.ts'
+import { actionErrorText } from '../../src/client/store/action-store.ts'
+import type { OperationStateValue } from '../../src/shared/protocol.ts'
+import { mergeState, stashPopState } from './pages/operation-fixtures.ts'
 import { createConsoleStore } from '../../src/client/console/console-store.ts'
 import { BranchPanel } from '../../src/client/pages/BranchPanel.tsx'
 import { ChangesTree } from '../../src/client/pages/ChangesTree.tsx'
@@ -82,6 +103,107 @@ function pushState(overrides: Partial<PushState> = {}): PushState {
 }
 
 const noop = (): void => {}
+
+
+const A3_SHA = 'a'.repeat(40)
+const A3_CONTEXT = { writable: true, operation: 'merge' as const, current: 'main', dirty: true }
+
+function conflicts(t: Translate, value: OperationStateValue, extra: Partial<ConflictsPageViewProps> = {}): ReactNode {
+  return (
+    <ConflictsPageView
+      t={t}
+      state={{ status: 'ready', value, error: null }}
+      busyPath={null}
+      markersPath="src/a.ts"
+      error={text('action.error.empty')}
+      copied
+      finishBusy={false}
+      onResolve={noop} onConfirmMarkers={noop} onCancelMarkers={noop} onClose={noop}
+      onFinish={noop} onCopyCommand={noop} onRetry={noop}
+      onAbortRequest={noop} onAbortCancel={noop} onAbort={noop}
+      {...extra}
+    />
+  )
+}
+
+/** Screens added by A3 (branches, integrate, conflicts, T11 copy). */
+const A3_SCREENS: Record<string, (t: Translate) => ReactNode> = {
+  branchesPage: () => (
+    <BranchesPage
+      value={branchesFixture()} context={A3_CONTEXT} search="" collapsedGroups={{ head: false, local: false, remote: false, tags: false }}
+      collapsedDirs={{}} flat={false} error={{ code: 'git/timeout', message: 'slow' }} fetching
+      onSearchChange={noop} onToggleGroup={noop} onToggleDirectory={noop} onAction={noop} onQuickAction={noop} onFetch={noop}
+    />
+  ),
+  branchMenus: () => {
+    const login = branchesFixture().local[1] ?? branchesFixture().local[0]!
+    const commit = { sha: A3_SHA, shortSha: 'aaaaaaa', parents: ['b'.repeat(40), 'c'.repeat(40)], author: 'a', email: 'e', date: '', subject: 's' }
+    return (
+      <>
+        <BranchContextMenu entry={login} items={branchActions(login, { ...A3_CONTEXT, operation: 'rebase' })} onSelect={noop} />
+        <CommitContextMenu commit={commit} items={commitActions(commit, { writable: true, operation: null, parentLoaded: true, childLoaded: false })} onSelect={noop} />
+        <ActionNotice notice={{ tone: 'warning', message: text('notice.stashKept'), action: 'goStash' }} onDismiss={noop} onAction={noop} />
+        <ActionNotice notice={{ tone: 'error', message: text('write.tooManyPaths', { max: 2000, count: 2001 }) }} onDismiss={noop} />
+        <span>{quickActions(A3_CONTEXT).length}</span>
+      </>
+    )
+  },
+  branchSheets: t => (
+    <>
+      <BranchSheetView t={t} overlay={{ kind: 'branchSheet', mode: 'new', startPoint: 'feat/login' }} form={{ name: 'a b', checkout: true, revision: '', force: false, forceConfirmed: false }} busy={false} error={null} onChange={noop} onSubmit={noop} onCancel={noop} />
+      <BranchSheetView t={t} overlay={{ kind: 'branchSheet', mode: 'delete', branch: 'feat/login', sha: A3_SHA }} form={{ name: '', checkout: true, revision: '', force: true, forceConfirmed: false }} busy={false} error={actionErrorText({ code: 'git/not-merged', message: 'x', details: { branch: 'feat/login' } })} onChange={noop} onSubmit={noop} onCancel={noop} />
+      <BranchAbortConfirm t={t} operation="rebase" onCancel={noop} onConfirm={noop} />
+    </>
+  ),
+  smartCheckout: t => (
+    <>
+      <SmartCheckoutSheetView t={t} target={{ kind: 'local', name: 'feat/login' }} paths={['a.ts']} untracked={['out.js']} forceConfirmed={false} busy={false} error={null} onStash={noop} onForce={noop} onCancel={noop} onForceConfirmChange={noop} />
+      <SmartCheckoutSheetView t={t} target={{ kind: 'local', name: 'feat/login' }} paths={[]} untracked={['out.js']} forceConfirmed busy={false} error={null} onStash={noop} onForce={noop} onCancel={noop} onForceConfirmChange={noop} />
+    </>
+  ),
+  dirtyWorktree: t => (
+    <DirtyWorktreeSheetView t={t} ask={{ key: 'merge:x', endpoint: 'merge', operation: 'merge', paths: ['a.ts'], count: 12, trigger: null }} onStash={noop} onCancel={noop} />
+  ),
+  integratePages: t => (
+    <>
+      <MergePageView t={t} mode="merge" current="main" options={['feat/login']} form={{ target: 'feat/login', option: 'squash' }} busy={false} error={null} block={text('branch.disabled.readOnly')} onChange={noop} onSubmit={noop} onBack={noop} />
+      <MergePageView t={t} mode="rebase" current="main" options={['origin/main']} form={{ target: 'origin/main', option: 'default' }} busy error={null} onChange={noop} onSubmit={noop} onBack={noop} />
+      <PullPageView t={t} loading={false} loadError={null} remotes={['origin']} branchOptions={['main']} form={{ remote: 'origin', branch: 'main', mode: 'rebase' }} busy={false} error={null} onChange={noop} onSubmit={noop} onBack={noop} onRetry={noop} />
+      <UpdateProjectPageView t={t} mode="merge" stashNote noUpstream rewritten={null} backup busy={false} error={null} onModeChange={noop} onBackupChange={noop} onSubmit={noop} onResetToRemote={noop} onBack={noop} />
+    </>
+  ),
+  updateRewritten: t => (
+    <>
+      <UpdateProjectPageView t={t} mode="merge" stashNote={false} noUpstream={false} rewritten={{ localAhead: 3 }} backup busy={false} error={text('integrate.update.resetInTheWay', { count: 1, paths: 'out.js' })} onModeChange={noop} onBackupChange={noop} onSubmit={noop} onResetToRemote={noop} onBack={noop} />
+      <UpdateProjectPageView t={t} mode="merge" stashNote={false} noUpstream={false} rewritten={{ localAhead: 3 }} backup={false} busy={false} error={text('integrate.update.resetDirty', { count: 1 })} onModeChange={noop} onBackupChange={noop} onSubmit={noop} onResetToRemote={noop} onBack={noop} />
+    </>
+  ),
+  integrateSheets: t => (
+    <>
+      <ResetSheetView
+        t={t} sha={A3_SHA} loading={false} loadError={null} form={{ mode: 'hard', hardConfirmed: false }} busy={false} error={null}
+        preview={{ head: 'h'.repeat(40), discardCount: 3, truncated: true, commitsLost: [{ sha: 'c'.repeat(40), shortSha: 'ccccccc', parents: [], author: 'a', email: 'e', date: '2026-10-25T00:00:00Z', subject: 'lost commit' }] }}
+        onChange={noop} onSubmit={noop} onCancel={noop} onRetry={noop}
+      />
+      <FetchSheetView t={t} remotes={['origin']} loading={false} form={{ remote: null, prune: true }} busy={false} error={null} result={null} onChange={noop} onSubmit={noop} onCancel={noop} />
+      <CommitOpSheetView t={t} op="cherryPick" shortSha="aaaaaaa" subject="feat: x" busy={false} error={text('action.error.empty.abortOnly')} onSubmit={noop} onCancel={noop} />
+    </>
+  ),
+  banner: t => (
+    <OperationBannerView t={t} operation="cherry-pick" conflicts={1} branch="main" step={{ current: 1, total: 2 }} pendingStash confirmingAbort onAbortRequest={noop} onAbortCancel={noop} onResolve={noop} onContinue={noop} onSkip={noop} onAbort={noop} onOpenConsole={noop} />
+  ),
+  conflictsMerge: t => conflicts(t, mergeState(), { abortConfirming: true }),
+  conflictsStashPop: t => conflicts(t, stashPopState(), { markersPath: null }),
+  rollbackResult: t => (
+    <RollbackSheetView
+      t={t}
+      targets={[{ path: 'a.ts', untracked: false }, { path: 'b.md', untracked: true }]}
+      state={{ deleteConfirmed: true, busy: false, error: null, result: { restored: [], deleted: ['b.md'], keptStaged: [], skipped: ['a.ts'] } }}
+      readOnlyReason={null}
+      onCancel={noop} onDeleteConfirmedChange={noop} onSubmit={noop} onCopy={noop}
+    />
+  ),
+}
 
 /** Screens covering every page area; each returns its markup for one translator. */
 const SCREENS: Record<string, (t: Translate) => ReactNode> = {
@@ -230,6 +352,8 @@ const SCREENS: Record<string, (t: Translate) => ReactNode> = {
     />
   ),
 }
+
+Object.assign(SCREENS, A3_SCREENS)
 
 function html(name: string, t: Translate): string {
   const screen = SCREENS[name]

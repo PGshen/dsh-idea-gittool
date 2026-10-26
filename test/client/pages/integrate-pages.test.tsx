@@ -112,6 +112,16 @@ describe('update project page', () => {
     expect(html).toContain('data-cancel')
     expect(view({ rewritten: { localAhead: 3 }, backup: false })).not.toMatch(/data-backup[^>]*checked|checked[^>]*data-backup/)
   })
+
+  it('carry 5: the rewritten view focuses Cancel first (Enter cannot reset) and says local commits survive only in the backup', () => {
+    const html = view({ rewritten: { localAhead: 3 } })
+    expect(html).toMatch(/<button[^>]*data-cancel[^>]*data-autofocus|<button[^>]*data-autofocus[^>]*data-cancel/)
+    expect(html).not.toMatch(/data-backup[^>]*data-autofocus|data-autofocus[^>]*data-backup/)
+    expect(html).toContain(zh['integrate.update.rewritten.backupOnly'])
+    expect(zh['integrate.update.rewritten.backupOnly']).toContain('备份分支')
+    // The normal view keeps its own focus target (the mode radio), not Cancel.
+    expect(view()).not.toMatch(/<button[^>]*data-cancel[^>]*data-autofocus/)
+  })
 })
 
 describe('reset sheet', () => {

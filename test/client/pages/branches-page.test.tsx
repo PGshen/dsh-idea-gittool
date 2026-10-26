@@ -4,11 +4,11 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
 import { ActionNotice } from '../../../src/client/pages/ActionNotice.tsx'
 import { BranchContextMenu } from '../../../src/client/pages/BranchPanel.tsx'
-import { BranchesPage, filterQuickActions } from '../../../src/client/pages/BranchesPage.tsx'
+import { BranchAbortConfirm, BranchesPage, filterQuickActions } from '../../../src/client/pages/BranchesPage.tsx'
 import type { BranchesPageProps } from '../../../src/client/pages/BranchesPage.tsx'
 import { branchActions, quickActions } from '../../../src/client/pages/branch-actions.ts'
 import type { BranchActionContext } from '../../../src/client/pages/branch-actions.ts'
-import { zh } from '../../../src/client/locales.ts'
+import { en, zh } from '../../../src/client/locales.ts'
 import { text } from '../../../src/client/localized-text.ts'
 import { branchesFixture } from './branch-fixtures.ts'
 import { withLocale, zhT, enT } from '../i18n-helpers.tsx'
@@ -189,5 +189,18 @@ describe('ActionNotice', () => {
     const warning = renderToStaticMarkup(withLocale(<ActionNotice notice={{ tone: 'warning', message: text('notice.stashKept') }} onDismiss={() => {}} />))
     expect(warning).toContain('role="status"')
     expect(renderToStaticMarkup(withLocale(<ActionNotice notice={null} onDismiss={() => {}} />))).toBe('')
+  })
+})
+
+describe('carry 7: the abort confirmation reuses the banner wording', () => {
+  it('says the progress of this operation is discarded but working tree changes are kept', () => {
+    const html = renderToStaticMarkup(<BranchAbortConfirm t={zhT} operation="rebase" onCancel={vi.fn()} onConfirm={vi.fn()} />)
+    expect(html).toContain('会丢弃本次变基的进度，但保留工作区改动。')
+    expect(html).toContain(zh['banner.abort.cancel'])
+    expect(html).toContain('中止变基')
+    expect(html).toContain('data-abort-confirm')
+    const english = renderToStaticMarkup(<BranchAbortConfirm t={enT} operation="merge" onCancel={vi.fn()} onConfirm={vi.fn()} />)
+    expect(english).toContain(enT('banner.abort.confirm', { operation: enT('operation.merge') }))
+    expect(en).not.toHaveProperty(['branch.quick.abortPrompt'])
   })
 })

@@ -28,6 +28,8 @@ export const zhActions = {
   'action.error.git/stale-target.branch': '分支已指向新的提交，刷新后重试。',
   'action.error.nothing-to-stash': '没有可以贮藏的改动。',
   'action.error.no-upstream': '当前分支没有设置 upstream。',
+  'action.error.empty': '提交为空，请跳过或中止（用上方横幅的「跳过」或「中止…」）。',
+  'action.error.empty.abortOnly': '提交为空（改动已经存在），请用上方横幅的「中止…」结束本次操作。',
   'action.error.fallback': '操作失败（{code}）：{message}',
 } satisfies Record<string, string>
 
@@ -59,5 +61,7 @@ export const enActions = {
   'action.error.git/stale-target.branch': 'The branch now points to a different commit; refresh and try again.',
   'action.error.nothing-to-stash': 'There are no changes to stash.',
   'action.error.no-upstream': 'The current branch has no upstream.',
+  'action.error.empty': 'The commit is empty: Skip it or Abort, using the banner above.',
+  'action.error.empty.abortOnly': 'The commit is empty (the changes are already there): Abort the operation using the banner above.',
   'action.error.fallback': 'The operation failed ({code}): {message}',
 } satisfies Record<keyof typeof zhActions, string>

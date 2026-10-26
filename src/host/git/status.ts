@@ -272,7 +272,7 @@ function unparseable(chunk: string): GitCommandFailure {
 }
 
 /** Detect an in-progress merge/rebase/cherry-pick/revert from git's marker files. */
-async function detectOperation(
+export async function detectOperation(
   run: GitRunner,
   cwd: string,
   signal: AbortSignal | undefined,

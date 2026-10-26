@@ -56,7 +56,7 @@ import { ResetSheet } from './ResetSheet.tsx'
 import { UpdateProjectPage } from './UpdateProjectPage.tsx'
 import { commitActionEffect } from './commit-actions.ts'
 import type { CommitActionId } from './commit-actions.ts'
-import { FETCH_ALL, branchActionContext, createBranchActionRunner, outcomeNotice, writeBlock } from './branch-actions.ts'
+import { FETCH_ALL, branchActionContext, createBranchActionRunner, outcomeNotice, pathsLimitNotice, writeBlock } from './branch-actions.ts'
 import type { ActionNotice as ActionNoticeValue, BranchActionRunnerDeps, QuickActionId } from './branch-actions.ts'
 import { createBranchesStore, useBranchesState } from './branch-store.ts'
 import { CommitDetail } from './CommitDetail.tsx'
@@ -410,6 +410,11 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
 
   const addToVcs = useCallback(async (paths: string[]): Promise<void> => {
     clearStaleCommitNotice()
+    const limit = pathsLimitNotice(paths.length)
+    if (limit !== null) {
+      setNotice(limit)
+      return
+    }
     const result = await client.addToVcs({ sessionId, requestId: newRequestId(), paths })
     // 失败原因在 Git 控制台里（每条命令都有记录）。
     if (!result.ok) setConsoleOpen(true)

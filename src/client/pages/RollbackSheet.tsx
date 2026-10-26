@@ -10,6 +10,7 @@ import {
   rememberFocus,
   rollbackCounts,
   rollbackEscapeAction,
+  rollbackSkipped,
   rollbackSubmitBlock,
   useRollbackState,
 } from '../store/push-store.ts'
@@ -17,6 +18,7 @@ import type { RollbackBlockReason, RollbackClient, RollbackOutcome, RollbackStat
 import { useT } from '../i18n.tsx'
 import type { Translate } from '../i18n.tsx'
 import { Button } from '../ui/Button.tsx'
+import { writePathsLimitReason } from '../store/commit-store.ts'
 import { submitHandler, WriteErrorNotice } from './PushRejectedPage.tsx'
 import css from './RollbackSheet.module.css'
 
@@ -30,9 +32,15 @@ function copyToClipboard(text: string): void {
   void navigator.clipboard.writeText(text).catch(() => undefined)
 }
 
-export function rollbackBlockText(t: Translate, reason: RollbackBlockReason | null, readOnlyReason: string | null): string | null {
+export function rollbackBlockText(
+  t: Translate,
+  reason: RollbackBlockReason | null,
+  readOnlyReason: string | null,
+  count = 0,
+): string | null {
   if (readOnlyReason !== null) return t('write.readOnly', { reason: readOnlyReason })
   if (reason === null || reason === 'busy') return null
+  if (reason === 'too-many') return writePathsLimitReason(count, t)
   return t(`rollback.block.${reason}`)
 }
 
@@ -57,7 +65,8 @@ function PathList({ t, paths, label }: { t: Translate; paths: readonly string[];
   )
 }
 
-function RollbackResult({ t, value }: { t: Translate; value: RollbackValue }): ReactNode {
+function RollbackResult({ t, value, targets }: { t: Translate; value: RollbackValue; targets: readonly RollbackTarget[] }): ReactNode {
+  const skipped = rollbackSkipped(targets, value.skipped)
   return (
     <div className={css.result} role="status" data-rollback-result>
       <strong>{t('rollback.resultTitle')}</strong>
@@ -69,10 +78,16 @@ function RollbackResult({ t, value }: { t: Translate; value: RollbackValue }): R
           <PathList t={t} paths={value.keptStaged} label={t('rollback.keptStaged', { count: value.keptStaged.length })} />
         </div>
       ) : null}
-      {value.skipped.length > 0 ? (
+      {skipped.declined.length > 0 ? (
         <div data-skipped>
-          <p className={css.notice}>{t('rollback.skipped', { count: value.skipped.length })}</p>
-          <PathList t={t} paths={value.skipped} label={t('rollback.skipped', { count: value.skipped.length })} />
+          <p className={css.notice}>{t('rollback.skipped', { count: skipped.declined.length })}</p>
+          <PathList t={t} paths={skipped.declined} label={t('rollback.skipped', { count: skipped.declined.length })} />
+        </div>
+      ) : null}
+      {skipped.becameUntracked.length > 0 ? (
+        <div data-became-untracked>
+          <p className={css.notice}>{t('rollback.becameUntracked', { count: skipped.becameUntracked.length })}</p>
+          <PathList t={t} paths={skipped.becameUntracked} label={t('rollback.becameUntracked', { count: skipped.becameUntracked.length })} />
         </div>
       ) : null}
     </div>
@@ -109,7 +124,7 @@ export function RollbackSheetView({
   const counts = rollbackCounts(targets)
   const block = rollbackSubmitBlock(targets, state)
   const disabled = readOnlyReason !== null || block !== null
-  const blockText = rollbackBlockText(t, block, readOnlyReason)
+  const blockText = rollbackBlockText(t, block, readOnlyReason, targets.length)
   const result = state.result
 
   return (
@@ -131,7 +146,7 @@ export function RollbackSheetView({
         </header>
         {result !== null ? (
           <div className={css.body}>
-            <RollbackResult t={t} value={result} />
+            <RollbackResult t={t} value={result} targets={targets} />
             <footer className={css.footer}>
               <span />
               <span className={css.actions}>

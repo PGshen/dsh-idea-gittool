@@ -13,6 +13,7 @@ import type {
   RollbackValue,
   RpcResult,
 } from '../../shared/protocol.ts'
+import { WRITE_PATHS_MAX } from '../../shared/protocol.ts'
 import type { GitClient } from '../git-client.ts'
 import { newRequestId as defaultRequestId } from '../git-client.ts'
 
@@ -217,8 +218,12 @@ export function parseRejectedDetails(error: GitError, target: { remote: string; 
     branch: typeof details.branch === 'string' ? details.branch : target.branch,
     remoteCommits: Array.isArray(details.remoteCommits) ? details.remoteCommits.filter(isCommitSummary) : [],
     summary: typeof details.summary === 'string' ? details.summary : error.message,
+    // TD-10: only a full hex sha is echoed back as `expectedRemoteSha`; anything else is dropped.
+    ...(typeof details.remoteSha === 'string' && FULL_SHA.test(details.remoteSha) ? { remoteSha: details.remoteSha } : {}),
   }
 }
+
+const FULL_SHA = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/
 
 /** `details.command` of `git/auth-required`, when present. */
 export function authCommandOf(error: GitError | null): string | null {
@@ -359,7 +364,8 @@ export function createPushStore(options: PushStoreOptions): PushStore {
     })
   }
 
-  const runPush = async (form: PushForm, force: boolean): Promise<RpcResult<PushValue>> => {
+  /** `expectedRemoteSha` (TD-10) only accompanies a force-with-lease; an old Host omits it. */
+  const runPush = async (form: PushForm, force: boolean, expectedRemoteSha?: string): Promise<RpcResult<PushValue>> => {
     const target = { remote: form.remote, branch: form.branch.trim() }
     return settle(() => options.client.push({
       sessionId: options.sessionId,
@@ -368,6 +374,7 @@ export function createPushStore(options: PushStoreOptions): PushStore {
       setUpstream: form.setUpstream,
       forceWithLease: force,
       tags: form.tags,
+      ...(force && expectedRemoteSha !== undefined ? { expectedRemoteSha } : {}),
     }))
   }
 
@@ -459,7 +466,7 @@ export function createPushStore(options: PushStoreOptions): PushStore {
 
       if (state.choice === 'force') {
         patch({ busy: 'push', error: null })
-        return finishPush(await runPush(form, true), form, false)
+        return finishPush(await runPush(form, true, state.rejected.remoteSha), form, false)
       }
 
       patch({ busy: 'pull', error: null })
@@ -532,14 +539,39 @@ export function rollbackCounts(targets: readonly RollbackTarget[]): RollbackCoun
   return { total: targets.length, tracked: targets.length - untracked, untracked }
 }
 
-export type RollbackBlockReason = 'busy' | 'nothing'
+export type RollbackBlockReason = 'busy' | 'nothing' | 'too-many'
 
-/** Rollback is pointless when only untracked files are selected and deletion is not confirmed. */
+/**
+ * Rollback is pointless when only untracked files are selected and deletion is not confirmed;
+ * more than {@link WRITE_PATHS_MAX} paths would be refused by the Host (TD-9).
+ */
 export function rollbackSubmitBlock(targets: readonly RollbackTarget[], state: RollbackState): RollbackBlockReason | null {
   if (state.busy) return 'busy'
+  if (targets.length > WRITE_PATHS_MAX) return 'too-many'
   const counts = rollbackCounts(targets)
   if (counts.tracked === 0 && !(counts.untracked > 0 && state.deleteConfirmed)) return 'nothing'
   return null
+}
+
+/** The untracked paths the confirmation listed; sent as `confirmedUntracked` (TD-8). */
+export function confirmedUntrackedOf(targets: readonly RollbackTarget[]): string[] {
+  return targets.filter(target => target.untracked).map(target => target.path)
+}
+
+export interface RollbackSkipped {
+  /** Shown as untracked and not deleted because the danger tick was off. */
+  declined: string[]
+  /** Tracked when confirmed, untracked at execution: never deleted (TD-8). */
+  becameUntracked: string[]
+}
+
+/** Split `RollbackValue.skipped` by what the confirmation showed. */
+export function rollbackSkipped(targets: readonly RollbackTarget[], skipped: readonly string[]): RollbackSkipped {
+  const shown = new Set(confirmedUntrackedOf(targets))
+  return {
+    declined: skipped.filter(path => shown.has(path)),
+    becameUntracked: skipped.filter(path => !shown.has(path)),
+  }
 }
 
 export function rollbackEscapeAction(state: Pick<RollbackState, 'busy'>): 'ignore' | 'close' {
@@ -575,11 +607,12 @@ export function createRollbackStore(options: RollbackStoreOptions): RollbackStor
     const state = emitter.get()
     if (rollbackSubmitBlock(options.targets, state) !== null) return { kind: 'blocked' }
     patch({ busy: true, error: null })
+    const deleteUntracked = state.deleteConfirmed && rollbackCounts(options.targets).untracked > 0
     const result = await settle(() => options.client.rollback({
       sessionId: options.sessionId,
       requestId: makeId(),
       paths: options.targets.map(target => target.path),
-      deleteUntracked: state.deleteConfirmed && rollbackCounts(options.targets).untracked > 0,
+      ...(deleteUntracked ? { deleteUntracked, confirmedUntracked: confirmedUntrackedOf(options.targets) } : { deleteUntracked }),
     }))
     if (!result.ok) {
       patch({ busy: false, error: result.error })

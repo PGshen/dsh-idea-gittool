@@ -10,6 +10,7 @@ import type {
   StatusValue,
   WritePolicyValue,
 } from '../../shared/protocol.ts'
+import { WRITE_PATHS_MAX } from '../../shared/protocol.ts'
 import { newRequestId as defaultRequestId } from '../git-client.ts'
 import type { GitClient } from '../git-client.ts'
 import { READ_ONLY_REASON_KEY, OPERATION_KEY } from '../locales.ts'
@@ -157,6 +158,14 @@ export interface CommitGate {
   detachedHint: string | null
 }
 
+/**
+ * TD-9: a write request carries at most {@link WRITE_PATHS_MAX} paths (the Host rejects more).
+ * @returns the disabled reason when `count` exceeds the limit, otherwise null.
+ */
+export function writePathsLimitReason(count: number, t: Translate): string | null {
+  return count > WRITE_PATHS_MAX ? t('write.tooManyPaths', { max: WRITE_PATHS_MAX, count }) : null
+}
+
 /** Read-only policy, no repository or pending writes (shared by the normal and operation gates). */
 function writeBlockReason(input: Pick<CommitGateInput, 'writePolicy' | 'status' | 'pendingWrites'>, t: Translate): string | null {
   if (input.writePolicy.mode === 'read-only') {
@@ -188,6 +197,7 @@ export function commitGate(input: CommitGateInput, t: Translate): CommitGate {
   if (disabledReason === null && !submitting) {
     if (normalizeMessage(input.message).trim() === '') disabledReason = t('commit.reasonNoMessage')
     else if (mode === 'files' && input.checkedCount === 0) disabledReason = t('commit.reasonNoFiles')
+    else if (mode === 'files') disabledReason = writePathsLimitReason(input.checkedCount, t)
   }
   const canSubmit = disabledReason === null && !submitting
   const pushed = status !== null && status.upstream !== null && status.ahead === 0

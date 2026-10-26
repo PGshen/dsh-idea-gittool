@@ -1,10 +1,11 @@
 // T5 commit store: state machine, duplicate-submit de-dup, draft/history persistence, gate, error copy.
 import { describe, expect, it, vi } from 'vitest'
-import { zhT } from '../i18n-helpers.tsx'
+import { enT, zhT } from '../i18n-helpers.tsx'
 import {
   HISTORY_LIMIT,
   commitErrorView,
   commitGate,
+  writePathsLimitReason,
   commitPageModeOf,
   createCommitStore,
   operationGate,
@@ -17,6 +18,7 @@ import {
   subjectHint,
 } from '../../../src/client/store/commit-store.ts'
 import type { CommitGateInput, StorageLike } from '../../../src/client/store/commit-store.ts'
+import { WRITE_PATHS_MAX } from '../../../src/shared/protocol.ts'
 import type { AmendMessageRequest, CommitFilesRequest, CommitResultValue, GitError, RpcResult } from '../../../src/shared/protocol.ts'
 import { statusFixture } from './changes-fixtures.ts'
 
@@ -225,6 +227,15 @@ describe('commitGate', () => {
     amend: false,
     phase: 'idle',
   }
+
+  it('TD-9: more checked files than WRITE_PATHS_MAX disables commit with the limit reason', () => {
+    expect(commitGate({ ...base, checkedCount: WRITE_PATHS_MAX }, zhT).canSubmit).toBe(true)
+    const gate = commitGate({ ...base, checkedCount: WRITE_PATHS_MAX + 1 }, zhT)
+    expect(gate).toMatchObject({ canSubmit: false, canPush: false, blocked: false })
+    expect(gate.disabledReason).toBe(`一次最多 2000 个文件，当前 ${WRITE_PATHS_MAX + 1} 个`)
+    expect(commitGate({ ...base, checkedCount: 2001 }, enT).disabledReason).toBe('At most 2000 files at once (selected: 2001)')
+    expect(writePathsLimitReason(2000, zhT)).toBeNull()
+  })
 
   it('enabled for a normal commit', () => {
     expect(commitGate(base, zhT)).toMatchObject({ disabledReason: null, blocked: false, mode: 'files', submitLabel: '提交' })

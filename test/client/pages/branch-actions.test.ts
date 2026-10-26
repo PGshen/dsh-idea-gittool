@@ -10,6 +10,7 @@ import {
   doubleClickAction,
   matchesQuery,
   outcomeNotice,
+  pathsLimitNotice,
   quickActions,
   validateBranchName,
 } from '../../../src/client/pages/branch-actions.ts'
@@ -168,6 +169,13 @@ describe('validateBranchName', () => {
     for (const name of ['-x', '/x', 'x/', 'x.', 'x.lock', 'a..b', 'a//b', 'a@{b', '@', '.hidden', 'a/.b']) {
       expect(validateBranchName(name), name).toEqual(text('branch.sheet.name.invalidShape'))
     }
+  })
+})
+
+describe('pathsLimitNotice (TD-9)', () => {
+  it('blocks add-to-VCS with the limit text above WRITE_PATHS_MAX', () => {
+    expect(pathsLimitNotice(2000)).toBeNull()
+    expect(pathsLimitNotice(2001)).toEqual({ tone: 'error', message: text('write.tooManyPaths', { max: 2000, count: 2001 }) })
   })
 })
 

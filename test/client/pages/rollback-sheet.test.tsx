@@ -5,7 +5,8 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
 import { zh } from '../../../src/client/locales.ts'
-import { zhT } from '../i18n-helpers.tsx'
+import { enT, zhT } from '../i18n-helpers.tsx'
+import { WRITE_PATHS_MAX } from '../../../src/shared/protocol.ts'
 import type { RollbackValue } from '../../../src/shared/protocol.ts'
 import type { RollbackState, RollbackTarget } from '../../../src/client/store/push-store.ts'
 import {
@@ -137,6 +138,23 @@ describe('RollbackSheetView', () => {
     expect(html).toContain('已跳过 2 个未跟踪文件')
     expect(html).toContain(zh['action.close'])
     expect(html).not.toContain('<form')
+  })
+
+  it('TD-8: skipped tracked-at-confirmation paths are reported as "became untracked, not deleted"', () => {
+    const result: RollbackValue = { restored: ['src/a.ts'], deleted: ['notes/new 1.md', 'notes/new-2.md'], keptStaged: [], skipped: ['src/b.ts', 'src/c.ts'] }
+    const html = renderToStaticMarkup(<RollbackSheetView {...props({ state: { ...IDLE, deleteConfirmed: true, result } })} />)
+    expect(html).toContain('2 个文件在确认后变成未跟踪，未删除')
+    expect(html).toContain('data-became-untracked')
+    expect(html).not.toContain('已跳过 2 个未跟踪文件')
+    const en = renderToStaticMarkup(<RollbackSheetView {...props({ t: enT, state: { ...IDLE, deleteConfirmed: true, result } })} />)
+    expect(en).toContain('2 files became untracked after you confirmed and were not deleted')
+  })
+
+  it('TD-9: more than WRITE_PATHS_MAX targets disables rollback with the limit text', () => {
+    const many = Array.from({ length: WRITE_PATHS_MAX + 1 }, (_, index) => ({ path: `f${index}.ts`, untracked: false }))
+    const p = props({ targets: many })
+    expect(primaryOf(RollbackSheetView(p))?.props.disabled).toBe(true)
+    expect(renderToStaticMarkup(<RollbackSheetView {...p} />)).toContain(`一次最多 2000 个文件，当前 ${WRITE_PATHS_MAX + 1} 个`)
   })
 
   it('collapses long lists', () => {

@@ -11,6 +11,7 @@ import type {
   StatusValue,
   WritePolicyValue,
 } from '../../shared/protocol.ts'
+import { WRITE_PATHS_MAX } from '../../shared/protocol.ts'
 import type { FocusTarget } from '../focus.ts'
 import { text } from '../localized-text.ts'
 import type { LocalizedText } from '../localized-text.ts'
@@ -229,6 +230,11 @@ export interface ActionNotice {
   tone: 'error' | 'warning'
   message: LocalizedText
   action?: NoticeActionId
+}
+
+/** TD-9: a write over more than {@link WRITE_PATHS_MAX} paths is not sent; the notice says why. */
+export function pathsLimitNotice(count: number): ActionNotice | null {
+  return count > WRITE_PATHS_MAX ? { tone: 'error', message: text('write.tooManyPaths', { max: WRITE_PATHS_MAX, count }) } : null
 }
 
 /** What the user should be told about an outcome (null: nothing — the UI already shows the result). */

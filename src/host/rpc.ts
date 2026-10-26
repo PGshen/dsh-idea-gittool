@@ -289,6 +289,7 @@ async function handleBootstrap(
       writePolicy: {
         mode: 'read-only',
         reason: '当前会话目录不在 Git 仓库中',
+        reasonCode: 'not-a-repository',
       },
       version: 0,
     })

@@ -170,9 +170,22 @@ export interface LogValue {
 }
 
 /** 写能力判定结果；read-only 时 UI 顶部横幅并禁用写操作（调研 §8.3）。 */
+/** 只读原因的稳定代码（A2 追加）：客户端按它取本地化文案，`reason` 只作兜底。 */
+export type WritePolicyReasonCode =
+  | 'policy-unavailable'
+  | 'session-not-live'
+  | 'resolve-failed'
+  | 'read-only-mode'
+  | 'repo-outside-workspace'
+  | 'sandbox-unavailable'
+  | 'confine-failed'
+  | 'partial-enforcement'
+  | 'not-a-repository'
+
 export interface WritePolicyValue {
   mode: 'read-write' | 'read-only'
   reason?: string
+  reasonCode?: WritePolicyReasonCode
   workspaceRoot?: string
 }
 

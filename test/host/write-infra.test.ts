@@ -246,6 +246,7 @@ describe('resolveWriteAccess', () => {
     const { deps } = gateDeps(repo.root, 'read-only')
     const access = await resolveWriteAccess({ repoRoot: repo.root, sessionId: 's' }, deps)
     expect(access.policy.mode).toBe('read-only')
+    expect(access.policy.reasonCode).toBe('read-only-mode')
     expect(access.confiner).toBeUndefined()
   })
 })

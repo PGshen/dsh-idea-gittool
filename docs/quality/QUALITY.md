@@ -16,3 +16,7 @@
 | `src/shared/` | B | 协议常量/类型与 isRpcResult 有单测；A3 在 T1 冻结全部端点类型（`RpcEndpointTypes` 逐端点编译期穷举、`WRITE_ENDPOINTS`），之后只追加；`git/hook-failed`、`git/would-overwrite`、`git/dirty-worktree` 等错误的 `details` 键已有类型，其余少数键仍只在 Host 实现里约定 | 2026-10-26 |
 | `build.mjs` | B | 双面产物 + smoke（含 HMR 重跑时样式替换）；契约漂移风险见 TD-1 | 2026-10-25 |
 | 文档与 harness | B | 计划/ADR 校验已机器化；references §13 已回写 M0/A1 实测（watch、HMR、fs）；升级 DSH 后需重跑（TD-2） | 2026-10-25 |
+| `src/client/merge/`（B1 合并模型） | A | 行级 Myers diff、diff3 分块、块状态机、简单冲突、编辑映射、草稿往返、已解决文件重放均为纯函数，单测覆盖主要路径与边界；经 `test/host/merge-e2e.test.ts` 与真实 Host 数据串联验证。缺口：超大文件走粗分块降级，只给提示不细分 | 2026-10-27 |
+| `src/client/store/merge-store.ts`（B1 合并 store） | B | 打开（新建/草稿恢复/作废）、动作与撤销、保存草稿、应用、只读与 stale、旧响应丢弃有单测，并在 e2e 中接真实 Host 跑通合并/变基/拣选/autocrlf/草稿/还原链路。缺口：已解决文件「保存并关闭」后再次打开不恢复未应用的改动（T7 关注点 5）；无 DOM 的真实时序（StrictMode 双挂载）靠实机 | 2026-10-27 |
+| `src/client/pages/MergeWindow*`（B1 合并窗口） | C | 视图用静态渲染测，编辑器适配用 `EditorState` 测，全屏决策与转换为纯函数单测；`createMergePane`、滚动同步、gutter DOM、焦点、宿主全屏时序没有 DOM 测试（TD-18 同类），等待 L4 实机走查，flag 默认仍关。通过实机验收后上调 | 2026-10-27 |
+| `src/host/git/merge-*.ts`（B1 Host 合并端点） | A | `mergeFile`/`mergeDraftSave`/`mergeApply`/`unresolveConflict` 用真实临时仓库测试：三方字节一致、autocrlf、可执行位、stale 工作区/索引、草稿作废与清理（含变基换步）、二进制/超限/删除类、受限 ref 存草稿。缺口：删除类冲突的「还原冲突解决」只能提示在终端处理（计划「意外与发现」第 2 条，待决定）；子模块冲突未覆盖 | 2026-10-27 |

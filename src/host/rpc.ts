@@ -16,6 +16,7 @@ import type {
   BootstrapValue,
   BranchesValue,
   CommitDetailValue,
+  ConflictCommandValue,
   ConsoleValue,
   DiffFileValue,
   LogValue,
@@ -37,6 +38,13 @@ import { isAbsolute, resolve as resolvePath } from 'node:path'
 
 import type { GitRunner, WriteOperation } from './git-executor.ts'
 import { GIT_BASE_ARGV, GitCommandFailure, bindWriteContext, messageOf, notImplemented } from './git-executor.ts'
+import {
+  checkoutOperation,
+  createBranchOperation,
+  deleteBranchOperation,
+  renameBranchOperation,
+} from './git/branch-write.ts'
+import { conflictCommandFor, resolveConflictOperation } from './git/conflict.ts'
 import { addToVcsOperation, amendMessageOperation, commitFilesOperation } from './git/commit-write.ts'
 import { operationCommitOperation, operationControlOperation, readOperationState } from './git/operation.ts'
 import { pullForPushOperation } from './git/pull.ts'
@@ -101,12 +109,12 @@ const DEFAULT_WRITE_OPERATIONS: WriteOperations = {
   pullForPush: pullForPushOperation,
   operationControl: operationControlOperation,
   operationCommit: operationCommitOperation,
-  // A3: replaced by T3 (branches, conflicts), T4 (integrate/update), T5 (stash).
-  resolveConflict: pendingOperation('resolveConflict'),
-  checkout: pendingOperation('checkout'),
-  createBranch: pendingOperation('createBranch'),
-  renameBranch: pendingOperation('renameBranch'),
-  deleteBranch: pendingOperation('deleteBranch'),
+  // A3: replaced by T4 (integrate/update), T5 (stash).
+  resolveConflict: resolveConflictOperation,
+  checkout: checkoutOperation,
+  createBranch: createBranchOperation,
+  renameBranch: renameBranchOperation,
+  deleteBranch: deleteBranchOperation,
   merge: pendingOperation('merge'),
   rebase: pendingOperation('rebase'),
   cherryPick: pendingOperation('cherryPick'),
@@ -321,9 +329,12 @@ export function createRpcRuntime(deps: RpcDeps): RpcRuntime {
             OPERATION_STATE_CACHE_KEY,
             (root) => readOperationState(deps.runner, root, { signal }),
           )
-        // A3 read endpoints registered in T1; T3 (conflictCommand), T4 (resetPreview)
-        // and T5 (stashList, stashFiles) replace these cases.
-        case 'conflictCommand':
+        case 'conflictCommand': {
+          const sessionId = parseSessionId(payload)
+          return ok<ConflictCommandValue>(conflictCommandFor(await repositoryRoot(deps, sessionId, signal)))
+        }
+        // A3 read endpoints registered in T1; T4 (resetPreview) and T5 (stashList, stashFiles)
+        // replace these cases.
         case 'resetPreview':
         case 'stashList':
         case 'stashFiles':

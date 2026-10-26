@@ -12,6 +12,7 @@ import type {
   BootstrapValue,
   BranchesValue,
   CommitDetailValue,
+  ConflictCommandValue,
   ConsoleValue,
   DiffFileValue,
   LogValue,
@@ -515,15 +516,9 @@ describe('createRpcHandler / A1 read endpoints', () => {
 
 describe('endpoint registry (A3 T1)', () => {
   const A3_PENDING = [
-    'conflictCommand',
     'resetPreview',
     'stashList',
     'stashFiles',
-    'resolveConflict',
-    'checkout',
-    'createBranch',
-    'renameBranch',
-    'deleteBranch',
     'merge',
     'rebase',
     'cherryPick',
@@ -580,6 +575,24 @@ describe('endpoint registry (A3 T1)', () => {
     expect(errorOf(control).code).toBe('git/invalid-payload')
     const commit = await handler('operationCommit', { sessionId: 'session-1', requestId: 'r', message: '  ' }, SIGNAL)
     expect(errorOf(commit).code).toBe('git/invalid-payload')
+  })
+
+  it('serves conflictCommand (T3) for the resolved repository', async () => {
+    const { handler, repo } = makeHandler()
+    const value = okValue<ConflictCommandValue>(await handler('conflictCommand', { sessionId: 'session-1' }, SIGNAL))
+    expect(value.command).toBe(`cd ${repo.root} && git status && git mergetool`)
+  })
+
+  it.each([
+    ['checkout', { target: { kind: 'local', name: '-b' } }],
+    ['createBranch', { name: 'x', startPoint: 'main' }],
+    ['renameBranch', { from: 'a', to: '--force' }],
+    ['deleteBranch', { name: 'x', force: false, expectedSha: 'abc' }],
+    ['resolveConflict', { path: '../x', resolution: 'ours' }],
+  ])('validates %s payloads before the gate (T3)', async (endpoint, extra) => {
+    const { handler } = makeHandler()
+    const result = await handler(endpoint, { sessionId: 'session-1', requestId: 'r', ...extra }, SIGNAL)
+    expect(errorOf(result).code).toBe('git/invalid-payload')
   })
 
   it('write endpoints are a subset of the registry and require a requestId', async () => {

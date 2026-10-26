@@ -1026,4 +1026,13 @@ stdin 与长路径（A3 T1 spike，2026-10-26，git 2.50.1 / macOS Seatbelt，AR
 | `git clean`、`git status`、`git diff` **不支持** `--pathspec-from-file`（退出 129 `unknown option`）；改为每批 ≤200 个路径的 argv：200 个约 600 字节路径一次 `clean -f -q --` 在 confine 下成功（200 × PATH_MAX 4096 也低于 1MiB） | ✅ 2026-10-26 | spike 5、6、9 |
 | stdin 不影响沙箱拒绝的分类：workspaceRoot 为仓库子目录时同样是 `Unable to create '.../.git/index.lock': Operation not permitted`（退出 128） | ✅ 2026-10-26 | spike 7 |
 
+贮藏命令（A3 T5，2026-10-26，git 2.50.1 本机实测，写环境 `GIT_LITERAL_PATHSPECS=1`；回归测试 `test/host/stash.test.ts`）：
+
+| 结论 | 状态 | 证据 |
+|---|---|---|
+| **`stash push --keep-index` 在 `GIT_LITERAL_PATHSPECS=1` 下失败**：`pathspec ':/' did not match any file(s)`（退出 1），而且失败发生在贮藏**之后**——改动已进贮藏、工作区已清空、暂存区没被放回。全局选项 `git --no-literal-pathspecs stash push …` 可规避（创建贮藏不传路径，关掉字面模式无副作用） | ✅ 2026-10-26 | 本机复现；`stashCreate` 测试 |
+| `stash apply [--index] <sha>` 直接接受贮藏提交 sha；`pop`/`drop` 只接受 reflog 选择子（`stash@{n}`）。`drop` 在 stdout 打印 `Dropped stash@{n} (<完整 sha>)`，可据此核对删掉的是哪条 | ✅ 2026-10-26 | 本机实测 |
+| `apply --index` 暂存区补丁打不上时报 `conflicts in index. Try without --index.`（退出 1，工作区不动）；本地改动会被覆盖时报 `would be overwritten by merge`；`-u` 贮藏的未跟踪文件已存在时报 `<path> already exists, no checkout` + `could not restore untracked files from stash`；三者都不改工作区、不删贮藏 | ✅ 2026-10-26 | 本机实测 |
+| `stash store` 同一个 sha 重复存入时 reflog 不新增条目；`diff-tree --stdin -r --name-only -z` 读 `<stash> <第一父>` 行，只为有改动的贮藏输出 `<sha>\0<path>\0…` | ✅ 2026-10-26 | 本机实测 |
+
 依赖与类型：DSH 类型用 `link:` 指向本机 checkout；`webServer` 服务的类型包是 **`@deepseek-ai/dsh-host-webserver`**（不是 `dsh-webserver`）；`ctx.connection` 的 Host 半边类型来自 `@deepseek-ai/dsh-client-connection`。

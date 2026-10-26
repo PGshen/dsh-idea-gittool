@@ -1048,6 +1048,8 @@ export interface StashFilesValue {
   untrackedSha: string | null
   files: CommitFileEntry[]
   untracked: FileEntry[]
+  /** T5 追加：任一列表超过 2000 个文件被截断（与提交详情同一上限）；未截断时省略。 */
+  truncated?: boolean
   version?: number
 }
 

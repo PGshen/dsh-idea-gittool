@@ -30,10 +30,10 @@ export function payloadRecord(payload: unknown): Record<string, unknown> {
   return payload as Record<string, unknown>
 }
 
-/** Non-empty, duplicate-free, bounded list of validated repo-relative paths. */
-export function parseWritePaths(value: unknown): string[] {
+/** Non-empty (unless `allowEmpty`), duplicate-free, bounded list of validated repo-relative paths. */
+export function parseWritePaths(value: unknown, allowEmpty = false): string[] {
   if (!Array.isArray(value)) throw invalidPayload('paths must be an array')
-  if (value.length === 0) throw invalidPayload('paths must not be empty')
+  if (value.length === 0 && !allowEmpty) throw invalidPayload('paths must not be empty')
   if (value.length > WRITE_PATHS_MAX) {
     throw invalidPayload(`at most ${String(WRITE_PATHS_MAX)} paths per request`, { limit: WRITE_PATHS_MAX })
   }

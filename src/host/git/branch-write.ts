@@ -82,13 +82,13 @@ async function assertBranchAbsent(ctx: WriteContext, name: string): Promise<void
 
 /** Headers of the lists `switch` prints before refusing; `untracked` lists files git will not clobber. */
 const OVERWRITE_HEADERS: ReadonlyArray<{ pattern: RegExp; untracked: boolean }> = [
-  { pattern: /Your local changes to the following files would be overwritten by (checkout|switch)/i, untracked: false },
-  { pattern: /untracked working tree files would be (overwritten|removed) by (checkout|switch)/i, untracked: true },
+  { pattern: /Your local changes to the following files would be overwritten by (checkout|switch|merge)/i, untracked: false },
+  { pattern: /untracked working tree files would be (overwritten|removed) by (checkout|switch|merge)/i, untracked: true },
   { pattern: /Updating the following directories would lose untracked files in them/i, untracked: true },
 ]
 
 /**
- * `git/would-overwrite` details from a refused `switch` (git 2.50, LC_ALL=C): tracked local
+ * `git/would-overwrite` details from a refused `switch` or `stash apply` (git 2.50, LC_ALL=C): tracked local
  * changes go to `paths`, untracked files/directories in the way to `untracked`. Each listed
  * path is a tab-indented line after its header. Undefined when stderr is not such a refusal.
  */

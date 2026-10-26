@@ -148,7 +148,7 @@ async function writePendingStash(ctx: WriteContext, pending: PendingStash): Prom
 }
 
 /** Delete both marker refs (confined); a failure leaves a marker that the sha check neutralizes. */
-async function removePendingStash(ctx: WriteContext): Promise<void> {
+export async function removePendingStash(ctx: WriteContext): Promise<void> {
   await ctx
     .git([...GIT_BASE_ARGV, 'update-ref', '--stdin'], {
       stdin: `delete ${PENDING_STASH_REF}\ndelete ${PENDING_STASH_META_REF}\n`,
@@ -185,7 +185,8 @@ export function dirtyWorktree(paths: readonly string[], operation?: SmartOperati
   })
 }
 
-async function stashTop(ctx: WriteContext): Promise<string | undefined> {
+/** The newest stash (`refs/stash`), or undefined when there is none. */
+export async function stashTop(ctx: WriteContext): Promise<string | undefined> {
   const result = await ctx.git([...GIT_BASE_ARGV, 'rev-parse', '-q', '--verify', 'refs/stash'], { mode: 'read' })
   const sha = result.stdout.trim()
   return result.exitCode === 0 && sha !== '' ? sha : undefined

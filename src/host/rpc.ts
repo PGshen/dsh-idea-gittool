@@ -25,6 +25,8 @@ import type {
   RefsValue,
   ResetPreviewValue,
   RpcEndpointTypes,
+  StashFilesValue,
+  StashListValue,
   StatusValue,
   WriteEndpoint,
   WritePolicyValue,
@@ -38,7 +40,7 @@ import { watchRepo } from './watch.ts'
 import { isAbsolute, resolve as resolvePath } from 'node:path'
 
 import type { GitRunner, WriteOperation } from './git-executor.ts'
-import { GIT_BASE_ARGV, GitCommandFailure, bindWriteContext, messageOf, notImplemented } from './git-executor.ts'
+import { GIT_BASE_ARGV, GitCommandFailure, bindWriteContext, messageOf } from './git-executor.ts'
 import {
   checkoutOperation,
   createBranchOperation,
@@ -61,6 +63,13 @@ import { pullForPushOperation, pullOperation } from './git/pull.ts'
 import { fetchOperation, resetToRemoteOperation, updateProjectOperation } from './git/update.ts'
 import { pushOperation, readPushPreview } from './git/push.ts'
 import { rollbackOperation } from './git/rollback.ts'
+import {
+  readStashFiles,
+  readStashList,
+  stashApplyOperation,
+  stashCreateOperation,
+  stashDropOperation,
+} from './git/stash.ts'
 import type { WriteQueue } from './write-queue.ts'
 import { createWriteQueue } from './write-queue.ts'
 import { readBranches } from './git/branches.ts'
@@ -88,6 +97,8 @@ const DIFF_CACHE_PREFIX = 'diff'
 const PUSH_PREVIEW_CACHE_KEY = 'pushPreview'
 const OPERATION_STATE_CACHE_KEY = 'operationState'
 const RESET_PREVIEW_CACHE_PREFIX = 'resetPreview'
+const STASH_LIST_CACHE_KEY = 'stashList'
+const STASH_FILES_CACHE_PREFIX = 'stashFiles'
 /** Longest accepted requestId (client-generated UUIDs are 36). */
 const MAX_REQUEST_ID_LENGTH = 100
 
@@ -96,21 +107,6 @@ export type WriteValue<E extends WriteEndpoint> = Omit<RpcEndpointTypes[E]['valu
 
 /** Write endpoints (A2 + A3) → their operations; tests override single entries. */
 export type WriteOperations = { [E in WriteEndpoint]: WriteOperation<unknown, WriteValue<E>> }
-
-/**
- * Placeholder for an A3 write endpoint registered in T1 ahead of its implementation:
- * refuses at parse time (before the queue and gate), so nothing runs.
- */
-function pendingOperation<E extends WriteEndpoint>(endpoint: E): WriteOperation<unknown, WriteValue<E>> {
-  return {
-    parse() {
-      throw notImplemented(endpoint)
-    },
-    run() {
-      return Promise.reject(notImplemented(endpoint))
-    },
-  }
-}
 
 const DEFAULT_WRITE_OPERATIONS: WriteOperations = {
   commitFiles: commitFilesOperation,
@@ -121,7 +117,6 @@ const DEFAULT_WRITE_OPERATIONS: WriteOperations = {
   pullForPush: pullForPushOperation,
   operationControl: operationControlOperation,
   operationCommit: operationCommitOperation,
-  // A3: replaced by T5 (stash).
   resolveConflict: resolveConflictOperation,
   checkout: checkoutOperation,
   createBranch: createBranchOperation,
@@ -136,9 +131,9 @@ const DEFAULT_WRITE_OPERATIONS: WriteOperations = {
   pull: pullOperation,
   updateProject: updateProjectOperation,
   resetToRemote: resetToRemoteOperation,
-  stashCreate: pendingOperation('stashCreate'),
-  stashApply: pendingOperation('stashApply'),
-  stashDrop: pendingOperation('stashDrop'),
+  stashCreate: stashCreateOperation,
+  stashApply: stashApplyOperation,
+  stashDrop: stashDropOperation,
 }
 
 /** Everything the handler needs; all session services are lazy and optional. */
@@ -357,11 +352,22 @@ export function createRpcRuntime(deps: RpcDeps): RpcRuntime {
             (root) => readResetPreview(deps.runner, root, sha, { signal }),
           )
         }
-        // A3 read endpoints registered in T1; T5 (stashList, stashFiles) replaces these cases.
         case 'stashList':
-        case 'stashFiles':
+          return await handleCached<StashListValue>(deps, runtime, payload, signal, STASH_LIST_CACHE_KEY, (root) =>
+            readStashList(deps.runner, root, { signal }),
+          )
+        case 'stashFiles': {
           parseSessionId(payload)
-          throw notImplemented(endpoint)
+          const sha = parseFullSha((payload as { sha?: unknown }).sha, 'sha')
+          return await handleCached<StashFilesValue>(
+            deps,
+            runtime,
+            payload,
+            signal,
+            `${STASH_FILES_CACHE_PREFIX}:${sha}`,
+            (root) => readStashFiles(deps.runner, root, sha, { signal }),
+          )
+        }
         default:
           if (isWriteEndpoint(endpoint)) {
             return await handleWrite<object>(deps, runtime, payload, signal, runtime.operations[endpoint])

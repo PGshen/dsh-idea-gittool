@@ -19,6 +19,8 @@ import type {
   OperationStateValue,
   ResetPreviewValue,
   RefsValue,
+  StashFilesValue,
+  StashListValue,
   StatusValue,
   WritePolicyValue,
 } from '../../src/shared/protocol.ts'
@@ -516,14 +518,6 @@ describe('createRpcHandler / A1 read endpoints', () => {
 })
 
 describe('endpoint registry (A3 T1)', () => {
-  const A3_PENDING = [
-    'stashList',
-    'stashFiles',
-    'stashCreate',
-    'stashApply',
-    'stashDrop',
-  ]
-
   it('routes every registered endpoint (none answers "unknown RPC endpoint")', async () => {
     const { handler } = makeHandler()
     for (const endpoint of RPC_ENDPOINTS) {
@@ -533,17 +527,29 @@ describe('endpoint registry (A3 T1)', () => {
     expect(errorOf(await handler('nope', { sessionId: 'session-1' }, SIGNAL)).message).toBe('unknown RPC endpoint')
   })
 
-  it('registers every A3 endpoint and answers git/exec-failed "not implemented" until it lands', async () => {
+  it('implements every registered endpoint (none answers "not implemented")', async () => {
     const { handler } = makeHandler()
-    expect(RPC_ENDPOINTS).toEqual(expect.arrayContaining(A3_PENDING))
-    for (const endpoint of A3_PENDING) {
-      const error = errorOf(await handler(endpoint, { sessionId: 'session-1', requestId: 'r-1' }, SIGNAL))
-      expect({ endpoint, code: error.code, message: error.message }).toEqual({
-        endpoint,
-        code: 'git/exec-failed',
-        message: 'not implemented',
-      })
+    for (const endpoint of RPC_ENDPOINTS) {
+      const result = await handler(endpoint, { sessionId: 'session-1', requestId: 'r-1' }, SIGNAL)
+      if (!result.ok) expect(result.error.message, endpoint).not.toBe('not implemented')
     }
+  })
+
+  it('serves stashList and stashFiles (T5) as versioned reads and validates the sha', async () => {
+    const { handler, repo } = makeHandler()
+    expect(okValue<StashListValue>(await handler('stashList', { sessionId: 'session-1' }, SIGNAL))).toEqual({
+      entries: [],
+      version: 0,
+    })
+    repo.write('README.md', 'changed\n')
+    repo.git('stash', 'push', '-q', '-m', 'saved')
+    const sha = repo.git('rev-parse', 'refs/stash').trim()
+
+    const files = okValue<StashFilesValue>(await handler('stashFiles', { sessionId: 'session-1', sha }, SIGNAL))
+    expect(files).toMatchObject({ sha, untrackedSha: null, untracked: [], version: 0 })
+    expect(files.files.map((file) => file.path)).toEqual(['README.md'])
+    const bad = await handler('stashFiles', { sessionId: 'session-1', sha: 'stash@{0}' }, SIGNAL)
+    expect(errorOf(bad).code).toBe('git/invalid-payload')
   })
 
   it('serves operationState (T2) as a versioned read', async () => {

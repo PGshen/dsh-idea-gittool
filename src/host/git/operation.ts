@@ -218,7 +218,7 @@ async function matchesPending(
 }
 
 /** Number of unmerged paths right now. */
-async function unmergedCount(ctx: WriteContext): Promise<number> {
+export async function unmergedCount(ctx: WriteContext): Promise<number> {
   const result = await ctx.git([...GIT_BASE_ARGV, 'diff', '--name-only', '-z', '--diff-filter=U'], { mode: 'read' })
   if (result.exitCode !== 0) throw redactedFailure(result, 'git diff --diff-filter=U')
   return new Set(result.stdout.split('\0').filter((path) => path !== '')).size

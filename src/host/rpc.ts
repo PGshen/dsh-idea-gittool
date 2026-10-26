@@ -23,6 +23,7 @@ import type {
   OperationStateValue,
   PushPreviewValue,
   RefsValue,
+  ResetPreviewValue,
   RpcEndpointTypes,
   StatusValue,
   WriteEndpoint,
@@ -47,7 +48,17 @@ import {
 import { conflictCommandFor, resolveConflictOperation } from './git/conflict.ts'
 import { addToVcsOperation, amendMessageOperation, commitFilesOperation } from './git/commit-write.ts'
 import { operationCommitOperation, operationControlOperation, readOperationState } from './git/operation.ts'
-import { pullForPushOperation } from './git/pull.ts'
+import {
+  cherryPickOperation,
+  mergeOperation,
+  parseFullSha,
+  readResetPreview,
+  rebaseOperation,
+  resetOperation,
+  revertCommitOperation,
+} from './git/integrate.ts'
+import { pullForPushOperation, pullOperation } from './git/pull.ts'
+import { fetchOperation, resetToRemoteOperation, updateProjectOperation } from './git/update.ts'
 import { pushOperation, readPushPreview } from './git/push.ts'
 import { rollbackOperation } from './git/rollback.ts'
 import type { WriteQueue } from './write-queue.ts'
@@ -76,6 +87,7 @@ const COMMIT_CACHE_PREFIX = 'commit'
 const DIFF_CACHE_PREFIX = 'diff'
 const PUSH_PREVIEW_CACHE_KEY = 'pushPreview'
 const OPERATION_STATE_CACHE_KEY = 'operationState'
+const RESET_PREVIEW_CACHE_PREFIX = 'resetPreview'
 /** Longest accepted requestId (client-generated UUIDs are 36). */
 const MAX_REQUEST_ID_LENGTH = 100
 
@@ -109,21 +121,21 @@ const DEFAULT_WRITE_OPERATIONS: WriteOperations = {
   pullForPush: pullForPushOperation,
   operationControl: operationControlOperation,
   operationCommit: operationCommitOperation,
-  // A3: replaced by T4 (integrate/update), T5 (stash).
+  // A3: replaced by T5 (stash).
   resolveConflict: resolveConflictOperation,
   checkout: checkoutOperation,
   createBranch: createBranchOperation,
   renameBranch: renameBranchOperation,
   deleteBranch: deleteBranchOperation,
-  merge: pendingOperation('merge'),
-  rebase: pendingOperation('rebase'),
-  cherryPick: pendingOperation('cherryPick'),
-  revertCommit: pendingOperation('revertCommit'),
-  reset: pendingOperation('reset'),
-  fetch: pendingOperation('fetch'),
-  pull: pendingOperation('pull'),
-  updateProject: pendingOperation('updateProject'),
-  resetToRemote: pendingOperation('resetToRemote'),
+  merge: mergeOperation,
+  rebase: rebaseOperation,
+  cherryPick: cherryPickOperation,
+  revertCommit: revertCommitOperation,
+  reset: resetOperation,
+  fetch: fetchOperation,
+  pull: pullOperation,
+  updateProject: updateProjectOperation,
+  resetToRemote: resetToRemoteOperation,
   stashCreate: pendingOperation('stashCreate'),
   stashApply: pendingOperation('stashApply'),
   stashDrop: pendingOperation('stashDrop'),
@@ -333,9 +345,19 @@ export function createRpcRuntime(deps: RpcDeps): RpcRuntime {
           const sessionId = parseSessionId(payload)
           return ok<ConflictCommandValue>(conflictCommandFor(await repositoryRoot(deps, sessionId, signal)))
         }
-        // A3 read endpoints registered in T1; T4 (resetPreview) and T5 (stashList, stashFiles)
-        // replace these cases.
-        case 'resetPreview':
+        case 'resetPreview': {
+          parseSessionId(payload)
+          const sha = parseFullSha((payload as { sha?: unknown }).sha, 'sha')
+          return await handleCached<ResetPreviewValue>(
+            deps,
+            runtime,
+            payload,
+            signal,
+            `${RESET_PREVIEW_CACHE_PREFIX}:${sha}`,
+            (root) => readResetPreview(deps.runner, root, sha, { signal }),
+          )
+        }
+        // A3 read endpoints registered in T1; T5 (stashList, stashFiles) replaces these cases.
         case 'stashList':
         case 'stashFiles':
           parseSessionId(payload)

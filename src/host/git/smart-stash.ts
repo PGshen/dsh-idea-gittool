@@ -26,6 +26,13 @@ export interface SmartStashOptions {
   /** The request's `stash` flag: true → stash tracked changes first; otherwise refuse them. */
   stash: boolean
   operation: SmartOperationKind
+  /**
+   * A3 T4: keep the stash (no marker) after a successful run instead of popping it. For results
+   * that leave the index dirty without an open operation (`merge --squash`): `stash pop --index`
+   * onto a dirty index fails and its fallback unstages the result (git 2.50 probe). The stash
+   * stays in the list as "dsh-git: before <operation>" and the outcome says `stashKept`.
+   */
+  keepStashOnSuccess?: boolean
 }
 
 export interface SmartStashResult<V> {
@@ -294,6 +301,7 @@ export async function withSmartStash<V>(
     await keepPending(ctx, stashSha, options.operation, head)
     return { value, outcome: { stashKept: true } }
   }
+  if (options.keepStashOnSuccess === true) return { value, outcome: { stashKept: true } }
   // The stash may have been dropped meanwhile (e.g. by the Agent): report it, never claim a restore.
   const restored = await popStash(ctx, stashSha)
   return { value, outcome: restored ? { stashRestored: true } : { stashMissing: true } }

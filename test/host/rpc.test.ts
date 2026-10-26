@@ -17,6 +17,7 @@ import type {
   DiffFileValue,
   LogValue,
   OperationStateValue,
+  ResetPreviewValue,
   RefsValue,
   StatusValue,
   WritePolicyValue,
@@ -516,18 +517,8 @@ describe('createRpcHandler / A1 read endpoints', () => {
 
 describe('endpoint registry (A3 T1)', () => {
   const A3_PENDING = [
-    'resetPreview',
     'stashList',
     'stashFiles',
-    'merge',
-    'rebase',
-    'cherryPick',
-    'revertCommit',
-    'reset',
-    'fetch',
-    'pull',
-    'updateProject',
-    'resetToRemote',
     'stashCreate',
     'stashApply',
     'stashDrop',
@@ -593,6 +584,31 @@ describe('endpoint registry (A3 T1)', () => {
     const { handler } = makeHandler()
     const result = await handler(endpoint, { sessionId: 'session-1', requestId: 'r', ...extra }, SIGNAL)
     expect(errorOf(result).code).toBe('git/invalid-payload')
+  })
+
+  it.each([
+    ['merge', { ref: '--abort' }],
+    ['rebase', { onto: '-i' }],
+    ['cherryPick', { sha: 'HEAD' }],
+    ['revertCommit', { sha: 'abc' }],
+    ['reset', { sha: 'a'.repeat(40), mode: 'hard' }],
+    ['fetch', { remote: '--all', prune: false }],
+    ['pull', { remote: 'origin', branch: 'main', mode: 'squash' }],
+    ['updateProject', { mode: 'ff' }],
+    ['resetToRemote', { backup: 'yes' }],
+  ])('validates %s payloads before the gate (T4)', async (endpoint, extra) => {
+    const { handler } = makeHandler()
+    const result = await handler(endpoint, { sessionId: 'session-1', requestId: 'r', ...extra }, SIGNAL)
+    expect(errorOf(result).code).toBe('git/invalid-payload')
+  })
+
+  it('serves resetPreview (T4) as a versioned read and validates the sha', async () => {
+    const { handler, repo } = makeHandler()
+    const head = repo.git('rev-parse', 'HEAD').trim()
+    const value = okValue<ResetPreviewValue>(await handler('resetPreview', { sessionId: 'session-1', sha: head }, SIGNAL))
+    expect(value).toEqual({ head, discardCount: 0, commitsLost: [], truncated: false, version: 0 })
+    const bad = await handler('resetPreview', { sessionId: 'session-1', sha: 'HEAD' }, SIGNAL)
+    expect(errorOf(bad).code).toBe('git/invalid-payload')
   })
 
   it('write endpoints are a subset of the registry and require a requestId', async () => {

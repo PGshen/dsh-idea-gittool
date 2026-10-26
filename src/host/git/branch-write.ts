@@ -50,14 +50,14 @@ function requiredBoolean(record: Record<string, unknown>, key: string): boolean 
 }
 
 /** Full sha of `ref` when it exists, otherwise undefined (no error: callers decide). */
-async function refSha(ctx: WriteContext, ref: string): Promise<string | undefined> {
+export async function refSha(ctx: WriteContext, ref: string): Promise<string | undefined> {
   const result = await query(ctx, ['rev-parse', '-q', '--verify', '--end-of-options', ref])
   const sha = result.stdout.trim()
   return result.exitCode === 0 && SHA_PATTERN.test(sha) ? sha : undefined
 }
 
 /** The commit a user-supplied revision names, or `git/invalid-payload`. */
-async function resolveCommit(ctx: WriteContext, revision: string, label: string): Promise<string> {
+export async function resolveCommit(ctx: WriteContext, revision: string, label: string): Promise<string> {
   const sha = await refSha(ctx, `${revision}^{commit}`)
   if (sha === undefined) throw invalidPayload(`unknown ${label} "${revision}"`, { [label]: revision })
   return sha

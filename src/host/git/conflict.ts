@@ -32,21 +32,43 @@ export interface ResolveConflictInput {
   force: boolean
 }
 
+/** One index stage of a path: file mode and blob id. */
+export interface StageEntry {
+  mode: string
+  sha: string
+}
+
+/** Stage number (1 base, 2 ours, 3 theirs) → entry. */
+export type StageEntries = Map<number, StageEntry>
+
 /**
- * Unmerged paths right now with the index stages each has (1 base, 2 ours, 3 theirs).
+ * Parse `-z` output of `ls-files -u` / `ls-files --resolve-undo`
+ * (`<mode> SP <object> SP <stage> TAB <path>` records; same format for both).
+ */
+export function parseStageRecords(stdout: string): Map<string, StageEntries> {
+  const byPath = new Map<string, StageEntries>()
+  for (const record of stdout.split('\0')) {
+    const match = /^(\d+) ([0-9a-f]+) ([123])\t(.+)$/s.exec(record)
+    if (match?.[1] === undefined || match[2] === undefined || match[3] === undefined || match[4] === undefined) continue
+    const entries = byPath.get(match[4]) ?? new Map<number, StageEntry>()
+    entries.set(Number(match[3]), { mode: match[1], sha: match[2] })
+    byPath.set(match[4], entries)
+  }
+  return byPath
+}
+
+/**
+ * Unmerged paths right now with the index entries each has (1 base, 2 ours, 3 theirs).
  * Read straight from the index (`ls-files -u`), so the status entry limit never hides one.
  */
+export async function unmergedEntries(ctx: WriteContext): Promise<Map<string, StageEntries>> {
+  return parseStageRecords(await queryOk(ctx, ['ls-files', '-u', '-z'], 'git ls-files'))
+}
+
+/** Unmerged paths with just the stage numbers each has. */
 async function unmergedStages(ctx: WriteContext): Promise<Map<string, Set<number>>> {
-  const stdout = await queryOk(ctx, ['ls-files', '-u', '-z'], 'git ls-files')
   const unmerged = new Map<string, Set<number>>()
-  for (const record of stdout.split('\0')) {
-    // `<mode> SP <object> SP <stage> TAB <path>`
-    const match = /^\d+ [0-9a-f]+ ([123])\t(.+)$/s.exec(record)
-    if (match?.[1] === undefined || match[2] === undefined) continue
-    const stages = unmerged.get(match[2]) ?? new Set<number>()
-    stages.add(Number(match[1]))
-    unmerged.set(match[2], stages)
-  }
+  for (const [path, entries] of await unmergedEntries(ctx)) unmerged.set(path, new Set(entries.keys()))
   return unmerged
 }
 

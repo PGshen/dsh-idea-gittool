@@ -517,8 +517,8 @@ describe('createRpcHandler / A1 read endpoints', () => {
   })
 })
 
-/** B1 endpoints registered by T1 ahead of their implementation; T2 (mergeFile) and T3 (writes) empty this list. */
-const B1_PENDING = ['mergeFile', 'mergeDraftSave', 'mergeApply', 'unresolveConflict'] as const
+/** B1 endpoints registered by T1 ahead of their implementation; T3 (writes) empties this list. */
+const B1_PENDING = ['mergeDraftSave', 'mergeApply', 'unresolveConflict'] as const
 
 describe('endpoint registry (B1 T1)', () => {
   it('registers every B1 endpoint and answers git/exec-failed "not implemented" until it lands', async () => {
@@ -560,6 +560,15 @@ describe('endpoint registry (A3 T1)', () => {
       const result = await handler(endpoint, { sessionId: 'session-1', requestId: 'r-1' }, SIGNAL)
       if (!result.ok) expect(result.error.message, endpoint).not.toBe('not implemented')
     }
+  })
+
+  it('serves mergeFile (B1 T2): validates the path and answers stale-target outside a conflict', async () => {
+    const { handler } = makeHandler()
+    expect(errorOf(await handler('mergeFile', { sessionId: 'session-1', path: '../x' }, SIGNAL)).code).toBe(
+      'git/invalid-payload',
+    )
+    const error = errorOf(await handler('mergeFile', { sessionId: 'session-1', path: 'README.md' }, SIGNAL))
+    expect(error).toMatchObject({ code: 'git/stale-target', details: { target: 'conflict' } })
   })
 
   it('serves stashList and stashFiles (T5) as versioned reads and validates the sha', async () => {

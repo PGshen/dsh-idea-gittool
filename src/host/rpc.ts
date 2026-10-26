@@ -20,6 +20,7 @@ import type {
   ConsoleValue,
   DiffFileValue,
   LogValue,
+  MergeFileValue,
   OperationStateValue,
   PushPreviewValue,
   RefsValue,
@@ -47,6 +48,7 @@ import {
   deleteBranchOperation,
   renameBranchOperation,
 } from './git/branch-write.ts'
+import { readMergeFile } from './git/merge-file.ts'
 import { conflictCommandFor, resolveConflictOperation } from './git/conflict.ts'
 import { addToVcsOperation, amendMessageOperation, commitFilesOperation } from './git/commit-write.ts'
 import { operationCommitOperation, operationControlOperation, readOperationState } from './git/operation.ts'
@@ -387,10 +389,15 @@ export function createRpcRuntime(deps: RpcDeps): RpcRuntime {
             (root) => readStashFiles(deps.runner, root, sha, { signal }),
           )
         }
-        // B1 read endpoint registered in T1; T2 replaces this case.
-        case 'mergeFile':
+        case 'mergeFile': {
           parseSessionId(payload)
-          throw notImplemented(endpoint)
+          const path = validateRepoPath((payload as { path?: unknown }).path)
+          const root = await repositoryRoot(deps, parseSessionId(payload), signal)
+          runtime.ensureWatch(root)
+          const version = runtime.cache().versionOf(root)
+          const ctx = bindWriteContext(deps.runner, root, { kind: 'unconfined' }, signal)
+          return ok<MergeFileValue>({ ...(await readMergeFile(ctx, path)), version })
+        }
         default:
           if (isWriteEndpoint(endpoint)) {
             return await handleWrite<object>(deps, runtime, payload, signal, runtime.operations[endpoint])

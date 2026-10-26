@@ -98,6 +98,32 @@ export async function queryOk(ctx: WriteContext, args: readonly string[], label:
   return result.stdout
 }
 
+/** The ref exists but does not hold a readable JSON blob. */
+export class JsonRefInvalid extends Error {
+  constructor(readonly ref: string, reason: string) {
+    super(`${ref}: ${reason}`)
+    this.name = 'JsonRefInvalid'
+  }
+}
+
+/**
+ * Read a JSON blob stored behind a ref (ADR 0008: ref → `cat-file blob` → JSON).
+ * A missing ref yields null; an unreadable blob or malformed JSON throws {@link JsonRefInvalid}
+ * so callers can tell "nothing saved" from "saved but unusable".
+ */
+export async function readJsonRef(ctx: WriteContext, ref: string): Promise<unknown> {
+  const resolved = await query(ctx, ['rev-parse', '-q', '--verify', ref])
+  if (resolved.exitCode === 1) return null
+  if (resolved.exitCode !== 0) throw redactedFailure(resolved, 'git rev-parse')
+  const blob = await query(ctx, ['cat-file', 'blob', resolved.stdout.trim()])
+  if (blob.exitCode !== 0) throw new JsonRefInvalid(ref, 'not a readable blob')
+  try {
+    return JSON.parse(blob.stdout) as unknown
+  } catch {
+    throw new JsonRefInvalid(ref, 'malformed JSON')
+  }
+}
+
 /** Operations that block an ordinary commit/pull (A3 owns committing inside them). */
 export async function assertNoOperation(ctx: WriteContext): Promise<void> {
   const operation: RepoOperation = await detectOperation(readRunner(ctx), ctx.repoRoot, ctx.signal)

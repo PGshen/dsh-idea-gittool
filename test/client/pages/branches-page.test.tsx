@@ -74,6 +74,17 @@ describe('BranchesPage layout', () => {
     expect(html).toContain(zh['branch.rowMenu'])
   })
 
+  it('the row owns focus: the › button is not a separate tab stop (I-1)', () => {
+    const html = page()
+    const buttons = html.match(/<button[^>]*data-row-menu[^>]*>/g) ?? []
+    expect(buttons.length).toBeGreaterThan(5)
+    for (const button of buttons) {
+      expect(button).toContain('tabindex="-1"')
+      expect(button).toContain(`aria-label="${zh['branch.rowMenu']}"`)
+    }
+    expect(html).toMatch(/role="treeitem" tabindex="0"[^>]*data-kind="branch"/)
+  })
+
   it('shows a detached row in the HEAD group when HEAD is detached', () => {
     const value = { ...branchesFixture(), head: { branch: null, detached: true, sha: 'deadbee11112222333344445555666677778888' } }
     expect(page({ value, context: context({ current: null }) })).toContain('分离 HEAD')

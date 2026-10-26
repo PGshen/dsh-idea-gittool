@@ -1,22 +1,24 @@
 // Level 0 "Branches" page (design §8.3, plan A3 T7): search over branches and quick actions,
 // quick-action rows, grouped branch tree (local / remote / tags), `›` and right-click action menu,
-// single click selects and double click checks out. Writes go through `onAction` (BranchActionRunner).
+// single click selects and double click checks out. The row owns focus (I-1): `›`, right click,
+// ArrowRight and Shift+F10 open its menu and closing the menu refocuses the row. Writes go through `onAction` (BranchActionRunner).
 import { useMemo, useState } from 'react'
 import type { CSSProperties, MouseEvent, ReactNode } from 'react'
 import type { BranchEntry, BranchesValue, GitError, RepoOperation } from '../../shared/protocol.ts'
-import { activeFocusTarget } from '../focus.ts'
+import { activeFocusTarget, restoreFocus } from '../focus.ts'
 import type { FocusTarget } from '../focus.ts'
 import { useT } from '../i18n.tsx'
 import type { Translate } from '../i18n.tsx'
 import { OPERATION_KEY } from '../locales.ts'
 import { Button } from '../ui/Button.tsx'
 import { EmptyState } from '../ui/EmptyState.tsx'
-import { BranchContextMenu } from './BranchPanel.tsx'
+import { BranchContextMenu, directoryRowKey } from './BranchPanel.tsx'
 import { branchActions, doubleClickAction, matchesQuery, quickActions } from './branch-actions.ts'
 import type { BranchActionContext, BranchActionId, QuickActionId, QuickActionItem } from './branch-actions.ts'
 import { formatAheadBehind, groupBranches } from './branch-store.ts'
 import type { BranchGroup, BranchGroupKind, BranchRow, CollapsedGroups } from './branch-store.ts'
 import css from './BranchesPage.module.css'
+import { finishRowMenu, moveTreeFocus, rowMenuAnchor, rowOf, treeRowKeyAction } from './menu-focus.ts'
 import type { MenuAnchor } from './menu-position.ts'
 
 export interface BranchesPageProps {
@@ -158,7 +160,12 @@ export function BranchesPage(props: BranchesPageProps): ReactNode {
                   onCheckout={(entry, trigger) => {
                     if (doubleClickAction(entry, context) === 'checkout') props.onAction('checkout', entry, trigger)
                   }}
-                  onOpenMenu={(entry, anchor, trigger) => setMenu({ entry, anchor, trigger })}
+                  onOpenMenu={(entry, anchor, row) => {
+                    // The row owns focus (I-1): it is selected and focused first; the menu returns focus to it.
+                    setSelected(entry.ref)
+                    restoreFocus(row)
+                    setMenu({ entry, anchor, trigger: row ?? activeFocusTarget() })
+                  }}
                 />
               ))}
             </div>
@@ -243,11 +250,14 @@ export function BranchesPage(props: BranchesPageProps): ReactNode {
               entry={menu.entry}
               items={branchActions(menu.entry, context)}
               anchor={menu.anchor}
-              onClose={() => setMenu(null)}
+              onClose={() => {
+                setMenu(null)
+                finishRowMenu(menu.trigger)
+              }}
               onSelect={(id) => {
                 const { entry, trigger } = menu
                 setMenu(null)
-                props.onAction(id, entry, trigger)
+                finishRowMenu(trigger, row => props.onAction(id, entry, row))
               }}
             />
           )}
@@ -261,7 +271,8 @@ interface PageRowProps {
   onSelect: (entry: BranchEntry) => void
   onToggleDirectory: (path: string) => void
   onCheckout: (entry: BranchEntry, trigger: FocusTarget | null) => void
-  onOpenMenu: (entry: BranchEntry, anchor: MenuAnchor, trigger: FocusTarget | null) => void
+  /** `›`, right click or the row's menu key; `row` is the row element (the focus owner). */
+  onOpenMenu: (entry: BranchEntry, anchor: MenuAnchor, row: FocusTarget | null) => void
 }
 
 function PageRow({ row, selected, onSelect, onToggleDirectory, onCheckout, onOpenMenu }: PageRowProps): ReactNode {
@@ -281,7 +292,7 @@ function PageRow({ row, selected, onSelect, onToggleDirectory, onCheckout, onOpe
         className={css.row}
         style={indent}
         onClick={toggle}
-        onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); toggle() } }}
+        onKeyDown={event => directoryRowKey(event, expanded, toggle)}
       >
         <span className={css.chevron} aria-hidden="true">{expanded ? '▾' : '▸'}</span>
         <span className={css.name}>{row.label}</span>
@@ -310,11 +321,16 @@ function PageRow({ row, selected, onSelect, onToggleDirectory, onCheckout, onOpe
         ? undefined
         : (event) => {
             event.preventDefault()
-            onSelect(entry)
-            onOpenMenu(entry, { kind: 'point', x: event.clientX, y: event.clientY }, triggerOf(event))
+            onOpenMenu(entry, { kind: 'point', x: event.clientX, y: event.clientY }, rowOf(event.currentTarget))
           }}
       onKeyDown={(event) => {
-        if (entry !== undefined && event.key === 'Enter') { event.preventDefault(); onSelect(entry) }
+        if (event.target !== event.currentTarget) return
+        if (entry !== undefined && event.key === 'Enter') { event.preventDefault(); onSelect(entry); return }
+        const action = treeRowKeyAction({ kind: 'branch', hasMenu: entry !== undefined }, event)
+        if (action === null) return
+        event.preventDefault()
+        if (action === 'open-menu' && entry !== undefined) onOpenMenu(entry, rowMenuAnchor(event.currentTarget), event.currentTarget)
+        else if (action === 'next-row' || action === 'previous-row') moveTreeFocus(event.currentTarget, action === 'next-row' ? 1 : -1)
       }}
     >
       <span className={css.name}>{row.label}</span>
@@ -329,15 +345,16 @@ function PageRow({ row, selected, onSelect, onToggleDirectory, onCheckout, onOpe
               type="button"
               className={css.rowMenu}
               data-row-menu
+              // Not a separate tab stop: the row owns focus (I-1); ArrowRight / Shift+F10 open the same menu.
+              tabIndex={-1}
               aria-haspopup="menu"
               aria-label={t('branch.rowMenu')}
               title={t('branch.rowMenu')}
               onClick={(event) => {
                 event.stopPropagation()
-                onSelect(entry)
                 // Hang from the button's right edge; the menu flips above when there is no room below.
                 const rect = event.currentTarget.getBoundingClientRect()
-                onOpenMenu(entry, { kind: 'button', left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom }, triggerOf(event))
+                onOpenMenu(entry, { kind: 'button', left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom }, rowOf(event.currentTarget))
               }}
             >
               ›

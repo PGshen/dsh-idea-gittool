@@ -14,6 +14,7 @@ import { FilterBar, hasActiveFilter } from './FilterBar.tsx'
 import type { BranchOption } from './FilterBar.tsx'
 import { CommitContextMenu } from './CommitContextMenu.tsx'
 import { childOf, commitActionContext, commitActions } from './commit-actions.ts'
+import { finishRowMenu } from './menu-focus.ts'
 import type { MenuAnchor } from './menu-position.ts'
 import type { CommitActionId } from './commit-actions.ts'
 import { LogTable } from './LogTable.tsx'
@@ -291,7 +292,8 @@ export function LogPage({
                 const { commit, trigger } = menu
                 const child = childOf(state.commits, commit.sha)
                 closeMenu(false)
-                commitMenu.onAction(id, commit, trigger, child)
+                // Focus returns to the log row (grid) first; an overlay the action opens returns focus there too (I-1).
+                finishRowMenu(trigger, row => commitMenu.onAction(id, commit, row, child))
               }}
             />
           )}

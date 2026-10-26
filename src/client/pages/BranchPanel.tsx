@@ -2,13 +2,14 @@
 // Wide 档为可收起的常驻左栏；Standard 档为抽屉，Compact 档为全高覆盖页（都点外部/Esc 关闭）。
 // 单击导航、双击过滤；右键菜单来自 branchActions（A3 T7：签出、新建、合并、重命名、删除等），
 // 写动作经 onAction 交给工作台的 BranchActionRunner。
+// Row-level focus (I-1): right click, ArrowRight or Shift+F10 opens a row's menu; closing it refocuses the row.
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { CSSProperties, KeyboardEvent, MouseEvent, ReactNode } from 'react'
+import type { CSSProperties, KeyboardEvent, ReactNode } from 'react'
 import type { BranchEntry, BranchesValue, GitError } from '../../shared/protocol.ts'
 import { useT } from '../i18n.tsx'
 import { Button } from '../ui/Button.tsx'
 import { EmptyState } from '../ui/EmptyState.tsx'
-import { activeFocusTarget } from '../focus.ts'
+import { activeFocusTarget, restoreFocus } from '../focus.ts'
 import type { FocusTarget } from '../focus.ts'
 import { branchActions } from './branch-actions.ts'
 import type { BranchActionContext, BranchActionId, BranchActionItem } from './branch-actions.ts'
@@ -19,7 +20,8 @@ import {
 } from './branch-store.ts'
 import type { BranchGroup, BranchGroupKind, BranchRow, CollapsedGroups, PanelMode } from './branch-store.ts'
 import css from './BranchPanel.module.css'
-import { useMenuPlacement } from './menu-position.ts'
+import { finishRowMenu, moveTreeFocus, rowMenuAnchor, rowOf, treeRowKeyAction } from './menu-focus.ts'
+import { useFloatingMenu } from './menu-position.ts'
 import type { MenuAnchor } from './menu-position.ts'
 
 export interface BranchPanelProps {
@@ -202,11 +204,10 @@ function BranchPanelBody(props: BranchPanelProps): ReactNode {
             onToggleDirectory={props.onToggleDirectory}
             onClickEntry={activator.onClick}
             onDoubleClickEntry={activator.onDoubleClick}
-            onContextMenu={(entry, event) => {
-              event.preventDefault()
-              const row = event.currentTarget
-              const trigger = typeof HTMLElement !== 'undefined' && row instanceof HTMLElement ? row : activeFocusTarget()
-              setMenu({ entry, anchor: { kind: 'point', x: event.clientX, y: event.clientY }, trigger })
+            onOpenMenu={(entry, anchor, row) => {
+              // The row owns focus (I-1): it is focused first and the menu returns focus to it.
+              restoreFocus(row)
+              setMenu({ entry, anchor, trigger: row ?? activeFocusTarget() })
             }}
           />
         ))}
@@ -272,15 +273,20 @@ function BranchPanelBody(props: BranchPanelProps): ReactNode {
               entry={menu.entry}
               items={branchActions(menu.entry, props.actionContext ?? READ_ONLY_CONTEXT)}
               anchor={menu.anchor}
-              onClose={() => setMenu(null)}
+              onClose={() => {
+                setMenu(null)
+                finishRowMenu(menu.trigger)
+              }}
               onSelect={(id) => {
                 const { entry, trigger } = menu
                 setMenu(null)
-                if (id === 'copyName') copy(entry.name)
-                else if (id === 'copyRef') copy(entry.ref)
-                else if (id === 'showInLog') { activator.cancel(); latest.current.onNavigate(entry) }
-                else if (id === 'filterLog') activator.onDoubleClick(entry)
-                else latest.current.onAction?.(id, entry, trigger)
+                finishRowMenu(trigger, (row) => {
+                  if (id === 'copyName') copy(entry.name)
+                  else if (id === 'copyRef') copy(entry.ref)
+                  else if (id === 'showInLog') { activator.cancel(); latest.current.onNavigate(entry) }
+                  else if (id === 'filterLog') activator.onDoubleClick(entry)
+                  else latest.current.onAction?.(id, entry, row)
+                })
               }}
             />
           )}
@@ -296,7 +302,8 @@ interface BranchGroupViewProps {
   onToggleDirectory: ((path: string) => void) | undefined
   onClickEntry: (entry: BranchEntry) => void
   onDoubleClickEntry: (entry: BranchEntry) => void
-  onContextMenu: (entry: BranchEntry, event: MouseEvent) => void
+  /** Right click or the row's menu key: open the menu at `anchor`; `row` is the row element. */
+  onOpenMenu: (entry: BranchEntry, anchor: MenuAnchor, row: FocusTarget | null) => void
 }
 
 function BranchGroupView({ group, searching, selectedRef, ...handlers }: BranchGroupViewProps): ReactNode {
@@ -328,7 +335,7 @@ interface BranchRowViewProps extends Omit<BranchGroupViewProps, 'group' | 'searc
   selected: boolean
 }
 
-function BranchRowView({ group, row, selected, onToggleDirectory, onClickEntry, onDoubleClickEntry, onContextMenu }: BranchRowViewProps): ReactNode {
+function BranchRowView({ group, row, selected, onToggleDirectory, onClickEntry, onDoubleClickEntry, onOpenMenu }: BranchRowViewProps): ReactNode {
   const t = useT()
   const indent = { '--git-tree-depth': row.depth } as CSSProperties
   if (row.kind === 'directory') {
@@ -345,7 +352,7 @@ function BranchRowView({ group, row, selected, onToggleDirectory, onClickEntry, 
         className={css.row}
         style={indent}
         onClick={toggle}
-        onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); toggle() } }}
+        onKeyDown={event => directoryRowKey(event, expanded, toggle)}
       >
         <span className={css.chevron} aria-hidden="true">{expanded ? '▾' : '▸'}</span>
         <span className={css.name}>{row.label}</span>
@@ -376,12 +383,25 @@ function BranchRowView({ group, row, selected, onToggleDirectory, onClickEntry, 
       title={entry === undefined ? row.label : t('branch.row.title', { ref: entry.ref })}
       onClick={entry === undefined ? undefined : () => onClickEntry(entry)}
       onDoubleClick={entry === undefined ? undefined : () => onDoubleClickEntry(entry)}
-      onContextMenu={entry === undefined ? undefined : event => onContextMenu(entry, event)}
+      onContextMenu={entry === undefined
+        ? undefined
+        : (event) => {
+            event.preventDefault()
+            onOpenMenu(entry, { kind: 'point', x: event.clientX, y: event.clientY }, rowOf(event.currentTarget))
+          }}
       onKeyDown={(event) => {
-        if (entry === undefined || event.key !== 'Enter') return
+        if (event.target !== event.currentTarget) return
+        if (entry !== undefined && event.key === 'Enter') {
+          event.preventDefault()
+          if (event.shiftKey) onDoubleClickEntry(entry)
+          else onClickEntry(entry)
+          return
+        }
+        const action = treeRowKeyAction({ kind: 'branch', hasMenu: entry !== undefined }, event)
+        if (action === null) return
         event.preventDefault()
-        if (event.shiftKey) onDoubleClickEntry(entry)
-        else onClickEntry(entry)
+        if (action === 'open-menu' && entry !== undefined) onOpenMenu(entry, rowMenuAnchor(event.currentTarget), event.currentTarget)
+        else if (action === 'next-row' || action === 'previous-row') moveTreeFocus(event.currentTarget, action === 'next-row' ? 1 : -1)
       }}
     >
       <span className={css.icon} aria-hidden="true">{rowIcon(group, row)}</span>
@@ -392,6 +412,24 @@ function BranchRowView({ group, row, selected, onToggleDirectory, onClickEntry, 
       {aheadBehind === '' ? null : <span className={css.aheadBehind}>{aheadBehind}</span>}
     </div>
   )
+}
+
+/**
+ * Keys on a directory row (shared with the Branches page): Enter / Space toggle, ArrowRight expands,
+ * ArrowLeft collapses, ArrowUp / ArrowDown move between rows. Directory rows never open a menu.
+ */
+export function directoryRowKey(event: KeyboardEvent<HTMLElement>, expanded: boolean, toggle: () => void): void {
+  if (event.target !== event.currentTarget) return
+  if (event.key === 'Enter' || event.key === ' ') {
+    event.preventDefault()
+    toggle()
+    return
+  }
+  const action = treeRowKeyAction({ kind: 'directory', expanded, hasMenu: false }, event)
+  if (action === null) return
+  event.preventDefault()
+  if (action === 'expand' || action === 'collapse') toggle()
+  else if (action === 'next-row' || action === 'previous-row') moveTreeFocus(event.currentTarget, action === 'next-row' ? 1 : -1)
 }
 
 export interface BranchContextMenuProps {
@@ -408,17 +446,8 @@ export interface BranchContextMenuProps {
 export function BranchContextMenu({ entry, items, onSelect, onClose, anchor }: BranchContextMenuProps): ReactNode {
   const t = useT()
   const ref = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    if (onClose === undefined) return
-    const onPointerDown = (event: PointerEvent): void => {
-      if (ref.current !== null && event.target instanceof Node && ref.current.contains(event.target)) return
-      onClose()
-    }
-    document.addEventListener('pointerdown', onPointerDown, true)
-    ref.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus()
-    return () => document.removeEventListener('pointerdown', onPointerDown, true)
-  }, [onClose])
-  const style = useMenuPlacement(ref, anchor)
+  // Placement, focus once placed, arrow keys and closing; an inline onClose does not re-run them (I-1).
+  const { style, onKeyDown } = useFloatingMenu(ref, anchor, onClose)
   const nodes: ReactNode[] = []
   let previousSection: number | null = null
   for (const item of items) {
@@ -450,7 +479,7 @@ export function BranchContextMenu({ entry, items, onSelect, onClose, anchor }: B
       aria-label={t('branch.menu', { name: entry.name })}
       className={`${css.menu} ${anchor === undefined ? '' : css.menuFloating}`}
       style={style}
-      onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); onClose?.() } }}
+      onKeyDown={onKeyDown}
     >
       {nodes}
     </div>

@@ -1,7 +1,7 @@
 // W1 (final review): floating menus are measured after render and kept inside the viewport and
 // the Git panel; `›` menus hang from the button's right edge and flip above when there is no room.
 import { describe, expect, it } from 'vitest'
-import { menuBounds, placeMenu } from '../../../src/client/pages/menu-position.ts'
+import { menuBounds, menuPlacement, placeMenu } from '../../../src/client/pages/menu-position.ts'
 
 const VIEW = { left: 0, top: 0, right: 800, bottom: 600 }
 const SIZE = { width: 200, height: 300 }
@@ -50,5 +50,24 @@ describe('menuBounds', () => {
     const bounds = menuBounds({ width: 1200, height: 800 }, { left: 800, top: 0, right: 1200, bottom: 800 })
     expect(placeMenu({ kind: 'point', x: 1150, y: 40 }, SIZE, bounds)).toEqual({ x: 992, y: 40 })
     expect(placeMenu({ kind: 'point', x: 700, y: 40 }, SIZE, bounds)).toEqual({ x: 808, y: 40 })
+  })
+})
+
+describe('menuPlacement (I-1: focus only once placed)', () => {
+  it('no anchor: document flow, ready at once', () => {
+    expect(menuPlacement(null, null)).toEqual({ style: undefined, ready: true })
+  })
+  it('measuring pass: at the origin, not ready, so the menu takes no focus yet', () => {
+    const state = menuPlacement('a', null)
+    expect(state.ready).toBe(false)
+    expect(state.style).toMatchObject({ left: '0px', top: '0px' })
+  })
+  it('a placement for another anchor is stale: measuring again', () => {
+    expect(menuPlacement('b', { key: 'a', x: 1, y: 2 }).ready).toBe(false)
+  })
+  it('placed: positioned, visible and ready for focus', () => {
+    const state = menuPlacement('a', { key: 'a', x: 12, y: 34 })
+    expect(state).toEqual({ style: { left: '12px', top: '34px' }, ready: true })
+    expect(state.style?.visibility).toBeUndefined()
   })
 })

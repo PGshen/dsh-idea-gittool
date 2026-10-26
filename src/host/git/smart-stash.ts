@@ -22,7 +22,7 @@ import { GIT_BASE_ARGV, GitCommandFailure, messageOf } from '../git-executor.ts'
 import { outputSummary, queryOk, redactedFailure } from './write-support.ts'
 import { detectOperationIn, readStateFile, rebaseStateDir } from './status.ts'
 
-export interface SmartStashOptions {
+export interface SmartStashOptions<V = unknown> {
   /** The request's `stash` flag: true → stash tracked changes first; otherwise refuse them. */
   stash: boolean
   operation: SmartOperationKind
@@ -31,8 +31,9 @@ export interface SmartStashOptions {
    * that leave the index dirty without an open operation (`merge --squash`): `stash pop --index`
    * onto a dirty index fails and its fallback unstages the result (git 2.50 probe). The stash
    * stays in the list as "dsh-git: before <operation>" and the outcome says `stashKept`.
+   * Decided from the run's value (fix round 1: a squash that integrated nothing pops normally).
    */
-  keepStashOnSuccess?: boolean
+  keepStashOnSuccess?: (value: V) => boolean
 }
 
 export interface SmartStashResult<V> {
@@ -262,7 +263,7 @@ function withDetails(error: unknown, details: object): unknown {
  */
 export async function withSmartStash<V>(
   ctx: WriteContext,
-  options: SmartStashOptions,
+  options: SmartStashOptions<V>,
   run: (state: { stashed: boolean }) => Promise<V>,
 ): Promise<SmartStashResult<V>> {
   const dirty = await dirtyTrackedPaths(ctx)
@@ -301,7 +302,7 @@ export async function withSmartStash<V>(
     await keepPending(ctx, stashSha, options.operation, head)
     return { value, outcome: { stashKept: true } }
   }
-  if (options.keepStashOnSuccess === true) return { value, outcome: { stashKept: true } }
+  if (options.keepStashOnSuccess?.(value) === true) return { value, outcome: { stashKept: true } }
   // The stash may have been dropped meanwhile (e.g. by the Agent): report it, never claim a restore.
   const restored = await popStash(ctx, stashSha)
   return { value, outcome: restored ? { stashRestored: true } : { stashMissing: true } }

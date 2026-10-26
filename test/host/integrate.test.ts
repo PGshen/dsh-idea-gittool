@@ -227,6 +227,19 @@ describe('smart stash around integrate operations', () => {
   })
 })
 
+describe('merge --squash with nothing to integrate', () => {
+  it('pops the stash normally when the squash leaves the index unchanged', async () => {
+    const repo = makeRepo()
+    repo.git('branch', 'same')
+    repo.write('README.md', '# unstaged\n')
+    const value = await run(mergeOperation, repo, { ref: 'same', squash: true, stash: true })
+    expect(value).toMatchObject({ stashRestored: true })
+    expect(value.stashKept).toBeUndefined()
+    expect(stashCount(repo)).toBe(0)
+    expect(read(repo, 'README.md')).toBe('# unstaged\n')
+  })
+})
+
 describe('rebase', () => {
   it('replays the current branch onto the target', async () => {
     const repo = makeRepo()
@@ -274,6 +287,16 @@ describe('cherry-pick / revert', () => {
     expect(value.committed).toBe(true)
     expect(existsSync(join(repo.root, 'main.txt'))).toBe(false)
     expect(repo.git('log', '-1', '--format=%s').trim()).toBe('Revert "main work"')
+  })
+
+  it('reports an empty cherry-pick as reason "empty", not as a hook failure', async () => {
+    const repo = makeRepo()
+    const { feature } = diverged(repo)
+    writeExecutableScript(join(repo.root, '.git', 'hooks'), 'pre-commit', '#!/bin/sh\nexit 0\n')
+    repo.git('cherry-pick', feature)
+    const failure = await failureOf(run(cherryPickOperation, repo, { sha: feature }))
+    expect(failure.code).toBe('git/exec-failed')
+    expect(failure.details).toMatchObject({ reason: 'empty', operation: 'cherry-pick' })
   })
 
   it('refuses merge commits (they need -m, P1) and unknown commits', async () => {

@@ -7,7 +7,9 @@
 // - 用户输入：ref/onto 经 parseRefName 并由 `rev-parse --verify --end-of-options <x>^{commit}` 校验，
 //   命令里用 `--end-of-options`；sha 必须是完整十六进制对象名。
 // - 合并提交的拣选/回滚需要 `-m`（P1），先读父提交数，> 1 → `git/invalid-payload`（reason 'merge-commit'）。
-// - `merge --squash` 成功后结果留在索引、没有进行中的操作：贮藏不弹回（会把结果取消暂存），保留并报 `stashKept`。
+// - `merge --squash` 成功后结果留在索引、没有进行中的操作：贮藏不弹回（会把结果取消暂存），保留并报 `stashKept`；
+//   squash 什么也没带进来（索引与 HEAD 相同）时照常弹回，`committed` 为 true。
+// - 拣选/回滚为空（改动已存在）停在操作中：`git/exec-failed` + reason 'empty' + operation，不归咎 hook。
 // - 重置：hard 必须 `confirmHard: true`；带 `expectedHead` 时执行前重读 HEAD，对不上 → `git/stale-target`。
 
 import type {
@@ -43,8 +45,16 @@ import {
 const SHA_PATTERN = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/
 const RESET_MODES: readonly ResetMode[] = ['soft', 'mixed', 'hard']
 
-/** Local hooks that can block an integrate step (checked only when no conflict explains the failure). */
-const INTEGRATE_HOOKS = ['pre-rebase', 'pre-merge-commit', 'pre-commit', 'prepare-commit-msg', 'commit-msg'] as const
+/**
+ * Local hooks each command actually runs (git 2.50 probe, fix round 1): checked only when no
+ * conflict explains the failure. None of them runs `pre-commit`.
+ */
+export const MERGE_HOOKS = ['pre-merge-commit', 'prepare-commit-msg', 'commit-msg'] as const
+export const REBASE_HOOKS = ['pre-rebase', 'prepare-commit-msg'] as const
+export const PICK_HOOKS = ['prepare-commit-msg'] as const
+
+/** A cherry-pick/revert whose change is already present stops with nothing to commit. */
+const EMPTY_PATTERNS: readonly RegExp[] = [/is now empty/i, /nothing to commit/i]
 
 /** git's own refusals a hook never causes (checked before blaming a hook). */
 const NOT_A_HOOK_PATTERNS: readonly RegExp[] = [
@@ -83,8 +93,10 @@ export interface IntegrationStep {
   stash: boolean
   /** Extra fields for conflict details (pull: `mode`). */
   details?: Record<string, unknown>
-  /** Keep the stash after success (squash: the result stays staged, see the file header). */
-  keepStashOnSuccess?: boolean
+  /** Hooks that could have blocked this command. */
+  hooks: readonly string[]
+  /** Keep the stash when the step leaves staged changes behind (squash, see the file header). */
+  keepStashWhenStaged?: boolean
 }
 
 /** Classify a failed step: conflict → hook → lock/sandbox/generic; adds the open operation. */
@@ -106,12 +118,19 @@ async function stepFailure(ctx: WriteContext, step: IntegrationStep, result: Git
   }
   const generic = redactedFailure(result, `git ${step.label}`)
   const text = `${result.stderr}\n${result.stdout}`
+  if ('operation' in open && EMPTY_PATTERNS.some((pattern) => pattern.test(text))) {
+    return new GitCommandFailure('git/exec-failed', `the ${step.label} is empty: skip it or abort`, {
+      ...open,
+      reason: 'empty',
+      output: outputSummary(result),
+    })
+  }
   const gitRefusal = NOT_A_HOOK_PATTERNS.some((pattern) => pattern.test(text))
   if (
     generic.code !== 'git/locked' &&
     generic.code !== 'git/sandbox-denied' &&
     !gitRefusal &&
-    (await hasHook(ctx, INTEGRATE_HOOKS))
+    (await hasHook(ctx, step.hooks))
   ) {
     return new GitCommandFailure('git/hook-failed', `the ${step.label} was blocked by a Git hook`, {
       ...open,
@@ -135,16 +154,25 @@ export async function runIntegration(
     {
       stash: step.stash,
       operation: step.operation,
-      ...(step.keepStashOnSuccess === true ? { keepStashOnSuccess: true } : {}),
+      keepStashOnSuccess: (result: { staged: boolean }) => result.staged,
     },
     async ({ stashed }) => {
       const result = await ctx.git([...GIT_BASE_ARGV, ...step.args])
       if (result.exitCode !== 0) throw await stepFailure(ctx, step, result, stashed)
       const operation = await detectOperation(readRunner(ctx), ctx.repoRoot, ctx.signal)
-      return { open: operation !== null && operation !== 'bisect' }
+      const open = operation !== null && operation !== 'bisect'
+      return { open, staged: step.keepStashWhenStaged === true && !open && (await indexDiffersFromHead(ctx)) }
     },
   )
-  return { head: (await readHead(ctx)).sha, committed: !value.open, ...outcome }
+  return { head: (await readHead(ctx)).sha, committed: !value.open && !value.staged, ...outcome }
+}
+
+/** Whether the index has changes against HEAD (`diff --cached --quiet`: 0 none, 1 some). */
+async function indexDiffersFromHead(ctx: WriteContext): Promise<boolean> {
+  const result = await ctx.git([...GIT_BASE_ARGV, 'diff', '--cached', '--quiet', 'HEAD', '--'], { mode: 'read' })
+  if (result.exitCode === 0) return false
+  if (result.exitCode === 1) return true
+  throw redactedFailure(result, 'git diff --cached')
 }
 
 function stashFlag(record: Record<string, unknown>): boolean {
@@ -200,9 +228,10 @@ export const mergeOperation: WriteOperation<MergeInput, Omit<IntegrateValue, 've
       args: ['merge', '--no-edit', ...flags, '--end-of-options', input.ref],
       label: 'merge',
       stash: input.stash,
-      keepStashOnSuccess: input.squash,
+      hooks: MERGE_HOOKS,
+      keepStashWhenStaged: input.squash,
     })
-    return input.squash ? { ...value, committed: false } : value
+    return value
   },
 }
 
@@ -227,6 +256,7 @@ export const rebaseOperation: WriteOperation<RebaseInput, Omit<IntegrateValue, '
       args: ['rebase', '--end-of-options', input.onto],
       label: 'rebase',
       stash: input.stash,
+      hooks: REBASE_HOOKS,
     })
   },
 }
@@ -254,6 +284,7 @@ export const cherryPickOperation: WriteOperation<CommitPickInput, Omit<Integrate
       args: ['cherry-pick', '--end-of-options', input.sha],
       label: 'cherry-pick',
       stash: input.stash,
+      hooks: PICK_HOOKS,
     })
   },
 }
@@ -269,6 +300,7 @@ export const revertCommitOperation: WriteOperation<CommitPickInput, Omit<Integra
       args: ['revert', '--no-edit', '--end-of-options', input.sha],
       label: 'revert',
       stash: input.stash,
+      hooks: PICK_HOOKS,
     })
   },
 }

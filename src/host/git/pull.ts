@@ -9,7 +9,7 @@
 
 import type { IntegrateValue, PullForPushValue, PullMode } from '../../shared/protocol.ts'
 import type { WriteContext, WriteOperation } from '../git-executor.ts'
-import { assertCleanUnlessStash, runIntegration } from './integrate.ts'
+import { MERGE_HOOKS, REBASE_HOOKS, assertCleanUnlessStash, runIntegration } from './integrate.ts'
 import { fetchRemoteBranch, networkFailure } from './push.ts'
 import {
   assertNoOperation,
@@ -58,6 +58,7 @@ export async function runPull(ctx: WriteContext, input: PullInput): Promise<Omit
     label: input.mode,
     stash: input.stash,
     details: { mode: input.mode },
+    hooks: input.mode === 'rebase' ? REBASE_HOOKS : MERGE_HOOKS,
   })
 }
 

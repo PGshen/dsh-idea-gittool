@@ -9,17 +9,20 @@
 //   upstream 是本地分支（remote '.'）时不 fetch。
 // - resetToRemote：不贮藏；有已跟踪改动 → `git/dirty-worktree`（不带 operation）。backup 默认 true：
 //   先在当前 HEAD 建 `backup/<branch>-<YYYYMMDD-HHmmss>`（Host 本地时间；重名追加 -2、-3…），
-//   再 `reset --hard <upstream 的 sha>`。
+//   再 `reset --hard <upstream 的 sha>`。会被覆盖的未跟踪/忽略文件 → 同样 `git/dirty-worktree`（不建备份、不重置）。
+// - 上游改写的判定（修复轮 1）：fetch 前后比较 + 远程跟踪 ref 的 reflog fork point（见 reflogForkPoint）。
 
 import type { FetchValue, IntegrateValue, PullMode, ResetToRemoteValue } from '../../shared/protocol.ts'
 import type { WriteContext, WriteOperation } from '../git-executor.ts'
 import { GIT_BASE_ARGV, GitCommandFailure } from '../git-executor.ts'
 import { refSha } from './branch-write.ts'
-import { assertCleanUnlessStash, runIntegration } from './integrate.ts'
+import { MERGE_HOOKS, REBASE_HOOKS, assertCleanUnlessStash, runIntegration } from './integrate.ts'
 import { networkFailure } from './push.ts'
 import { dirtyTrackedPaths, dirtyWorktree, queryOf, readHeadPosition } from './smart-stash.ts'
 import {
+  CLEAN_BATCH_MAX,
   assertNoOperation,
+  batches,
   invalidPayload,
   optionalBoolean,
   parseRefName,
@@ -30,6 +33,8 @@ import {
   readRemotes,
   redactedFailure,
 } from './write-support.ts'
+
+const SHA_PATTERN = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/
 
 /** Backup names tried before giving up (`<base>`, `<base>-2` … `<base>-100`). */
 const BACKUP_ATTEMPTS = 100
@@ -130,6 +135,20 @@ async function isAncestor(ctx: WriteContext, ancestor: string, descendant: strin
   throw redactedFailure(result, 'git merge-base')
 }
 
+/**
+ * Fix round 1: a rewrite that an earlier fetch already brought in (fetch endpoint, Push Rejected,
+ * pull, a terminal, a second Update click) is invisible to the before/after compare. The tracking
+ * ref's reflog still has it: `merge-base --fork-point <upstream> HEAD` is the newest earlier
+ * upstream tip HEAD is based on; when that is not an ancestor of the current tip, the upstream was
+ * rewritten under HEAD. No reflog (or no fork point) → exit 1 → undefined (before/after compare only).
+ */
+async function reflogForkPoint(ctx: WriteContext, upstreamRef: string, newSha: string): Promise<string | undefined> {
+  const result = await query(ctx, ['merge-base', '--fork-point', upstreamRef, 'HEAD'])
+  const forkPoint = result.stdout.trim()
+  if (result.exitCode !== 0 || !SHA_PATTERN.test(forkPoint)) return undefined
+  return (await isAncestor(ctx, forkPoint, newSha)) ? undefined : forkPoint
+}
+
 // --- updateProject -------------------------------------------------------------------
 
 export interface UpdateProjectInput {
@@ -176,10 +195,14 @@ export const updateProjectOperation: WriteOperation<UpdateProjectInput, Omit<Int
       if (newSha === undefined) {
         throw new GitCommandFailure('git/exec-failed', `the upstream "${upstream.ref}" is missing after the fetch`)
       }
-      if (oldSha !== undefined && oldSha !== newSha && !(await isAncestor(ctx, oldSha, newSha))) {
+      const rewrittenFrom =
+        oldSha !== undefined && oldSha !== newSha && !(await isAncestor(ctx, oldSha, newSha))
+          ? oldSha
+          : await reflogForkPoint(ctx, upstream.ref, newSha)
+      if (rewrittenFrom !== undefined) {
         const ahead = await queryOk(ctx, ['rev-list', '--count', 'HEAD', '--not', newSha, '--'], 'git rev-list')
         throw new GitCommandFailure('git/upstream-rewritten', `the upstream "${upstream.ref}" was rewritten`, {
-          oldSha,
+          oldSha: rewrittenFrom,
           newSha,
           localAhead: Number.parseInt(ahead.trim(), 10) || 0,
         })
@@ -195,6 +218,7 @@ export const updateProjectOperation: WriteOperation<UpdateProjectInput, Omit<Int
       label: input.mode,
       stash: input.stash,
       details: { mode: input.mode },
+      hooks: input.mode === 'rebase' ? REBASE_HOOKS : MERGE_HOOKS,
     })
   },
 }
@@ -229,6 +253,30 @@ async function freeBackupName(ctx: WriteContext, base: string): Promise<string> 
   throw new GitCommandFailure('git/branch-exists', `no free backup branch name for "${base}"`, { branch: base })
 }
 
+/**
+ * Fix round 1: untracked or ignored files that `reset --hard <target>` would overwrite. With a clean
+ * index (checked first) those are the target's files missing from HEAD (`diff --diff-filter=A`)
+ * that exist untracked/ignored in the worktree (`ls-files --others` without exclude rules lists
+ * both). `ls-files` has no `--pathspec-from-file`, so paths go in argv batches.
+ */
+async function untrackedInTheWay(ctx: WriteContext, target: string): Promise<string[]> {
+  const added = (
+    await queryOk(
+      ctx,
+      ['diff', '--name-only', '-z', '--no-renames', '--diff-filter=A', 'HEAD', target, '--'],
+      'git diff',
+    )
+  )
+    .split('\0')
+    .filter((path) => path !== '')
+  const found: string[] = []
+  for (const batch of batches(added, CLEAN_BATCH_MAX)) {
+    const stdout = await queryOk(ctx, ['--literal-pathspecs', 'ls-files', '-z', '--others', '--', ...batch], 'git ls-files')
+    found.push(...stdout.split('\0').filter((path) => path !== ''))
+  }
+  return found.sort()
+}
+
 /** The operation with an injectable clock (tests pin the backup timestamp). */
 export function createResetToRemoteOperation(
   now: () => Date = () => new Date(),
@@ -246,6 +294,8 @@ export function createResetToRemoteOperation(
       if (target === undefined) throw noUpstream(`the upstream "${upstream.ref}" does not exist locally`)
       const dirty = await dirtyTrackedPaths(ctx)
       if (dirty.length > 0) throw dirtyWorktree(dirty)
+      const inTheWay = await untrackedInTheWay(ctx, target)
+      if (inTheWay.length > 0) throw dirtyWorktree(inTheWay)
 
       let backupBranch: string | undefined
       if (input.backup) {

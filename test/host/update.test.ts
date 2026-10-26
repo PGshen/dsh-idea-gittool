@@ -1,6 +1,6 @@
 // A3 T4：获取、拉取、更新项目、重置到远程（本地 bare 远程 + 脚本化分类）。
 // 上游被强推时更新项目不合并，报 upstream-rewritten；重置到远程先建备份分支。
-import { readFileSync } from 'node:fs'
+import { readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -234,6 +234,57 @@ describe('updateProject', () => {
   })
 })
 
+describe('updateProject / rewritten upstream seen through the reflog (fix round 1)', () => {
+  it('detects a rewrite that an earlier fetch already brought in', async () => {
+    const remote = setup()
+    remote.local.write('mine.txt', 'mine\n')
+    const mine = remote.local.commit('my local work')
+    const { oldSha, newSha } = forcePushFromOther(remote)
+    await runOn(fetchOperation, contextFor(remote.local), { remote: 'origin', prune: false })
+    expect(sha(remote.local, 'origin/main')).toBe(newSha)
+
+    const failure = await failureOf(runOn(updateProjectOperation, contextFor(remote.local), { mode: 'rebase' }))
+    expect(failure.code).toBe('git/upstream-rewritten')
+    expect(failure.details).toEqual({ oldSha, newSha, localAhead: 2 })
+    expect(sha(remote.local)).toBe(mine)
+  })
+
+  it('keeps reporting the rewrite on a second Update click', async () => {
+    const remote = setup()
+    remote.local.write('mine.txt', 'mine\n')
+    const mine = remote.local.commit('my local work')
+    const { oldSha, newSha } = forcePushFromOther(remote)
+    for (let click = 0; click < 2; click += 1) {
+      const failure = await failureOf(runOn(updateProjectOperation, contextFor(remote.local), { mode: 'merge' }))
+      expect(failure.code).toBe('git/upstream-rewritten')
+      expect(failure.details).toMatchObject({ oldSha, newSha })
+    }
+    expect(sha(remote.local)).toBe(mine)
+  })
+
+  it('integrates a normally advanced upstream after an earlier fetch (no false positive)', async () => {
+    const remote = setup()
+    const theirs = pushFromOther(remote.other, 'theirs.txt', 'theirs\n', 'their change')
+    remote.local.write('mine.txt', 'mine\n')
+    remote.local.commit('my change')
+    await runOn(fetchOperation, contextFor(remote.local), { remote: 'origin', prune: false })
+    const value = await runOn(updateProjectOperation, contextFor(remote.local), { mode: 'rebase' })
+    expect(value.committed).toBe(true)
+    expect(sha(remote.local, 'HEAD~1')).toBe(theirs)
+  })
+
+  it('falls back to the before/after compare when the tracking ref has no reflog', async () => {
+    const remote = setup()
+    remote.local.git('config', 'core.logAllRefUpdates', 'false')
+    remote.local.git('reflog', 'delete', '--rewrite', 'refs/remotes/origin/main@{0}')
+    rmSync(join(remote.local.root, '.git', 'logs', 'refs', 'remotes', 'origin', 'main'), { force: true })
+    const theirs = pushFromOther(remote.other, 'theirs.txt', 'theirs\n', 'their change')
+    await runOn(fetchOperation, contextFor(remote.local), { remote: 'origin', prune: false })
+    const value = await runOn(updateProjectOperation, contextFor(remote.local), { mode: 'merge' })
+    expect(value.head).toBe(theirs)
+  })
+})
+
 describe('resetToRemote', () => {
   it('formats the backup name in local time', () => {
     expect(backupBranchName('feature/x', new Date(2026, 9, 26, 7, 5, 9))).toBe('backup/feature/x-20261026-070509')
@@ -247,6 +298,30 @@ describe('resetToRemote', () => {
     const op = createResetToRemoteOperation(() => now)
     const value = await runOn(op, contextFor(remote.local), { backup: true })
     expect(value.backupBranch).toBe('backup/main-20261026-070509-3')
+  })
+
+  it('refuses before backing up when untracked or ignored files would be overwritten', async () => {
+    const remote = setup()
+    remote.local.write('.gitignore', '*.log\n')
+    remote.local.commit('ignore logs')
+    remote.local.git('push', '-q', 'origin', 'main')
+    remote.other.git('pull', '-q', '--no-rebase', 'origin', 'main')
+    remote.other.write('new.txt', 'theirs\n')
+    remote.other.write('ignored.log', 'theirs\n')
+    remote.other.git('add', '-f', 'new.txt', 'ignored.log')
+    remote.other.git('commit', '-q', '-m', 'add files')
+    remote.other.git('push', '-q', 'origin', 'HEAD:refs/heads/main')
+    remote.local.git('fetch', '-q', 'origin')
+    remote.local.write('new.txt', 'my untracked\n')
+    remote.local.write('ignored.log', 'my ignored\n')
+    const before = sha(remote.local)
+
+    const failure = await failureOf(runOn(resetToRemoteOperation, contextFor(remote.local), {}))
+    expect(failure.code).toBe('git/dirty-worktree')
+    expect(failure.details).toEqual({ paths: ['ignored.log', 'new.txt'], count: 2 })
+    expect(sha(remote.local)).toBe(before)
+    expect(remote.local.git('branch', '--list', 'backup/*').trim()).toBe('')
+    expect(readFileSync(join(remote.local.root, 'new.txt'), 'utf8')).toBe('my untracked\n')
   })
 
   it('refuses tracked changes without offering a stash, and can skip the backup', async () => {

@@ -17,3 +17,6 @@ coverage/
 .idea/
 .vscode/
 *.log
+
+# 子代理 worktree（Claude Code）
+.claude/worktrees/

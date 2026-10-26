@@ -639,6 +639,8 @@ export interface SmartStashOutcome {
   stashRestored?: boolean
   /** 贮藏仍保留（恢复冲突，或操作停在冲突、待操作结束后恢复）。 */
   stashKept?: boolean
+  /** T3 修复轮追加：操作期间贮藏已不在列表里（例如被手动删除），无从恢复；不算错误。 */
+  stashMissing?: boolean
 }
 
 // --- 错误 details 形状 -------------------------------------------------------
@@ -658,8 +660,13 @@ export interface DirtyWorktreeDetails {
 
 /** `git/would-overwrite`。 */
 export interface WouldOverwriteDetails {
-  /** git 报告会被覆盖的路径（最多 {@link DIRTY_PATHS_LIMIT} 条）。 */
+  /** git 报告会被覆盖的已跟踪改动路径（最多 {@link DIRTY_PATHS_LIMIT} 条；只有未跟踪文件挡路时为空数组）。 */
   paths: string[]
+  /**
+   * T3 修复轮追加：挡路的未跟踪文件/目录（git 会拒绝覆盖或删除它们，最多 {@link DIRTY_PATHS_LIMIT} 条）。
+   * 智能贮藏只收已跟踪改动，帮不了它们；强制签出会覆盖它们。没有时省略。
+   */
+  untracked?: string[]
 }
 
 /** `git/not-merged`。 */
@@ -755,14 +762,31 @@ export interface OperationControlValue {
   stashRestored?: boolean
   /** 待恢复贮藏已不在贮藏列表里（例如被用户手动删除）；不算错误。 */
   stashMissing?: boolean
-  /** 恢复冲突，贮藏保留。 */
+  /**
+   * 贮藏保留、没有自动恢复：恢复冲突；或待恢复贮藏不属于刚结束的操作（操作种类或分支对不上，
+   * T2 评审 M1，此时 `operationState.pendingStash` 仍为 true，由用户显式恢复）；或恢复时 git 出错。
+   */
   stashKept?: boolean
+  /** 恢复时遇到冲突以外的 git 错误（T2 评审追加）；贮藏保留。 */
+  stashError?: string
   version?: number
 }
 
-/** `operationCommit`：合并中提交（信息经 stdin `commit -F -`，不带 pathspec）→ {@link CommitResultValue}。 */
+/** `operationCommit`：合并中提交（信息经 stdin `commit -F -`，不带 pathspec）→ {@link OperationCommitValue}。 */
 export interface OperationCommitRequest extends WriteRequest {
   message: string
+}
+
+/**
+ * `operationCommit` 的结果（T2 追加，{@link CommitResultValue} 的超集）：提交结束了合并，
+ * 待恢复贮藏随即按 sha 恢复，字段含义同 {@link OperationControlValue}。
+ */
+export interface OperationCommitValue extends CommitResultValue {
+  stashRestored?: boolean
+  stashMissing?: boolean
+  stashKept?: boolean
+  /** 提交已成功、但恢复贮藏时 git 出错（贮藏保留）。 */
+  stashError?: string
 }
 
 // --- 冲突（T3） -----------------------------------------------------------------
@@ -820,6 +844,8 @@ export interface CheckoutValue {
   stashRestored?: boolean
   /** mode=stash 且恢复冲突时贮藏保留。 */
   stashKept?: boolean
+  /** T3 修复轮追加：mode=stash 时贮藏在签出期间消失，无从恢复。 */
+  stashMissing?: boolean
   version?: number
 }
 
@@ -1093,7 +1119,7 @@ export interface RpcEndpointTypes {
   stashList: { request: RpcRequest; value: StashListValue }
   stashFiles: { request: StashFilesRequest; value: StashFilesValue }
   operationControl: { request: OperationControlRequest; value: OperationControlValue }
-  operationCommit: { request: OperationCommitRequest; value: CommitResultValue }
+  operationCommit: { request: OperationCommitRequest; value: OperationCommitValue }
   resolveConflict: { request: ResolveConflictRequest; value: ResolveConflictValue }
   checkout: { request: CheckoutRequest; value: CheckoutValue }
   createBranch: { request: CreateBranchRequest; value: CreateBranchValue }

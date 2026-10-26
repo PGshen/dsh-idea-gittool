@@ -25,6 +25,8 @@ export interface ChangesTreeProps {
   store: ChangesStore
   /** Write actions disabled (read-only repo, operation in progress, pending writes). */
   writeDisabled?: boolean
+  /** Every checkbox disabled (operation-state commit: the whole result is committed, A3 T9). */
+  checksDisabled?: boolean
   /** Double-click / Enter on a row. */
   onOpenDiff: (path: string, scope: DiffOpenScope) => void
   /** "Commit this file…": the store already checked only this file; focus the message box. */
@@ -175,6 +177,7 @@ export function ChangeContextMenu(props: ChangeContextMenuProps): ReactNode {
 
 interface RowHandlers {
   focused: string | null
+  checksDisabled: boolean
   /** Row reachable with Tab: the focused one, else the first visible row. */
   tabStop: string | null
   onToggleFile: (path: string) => void
@@ -210,7 +213,7 @@ function FileRowView({ node, handlers }: { node: ChangeTreeFile; handlers: RowHa
     >
       <TriCheckbox
         state={node.checked ? 'all' : 'none'}
-        disabled={node.disabled}
+        disabled={node.disabled || handlers.checksDisabled}
         label={entry.path}
         {...(node.disabled ? { title: t('changes.conflictHint') } : {})}
         onToggle={() => handlers.onToggleFile(entry.path)}
@@ -239,7 +242,7 @@ function NodesView({ nodes, handlers }: { nodes: readonly ChangeTreeNode[]; hand
               <span className={css.chevron} aria-hidden="true">{node.collapsed ? '▸' : '▾'}</span>
               <TriCheckbox
                 state={node.check}
-                disabled={!node.checkable}
+                disabled={!node.checkable || handlers.checksDisabled}
                 label={node.path}
                 onToggle={() => handlers.onToggleNode(node.key)}
               />
@@ -261,7 +264,7 @@ function NodesView({ nodes, handlers }: { nodes: readonly ChangeTreeNode[]; hand
  */
 export function ChangesTree(props: ChangesTreeProps): ReactNode {
   const t = useT()
-  const { state, store, writeDisabled = false } = props
+  const { state, store, writeDisabled = false, checksDisabled = false } = props
   const [menu, setMenu] = useState<MenuState | null>(null)
   const treeRef = useRef<HTMLDivElement>(null)
   const groups = useMemo(
@@ -279,6 +282,7 @@ export function ChangesTree(props: ChangesTreeProps): ReactNode {
 
   const handlers: RowHandlers = {
     focused: state.focused,
+    checksDisabled,
     tabStop: rows.some(row => row.entry.path === state.focused) ? state.focused : (rows[0]?.entry.path ?? null),
     onToggleFile: path => store.toggleFile(path),
     onToggleNode: key => store.toggleNode(key),
@@ -312,7 +316,7 @@ export function ChangesTree(props: ChangesTreeProps): ReactNode {
       open(current.entry)
     } else if (event.key === ' ') {
       event.preventDefault()
-      if (!current.disabled) store.toggleFile(current.entry.path)
+      if (!current.disabled && !checksDisabled) store.toggleFile(current.entry.path)
     }
   }
 
@@ -335,7 +339,7 @@ export function ChangesTree(props: ChangesTreeProps): ReactNode {
               <span className={css.chevron} aria-hidden="true">{group.collapsed ? '▸' : '▾'}</span>
               <TriCheckbox
                 state={group.check}
-                disabled={!group.checkable}
+                disabled={!group.checkable || checksDisabled}
                 label={t(group.label)}
                 {...(group.checkable ? {} : { title: t('changes.conflictHint') })}
                 onToggle={() => store.toggleNode(group.key)}
@@ -355,7 +359,7 @@ export function ChangesTree(props: ChangesTreeProps): ReactNode {
       <div className={css.header}>
         <TriCheckbox
           state={overall}
-          disabled={!groups.some(group => group.checkable)}
+          disabled={checksDisabled || !groups.some(group => group.checkable)}
           label={t('changes.checkAll')}
           title={t('changes.checkAll')}
           onToggle={() => store.checkAll(overall !== 'all')}

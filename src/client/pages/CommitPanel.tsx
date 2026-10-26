@@ -4,10 +4,12 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { CommitResultValue, StatusValue, WritePolicyValue } from '../../shared/protocol.ts'
+import { activeFocusTarget } from '../focus.ts'
+import type { FocusTarget } from '../focus.ts'
 import { useT } from '../i18n.tsx'
 import { Button } from '../ui/Button.tsx'
 import type { ChangesState, ChangesStore } from '../store/changes-store.ts'
-import { commitErrorView, commitGate } from '../store/commit-store.ts'
+import { commitErrorView, commitGate, operationGate, visibleMessage } from '../store/commit-store.ts'
 import type { CommitGate, CommitMode, CommitOutcome, CommitStore, CommitStoreState } from '../store/commit-store.ts'
 import { ChangesTree } from './ChangesTree.tsx'
 import type { DiffOpenScope } from './ChangesTree.tsx'
@@ -70,6 +72,13 @@ export interface CommitPanelProps {
   onShowConsole: () => void
   /** Refresh the status snapshot (for `git/paths-changed`). */
   onRefresh?: () => void
+  /**
+   * Operation-state commit (A3 T9, `commit.mode !== 'normal'`): merge commit or continue.
+   * `trigger` is the clicked button (the conflict list may open after a continue).
+   */
+  onOperationSubmit?: (trigger: FocusTarget | null) => void
+  /** "解决冲突…" next to the disabled operation button. */
+  onResolveConflicts?: (trigger: FocusTarget | null) => void
 }
 
 function Feedback({ commit, commitStore, onShowConsole, onRefresh }: {
@@ -110,6 +119,88 @@ function Feedback({ commit, commitStore, onShowConsole, onRefresh }: {
  * @returns tree, message, actions and feedback.
  */
 export function CommitPanel(props: CommitPanelProps): ReactNode {
+  if (props.commit.mode !== 'normal') return <OperationCommitPanel {...props} />
+  return <NormalCommitPanel {...props} />
+}
+
+/** Commit page during a merge / cherry-pick / revert / rebase (design §8.2.4 table). */
+function OperationCommitPanel(props: CommitPanelProps): ReactNode {
+  const t = useT()
+  const { changes, changesStore, commit, commitStore } = props
+  const mode = commit.mode === 'normal' ? 'merge' : commit.mode
+  const message = visibleMessage(commit)
+  const gate = operationGate({
+    mode,
+    writePolicy: props.writePolicy,
+    status: props.status,
+    pendingWrites: props.pendingWrites ?? 0,
+    message,
+    phase: commit.phase,
+  }, t)
+  const submit = (trigger: FocusTarget | null): void => {
+    if (gate.canSubmit) props.onOperationSubmit?.(trigger)
+  }
+  return (
+    <div className={css.root} data-commit-panel data-phase={commit.phase} data-operation-mode={mode}>
+      <div className={css.tree}>
+        <ChangesTree
+          state={changes}
+          store={changesStore}
+          writeDisabled
+          checksDisabled
+          onOpenDiff={props.onOpenDiff}
+          {...(props.onCopyPath === undefined ? {} : { onCopyPath: props.onCopyPath })}
+        />
+      </div>
+      <div className={css.bottom}>
+        <strong className={css.operationTitle}>{gate.title}</strong>
+        {gate.showMessage
+          ? (
+              <CommitMessage
+                value={message}
+                onChange={value => commitStore.setMessage(value)}
+                onSubmit={() => { submit(activeFocusTarget()) }}
+                history={commit.history}
+                onPickHistory={value => commitStore.applyHistory(value)}
+                disabled={gate.blocked}
+              />
+            )
+          : null}
+        <p className={css.operationHint} data-operation-explanation>{gate.explanation}</p>
+        <div className={css.actions}>
+          {gate.conflicts > 0 && props.onResolveConflicts !== undefined
+            ? (
+                <Button data-resolve-conflicts onClick={(event) => { props.onResolveConflicts?.(event.currentTarget) }}>
+                  {t('commit.op.resolve')}
+                </Button>
+              )
+            : null}
+          <span className={css.spacer} />
+          <Button
+            tone="primary"
+            disabled={!gate.canSubmit}
+            aria-busy={gate.submitting}
+            title={gate.disabledReason ?? undefined}
+            data-commit-submit={mode}
+            onClick={(event) => { submit(event.currentTarget) }}
+          >
+            {gate.submitting ? t('commit.submitting') : gate.submitLabel}
+          </Button>
+        </div>
+        {gate.disabledReason === null
+          ? null
+          : (
+              <ul className={css.notes}>
+                <li className={css.reason} data-note="reason">{gate.disabledReason}</li>
+              </ul>
+            )}
+        <Feedback commit={commit} commitStore={commitStore} onShowConsole={props.onShowConsole} onRefresh={props.onRefresh} />
+      </div>
+    </div>
+  )
+}
+
+function NormalCommitPanel(props: CommitPanelProps): ReactNode {
   const t = useT()
   const { changes, changesStore, commit, commitStore } = props
   const textareaRef = useRef<HTMLTextAreaElement>(null)

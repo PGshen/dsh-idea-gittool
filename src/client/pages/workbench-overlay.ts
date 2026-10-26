@@ -210,7 +210,9 @@ export function actionOverlayWiring(deps: {
 }): Pick<ActionStoreDeps, 'onAskStash' | 'onConflict' | 'onSuccess'> {
   return {
     onAskStash: (ask) => { deps.open({ kind: 'dirtyWorktree' }, ask.trigger) },
-    onConflict: (_endpoint, _details, trigger) => {
+    onConflict: (_endpoint, details, trigger) => {
+      // Conflict markers on "mark resolved" are asked inside the already open list (A3 T9).
+      if (details.markers === true) return
       deps.refresh()
       deps.open({ kind: 'conflicts' }, trigger)
     },

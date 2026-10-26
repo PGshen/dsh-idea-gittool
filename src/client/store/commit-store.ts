@@ -5,6 +5,7 @@ import { useSyncExternalStore } from 'react'
 import type {
   CommitResultValue,
   GitError,
+  RepoOperation,
   RpcResult,
   StatusValue,
   WritePolicyValue,
@@ -13,6 +14,7 @@ import { newRequestId as defaultRequestId } from '../git-client.ts'
 import type { GitClient } from '../git-client.ts'
 import { READ_ONLY_REASON_KEY, OPERATION_KEY } from '../locales.ts'
 import type { Translate } from '../localized-text.ts'
+import type { ActionOutcome } from './action-store.ts'
 
 export const HISTORY_LIMIT = 20
 export const SUBJECT_SOFT_LIMIT = 72
@@ -155,6 +157,17 @@ export interface CommitGate {
   detachedHint: string | null
 }
 
+/** Read-only policy, no repository or pending writes (shared by the normal and operation gates). */
+function writeBlockReason(input: Pick<CommitGateInput, 'writePolicy' | 'status' | 'pendingWrites'>, t: Translate): string | null {
+  if (input.writePolicy.mode === 'read-only') {
+    const code = input.writePolicy.reasonCode
+    return code === undefined ? (input.writePolicy.reason ?? t('commit.reasonReadOnly')) : t(READ_ONLY_REASON_KEY[code])
+  }
+  if (input.status === null) return t('commit.reasonNoRepository')
+  if (input.pendingWrites > 0) return t('commit.reasonPending')
+  return null
+}
+
 /**
  * Decides what the commit controls show and whether they are enabled.
  * @param input - write policy, status snapshot, pending writes and the form state.
@@ -165,13 +178,10 @@ export function commitGate(input: CommitGateInput, t: Translate): CommitGate {
   const { status, amend } = input
   const mode: CommitMode = amend && input.checkedCount === 0 ? 'amend-message' : 'files'
   const submitLabel = !amend ? t('commit.submit') : mode === 'amend-message' ? t('commit.submitAmendMessage') : t('commit.submitAmend')
-  let blockReason: string | null = null
-  if (input.writePolicy.mode === 'read-only') {
-    const code = input.writePolicy.reasonCode
-    blockReason = code === undefined ? (input.writePolicy.reason ?? t('commit.reasonReadOnly')) : t(READ_ONLY_REASON_KEY[code])
-  } else if (status === null) blockReason = t('commit.reasonNoRepository')
-  else if (status.operation !== null) blockReason = t('commit.reasonOperation', { operation: t(OPERATION_KEY[status.operation]) })
-  else if (input.pendingWrites > 0) blockReason = t('commit.reasonPending')
+  let blockReason = writeBlockReason(input, t)
+  if (blockReason === null && status !== null && status.operation !== null) {
+    blockReason = t('commit.reasonOperation', { operation: t(OPERATION_KEY[status.operation]) })
+  }
   const blocked = blockReason !== null
   const submitting = input.phase === 'submitting'
   let disabledReason = blockReason
@@ -193,6 +203,79 @@ export function commitGate(input: CommitGateInput, t: Translate): CommitGate {
     rewriteWarning: amend && pushed ? t('commit.rewriteWarning') : null,
     detachedHint: status?.detached === true ? t('commit.detachedHint') : null,
   }
+}
+
+// ---------------------------------------------------------------------------
+// Operation state commit (design §8.2.4, plan A3 T9)
+// ---------------------------------------------------------------------------
+
+/**
+ * Shape of the commit page: `normal` (A2), `merge` (MERGE_HEAD: commit the merge, message from
+ * MERGE_MSG), `sequencer` (cherry-pick / revert: continue), `rebase` (continue from the banner).
+ */
+export type CommitPageMode = 'normal' | 'merge' | 'sequencer' | 'rebase'
+
+export function commitPageModeOf(operation: RepoOperation): CommitPageMode {
+  switch (operation) {
+    case 'merge':
+      return 'merge'
+    case 'cherry-pick':
+    case 'revert':
+      return 'sequencer'
+    case 'rebase':
+      return 'rebase'
+    default:
+      return 'normal'
+  }
+}
+
+export interface OperationGateInput extends Pick<CommitGateInput, 'writePolicy' | 'status' | 'pendingWrites' | 'message' | 'phase'> {
+  mode: Exclude<CommitPageMode, 'normal'>
+}
+
+export interface OperationGate {
+  title: string
+  submitLabel: string
+  disabledReason: string | null
+  /** Read-only, no repository or pending writes: the message box is disabled too. */
+  blocked: boolean
+  /** Unresolved conflicts left (the page offers the conflict list). */
+  conflicts: number
+  submitting: boolean
+  canSubmit: boolean
+  /** Merge only: the message box is shown (prefilled with MERGE_MSG). */
+  showMessage: boolean
+  explanation: string
+}
+
+/** Controls of the commit page while a merge / cherry-pick / revert / rebase is in progress. */
+export function operationGate(input: OperationGateInput, t: Translate): OperationGate {
+  const conflicts = input.status?.conflicts.length ?? 0
+  const sequencer = input.status?.operation === 'revert' ? 'revert' : 'cherry-pick'
+  const submitting = input.phase === 'submitting'
+  const blockReason = writeBlockReason(input, t)
+  let disabledReason = blockReason
+  if (disabledReason === null && conflicts > 0) disabledReason = t('commit.op.reasonConflicts', { count: conflicts })
+  if (disabledReason === null && input.mode === 'merge' && normalizeMessage(input.message).trim() === '') disabledReason = t('commit.reasonNoMessage')
+  const view = input.mode === 'merge'
+    ? { title: t('commit.op.mergeTitle'), submitLabel: t('commit.op.submitMerge'), explanation: t('commit.op.mergeHint') }
+    : input.mode === 'sequencer'
+      ? { title: t(`commit.op.sequencerTitle.${sequencer}`), submitLabel: t(`commit.op.continue.${sequencer}`), explanation: t('commit.op.sequencerHint') }
+      : { title: t('commit.op.rebaseTitle'), submitLabel: t('commit.op.continueRebase'), explanation: t('commit.op.rebaseHint') }
+  return {
+    ...view,
+    disabledReason,
+    blocked: blockReason !== null,
+    conflicts,
+    submitting,
+    canSubmit: disabledReason === null && !submitting,
+    showMessage: input.mode === 'merge',
+  }
+}
+
+/** The message the commit page shows: the merge message in merge mode, else the draft. */
+export function visibleMessage(state: CommitStoreState): string {
+  return state.mode === 'merge' ? state.operationMessage : state.message
 }
 
 // ---------------------------------------------------------------------------
@@ -251,6 +334,14 @@ export interface CommitStoreState {
   /** Latest successful commit ("已提交 7f3a2c1"); kept until the next success. */
   lastCommit: CommitResultValue | null
   history: string[]
+  /** Page shape for the in-progress operation (A3 T9); set by the workbench from the status. */
+  mode: CommitPageMode
+  /** Merge mode message (MERGE_MSG prefill or the user's edit); the normal draft stays apart. */
+  operationMessage: string
+  /** The user edited {@link operationMessage}: a later prefill never overwrites it. */
+  operationEdited: boolean
+  /** Identity of the operation the message belongs to. */
+  operationKey: string | null
 }
 
 export type CommitOutcome =
@@ -283,6 +374,16 @@ export interface CommitStore {
   submit(paths: readonly string[]): Promise<CommitOutcome>
   /** Clears success/failure feedback (back to idle). */
   dismiss(): void
+  /**
+   * Follow the repository operation: page mode, and in merge mode the MERGE_MSG prefill (never
+   * over a user edit of the same operation; `key` identifies the operation).
+   */
+  setOperation(input: { mode: CommitPageMode; message?: string | undefined; key?: string | null | undefined }): void
+  /**
+   * Run the operation step (merge commit / continue) through the action store, with the same
+   * phase feedback as a commit. A second call while one is in flight returns the same promise.
+   */
+  runOperation<V>(task: () => Promise<ActionOutcome<V>>): Promise<ActionOutcome<V>>
 }
 
 /** Transport-level failures where the Host may or may not have run the commit. */
@@ -301,8 +402,13 @@ export function createCommitStore(deps: CommitStoreDeps): CommitStore {
     error: null,
     lastCommit: null,
     history: parseHistory(safeGet(storage, historyKey(deps.repoRoot))),
+    mode: 'normal',
+    operationMessage: '',
+    operationEdited: false,
+    operationKey: null,
   }
   let inflight: Promise<CommitOutcome> | null = null
+  let operationInflight: Promise<ActionOutcome<unknown>> | null = null
   /** Request id of the last uncertain failure, reused when the same payload is retried. */
   let retry: { fingerprint: string; requestId: string } | null = null
 
@@ -312,9 +418,52 @@ export function createCommitStore(deps: CommitStoreDeps): CommitStore {
   }
 
   const setMessage = (message: string): void => {
-    safeSet(storage, draftKey(deps.sessionId), message)
     const settled = state.phase === 'success' || state.phase === 'failure'
-    emit(settled ? { message, phase: 'idle', error: null } : { message })
+    const feedback: Partial<CommitStoreState> = settled ? { phase: 'idle', error: null } : {}
+    if (state.mode === 'merge') {
+      emit({ ...feedback, operationMessage: message, operationEdited: true })
+      return
+    }
+    safeSet(storage, draftKey(deps.sessionId), message)
+    emit({ ...feedback, message })
+  }
+
+  const setOperation: CommitStore['setOperation'] = ({ mode, message, key = null }) => {
+    if (mode === 'normal') {
+      if (state.mode !== 'normal' || state.operationKey !== null) emit({ mode, operationMessage: '', operationEdited: false, operationKey: null })
+      return
+    }
+    const sameOperation = key === state.operationKey && mode === state.mode
+    const edited = sameOperation && state.operationEdited
+    const operationMessage = edited ? state.operationMessage : (message ?? (sameOperation ? state.operationMessage : ''))
+    if (sameOperation && operationMessage === state.operationMessage) return
+    emit({ mode, operationKey: key, operationEdited: edited, operationMessage })
+  }
+
+  const finishOperation = <V>(outcome: ActionOutcome<V>): ActionOutcome<V> => {
+    switch (outcome.kind) {
+      case 'done': {
+        const value = (outcome.value ?? {}) as Partial<CommitResultValue> & { head?: unknown }
+        const sha = typeof value.sha === 'string' ? value.sha : typeof value.head === 'string' ? value.head : null
+        const lastCommit = sha === null ? state.lastCommit : { sha, shortSha: typeof value.shortSha === 'string' ? value.shortSha : sha.slice(0, 7) }
+        if (state.mode === 'merge') {
+          const history = pushHistory(state.history, normalizeMessage(state.operationMessage))
+          safeSet(storage, historyKey(deps.repoRoot), JSON.stringify(history))
+          emit({ phase: 'success', error: null, lastCommit, history, operationMessage: '', operationEdited: false })
+        } else {
+          emit({ phase: 'success', error: null, lastCommit })
+        }
+        break
+      }
+      case 'failed':
+        emit({ phase: 'failure', error: outcome.error })
+        break
+      case 'conflict':
+      case 'cancelled':
+        emit({ phase: 'idle', error: null })
+        break
+    }
+    return outcome
   }
 
   const run = async (paths: string[], message: string, amend: boolean): Promise<CommitOutcome> => {
@@ -365,6 +514,20 @@ export function createCommitStore(deps: CommitStoreDeps): CommitStore {
       return inflight
     },
     dismiss: () => emit({ phase: 'idle', error: null }),
+    setOperation,
+    runOperation<V>(task: () => Promise<ActionOutcome<V>>): Promise<ActionOutcome<V>> {
+      if (operationInflight !== null) return operationInflight as Promise<ActionOutcome<V>>
+      emit({ phase: 'submitting', error: null })
+      const promise = task()
+        .catch((error: unknown): ActionOutcome<V> => {
+          const gitError: GitError = { code: 'git/exec-failed', message: error instanceof Error ? error.message : String(error) }
+          return { kind: 'failed', error: gitError, message: { key: 'action.error.fallback', params: { code: gitError.code, message: gitError.message } } }
+        })
+        .then(finishOperation)
+        .finally(() => { operationInflight = null })
+      operationInflight = promise as Promise<ActionOutcome<unknown>>
+      return promise
+    },
   }
 }
 

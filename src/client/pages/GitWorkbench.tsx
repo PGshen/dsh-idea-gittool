@@ -21,8 +21,13 @@ import { newRequestId } from '../git-client.ts'
 import { createActionStore, useActionState } from '../store/action-store.ts'
 import type { ActionOutcome } from '../store/action-store.ts'
 import { createChangesStore, uncommittedCount, useChangesState } from '../store/changes-store.ts'
-import { createCommitStore, useCommitState } from '../store/commit-store.ts'
+import { commitPageModeOf, createCommitStore, useCommitState, visibleMessage } from '../store/commit-store.ts'
 import type { CommitPhase } from '../store/commit-store.ts'
+import { createAutoOpenTracker, createConflictStore, operationIdentity, useConflictState } from '../store/conflict-store.ts'
+import type { OperationControlAction } from '../../shared/protocol.ts'
+import { ConflictsPage } from './ConflictsPage.tsx'
+import { controlOperation, operationBusy, operationOutcomeEffect, submitOperationStep } from './operation-actions.ts'
+import type { OperationStepKind } from './operation-actions.ts'
 import type { RollbackTarget } from '../store/push-store.ts'
 import type { DiffOpenScope } from './ChangesTree.tsx'
 import { CommitPanel } from './CommitPanel.tsx'
@@ -399,6 +404,78 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
     void onRefresh()
   }, [clearStaleCommitNotice, client, onRefresh, sessionId])
 
+  // Operation state, conflict list and operation-state commit (A3 T9).
+  const conflictStore = useMemo(
+    () => createConflictStore({ load: signal => client.operationState(sessionId, signal) }),
+    [client, sessionId],
+  )
+  const conflictState = useConflictState(conflictStore)
+  const autoOpen = useMemo(() => createAutoOpenTracker(), [sessionId])
+  const operation = status?.operation ?? null
+  const statusKnown = status !== null
+  const closeOverlayIf = overlays.closeIf
+  const previousOperation = useRef(operation)
+  useEffect(() => {
+    if (!statusKnown) return
+    if (operation === null) {
+      conflictStore.clear()
+      autoOpen.observe(null)
+      // Finished or aborted elsewhere (terminal, Agent): the list has nothing left to show.
+      if (previousOperation.current !== null) closeOverlayIf('conflicts')
+      previousOperation.current = null
+      return
+    }
+    previousOperation.current = operation
+    void conflictStore.refresh()
+  }, [autoOpen, closeOverlayIf, conflictStore, operation, statusKnown, value.version])
+  const operationValue = conflictState.value
+  const openOverlay = overlays.open
+  const currentRoute = overlays.route
+  useEffect(() => {
+    if (operationValue === null) return
+    // Once per operation (design §10.1); never over another overlay the user is working in.
+    if (autoOpen.observe(operationValue) && currentRoute().overlay === null) openOverlay({ kind: 'conflicts' }, null)
+  }, [autoOpen, currentRoute, openOverlay, operationValue])
+  const conflictsOpen = overlay?.kind === 'conflicts'
+  useEffect(() => { if (conflictsOpen) autoOpen.noteOpened() }, [autoOpen, conflictsOpen])
+  const pageMode = commitPageModeOf(operation)
+  const operationKey = operationValue === null ? null : operationIdentity(operationValue)
+  const mergeMsg = operationValue?.operation === 'merge' ? operationValue.message : undefined
+  useEffect(() => {
+    commitStore.setOperation({ mode: pageMode, message: mergeMsg, key: operationKey })
+  }, [commitStore, mergeMsg, operationKey, pageMode])
+
+  /** Banner / list / commit-page results: notices, reload the list, show the new HEAD in the log. */
+  const applyOperationOutcome = useCallback((outcome: ActionOutcome<unknown>, step: OperationStepKind) => {
+    const effect = operationOutcomeEffect(outcome, step)
+    setNotice(effect.notice)
+    if (effect.refreshConflicts) void conflictStore.refresh()
+    if (effect.finished) overlays.closeIf('conflicts')
+    const sha = effect.showInLog
+    if (sha !== null) {
+      setPage('log')
+      void Promise.all([onRefresh(), logStore.refresh()]).then(() => { logStore.jumpTo(sha) })
+    }
+  }, [conflictStore, logStore, onRefresh, overlays.closeIf])
+  const runOperationControl = useCallback((action: OperationControlAction, trigger: FocusTarget | null) => {
+    setNotice(null)
+    void controlOperation({ actions, trigger }, action).then((outcome) => { applyOperationOutcome(outcome, action) })
+  }, [actions, applyOperationOutcome])
+  const openConflicts = useCallback((trigger: FocusTarget | null) => {
+    void conflictStore.refresh()
+    overlays.open({ kind: 'conflicts' }, trigger)
+  }, [conflictStore, overlays.open])
+  const submitOperation = useCallback((trigger: FocusTarget | null) => {
+    const state = commitStore.getState()
+    if (state.mode === 'normal') return
+    const mode = state.mode
+    setNotice(null)
+    void commitStore.runOperation(() => submitOperationStep({ actions, trigger }, mode, visibleMessage(state))).then((outcome) => {
+      // The commit page shows its own failure.
+      if (outcome.kind !== 'failed') applyOperationOutcome(outcome, mode === 'merge' ? 'commit' : 'continue')
+    })
+  }, [actions, applyOperationOutcome, commitStore])
+
   // Branch actions (A3 T7): the runner is created once per action store and reads the latest
   // callbacks through a ref, so menus and sheets never act on a stale log store or page setter.
   const branchContext = branchActionContext(status, value.writePolicy)
@@ -442,7 +519,7 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
         return
       case 'continue':
       case 'abort':
-        void branchRunner.control(id, trigger)
+        runOperationControl(id, trigger)
         return
       case 'newBranch':
         overlays.open({ kind: 'branchSheet', mode: 'new', startPoint: status?.branch ?? 'HEAD' }, trigger)
@@ -451,7 +528,7 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
         overlays.open({ kind: 'branchSheet', mode: 'checkoutRevision' }, trigger)
         return
     }
-  }, [branchRunner, openPush, overlays.open, status?.branch])
+  }, [openPush, overlays.open, runOperationControl, status?.branch])
 
   const readOnlyReason = readOnlyMessage(t, value.writePolicy, 'readOnly.title')
 
@@ -522,7 +599,17 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
   return (
     <div ref={rootRef} className={css.root} data-dsh-git-workbench="" data-mode={branches.mode}>
       <ReadOnlyBanner policy={value.writePolicy} />
-      <OperationBanner {...bannerFromStatus(status)} onOpenConsole={() => { setConsoleOpen(true) }} />
+      <OperationBanner
+        {...bannerFromStatus(status)}
+        pendingStash={operationValue?.pendingStash === true}
+        busy={operationBusy(actionState.pending)}
+        blockReason={blockText(fetchBlock)}
+        onResolve={openConflicts}
+        onContinue={(trigger) => { runOperationControl('continue', trigger) }}
+        onSkip={(trigger) => { runOperationControl('skip', trigger) }}
+        onAbort={(trigger) => { runOperationControl('abort', trigger) }}
+        onOpenConsole={() => { setConsoleOpen(true) }}
+      />
       <RepoBar
         repoRoot={value.repoRoot}
         refreshing={refreshing}
@@ -606,6 +693,8 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
             onPushAfterCommit={(_result, options) => { pushAfterCommit(options.openPushPage) }}
             onShowConsole={() => { setConsoleOpen(true) }}
             onRefresh={() => { void onRefresh() }}
+            onOperationSubmit={submitOperation}
+            onResolveConflicts={openConflicts}
           />
         )}
         {page === 'log' && !wide ? branchPanel : null}
@@ -736,6 +825,18 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
             onOutcome={reportOutcome}
             onNotice={setNotice}
             onClose={() => { overlays.closeIf('commitOp') }}
+          />
+        )}
+        {overlay?.kind !== 'conflicts' ? null : (
+          <ConflictsPage
+            store={conflictStore}
+            actions={actions}
+            mergeMessage={commit.mode === 'merge' && commit.operationEdited ? commit.operationMessage : ''}
+            blockReason={blockText(fetchBlock)}
+            loadCommand={() => client.conflictCommand(sessionId)}
+            copy={(command) => { void globalThis.navigator?.clipboard?.writeText(command) }}
+            onFinished={applyOperationOutcome}
+            onClose={() => { overlays.closeIf('conflicts') }}
           />
         )}
         {overlay?.kind !== 'dirtyWorktree' || actionState.ask === null ? null : (

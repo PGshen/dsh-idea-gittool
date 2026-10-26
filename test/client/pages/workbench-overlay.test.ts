@@ -197,11 +197,11 @@ describe('action store ↔ overlay wiring', () => {
   }
 
   /** Same composition as GitWorkbench: store callbacks open overlays, leaving cancels the ask. */
-  function workbench(merge: ActionClient['merge'], focused: () => FocusTarget | null = () => null) {
+  function workbench(merge: ActionClient['merge'], focused: () => FocusTarget | null = () => null, extra: Partial<ActionClient> = {}) {
     const refresh = vi.fn()
     let overlays: OverlayController | null = null
     const actions = createActionStore({
-      client: { merge } as unknown as ActionClient,
+      client: { merge, ...extra } as unknown as ActionClient,
       sessionId: 's1',
       ...actionOverlayWiring({ open: (next, trigger) => overlays?.open(next, trigger), refresh }),
     })
@@ -297,5 +297,14 @@ describe('action store ↔ overlay wiring', () => {
     expect(outcome.kind).toBe('conflict')
     expect(overlays.route()).toEqual({ overlay: { kind: 'conflicts' }, returnFocus: clicked })
     expect(refresh).toHaveBeenCalledTimes(1)
+  })
+
+  it('conflict markers on "mark resolved" (answered inside the list) do not reopen the list (A3 T9)', async () => {
+    const resolveConflict = vi.fn(async () => ({ ok: false, error: { code: 'git/conflict', message: 'm', details: { markers: true } } }) as RpcResult<never>)
+    const { actions, overlays, refresh } = workbench(vi.fn() as unknown as ActionClient['merge'], undefined, { resolveConflict: resolveConflict as unknown as ActionClient['resolveConflict'] })
+    const outcome = await actions.run('resolveConflict', { path: 'a', resolution: 'mark-resolved' })
+    expect(outcome.kind).toBe('conflict')
+    expect(overlays.route().overlay).toBeNull()
+    expect(refresh).not.toHaveBeenCalled()
   })
 })

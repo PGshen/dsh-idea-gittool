@@ -218,3 +218,65 @@ describe('CommitMessage render', () => {
     expect(historyPreview('feat: a\n\nbody')).toBe('feat: a')
   })
 })
+
+describe('CommitPanel operation modes (A3 T9)', () => {
+  const checkboxes = (html: string): string[] => html.match(/<button[^>]*role="checkbox"[^>]*>/g) ?? []
+  const disabledSubmit = /disabled=""[^>]*data-commit-submit|data-commit-submit[^>]*disabled=""/
+
+  it('normal mode keeps the A2 page (enabled checkboxes, amend, commit and push)', () => {
+    const { render } = setup()
+    const html = render()
+    expect(checkboxes(html).some(tag => !tag.includes('disabled=""'))).toBe(true)
+    expect(html).toContain('提交并推送')
+    expect(html).not.toContain('data-operation-mode')
+  })
+
+  it('merge: checkboxes disabled, 合并提交 title, prefilled message, 提交合并', () => {
+    const status = statusFixture({ operation: 'merge', staged: [entry('a.ts', 'M')] })
+    const { commitStore, render } = setup({ status })
+    commitStore.setOperation({ mode: 'merge', message: "Merge branch 'feature' into main", key: 'k' })
+    const html = render()
+    expect(html).toContain('data-operation-mode="merge"')
+    expect(html).toContain('合并提交')
+    expect(checkboxes(html).length).toBeGreaterThan(0)
+    expect(checkboxes(html).every(tag => tag.includes('disabled=""'))).toBe(true)
+    expect(html).toContain('Merge branch &#x27;feature&#x27; into main')
+    expect(html).toMatch(/<button[^>]*data-commit-submit="merge"[^>]*>提交合并<\/button>/)
+    expect(html).not.toMatch(disabledSubmit)
+    expect(html).not.toContain('提交并推送')
+    expect(html).not.toMatch(/<input type="checkbox"/)
+  })
+
+  it('merge with conflicts left: 提交合并 disabled with the count and a way to the list', () => {
+    const status = statusFixture({ operation: 'merge', conflicts: [entry('a.ts', 'U')] })
+    const { commitStore, render } = setup({ status })
+    commitStore.setOperation({ mode: 'merge', message: 'M', key: 'k' })
+    const html = render({ onResolveConflicts: () => {} })
+    expect(html).toMatch(disabledSubmit)
+    expect(html).toContain('还有 1 个冲突未解决')
+    expect(html).toContain('data-resolve-conflicts')
+  })
+
+  it.each([
+    ['cherry-pick', '继续拣选'],
+    ['revert', '继续回滚'],
+  ] as const)('%s: no message box, %s', (operation, label) => {
+    const { commitStore, render } = setup({ status: statusFixture({ operation, staged: [entry('a.ts', 'M')] }) })
+    commitStore.setOperation({ mode: 'sequencer' })
+    const html = render()
+    expect(html).toContain('data-operation-mode="sequencer"')
+    expect(html).not.toContain('data-commit-message')
+    expect(html).toMatch(new RegExp(`<button[^>]*data-commit-submit="sequencer"[^>]*>${label}</button>`))
+    expect(checkboxes(html).every(tag => tag.includes('disabled=""'))).toBe(true)
+  })
+
+  it('rebase: the commit area is replaced by the explanation and 继续变基', () => {
+    const { commitStore, render } = setup({ status: statusFixture({ operation: 'rebase' }) })
+    commitStore.setOperation({ mode: 'rebase' })
+    const html = render()
+    expect(html).toContain('data-operation-mode="rebase"')
+    expect(html).not.toContain('data-commit-message')
+    expect(html).toContain('data-operation-explanation')
+    expect(html).toMatch(/<button[^>]*data-commit-submit="rebase"[^>]*>继续变基<\/button>/)
+  })
+})

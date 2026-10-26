@@ -5,7 +5,10 @@ import {
   HISTORY_LIMIT,
   commitErrorView,
   commitGate,
+  commitPageModeOf,
   createCommitStore,
+  operationGate,
+  visibleMessage,
   draftKey,
   historyKey,
   isSubmitShortcut,
@@ -325,5 +328,118 @@ describe('message helpers', () => {
     expect(isSubmitShortcut({ key: 'Enter', metaKey: false, ctrlKey: true })).toBe(true)
     expect(isSubmitShortcut({ key: 'Enter', metaKey: false, ctrlKey: false })).toBe(false)
     expect(isSubmitShortcut({ key: 'Enter', metaKey: true, ctrlKey: false, isComposing: true })).toBe(false)
+  })
+})
+
+describe('operation state commit (A3 T9)', () => {
+  const client = { commitFiles: vi.fn(), amendMessage: vi.fn() }
+  const store = (storage: StorageLike | null = null) => createCommitStore({ sessionId: 's', repoRoot: '/r', client, storage })
+
+  it('page mode follows the operation', () => {
+    expect(commitPageModeOf(null)).toBe('normal')
+    expect(commitPageModeOf('bisect')).toBe('normal')
+    expect(commitPageModeOf('merge')).toBe('merge')
+    expect(commitPageModeOf('cherry-pick')).toBe('sequencer')
+    expect(commitPageModeOf('revert')).toBe('sequencer')
+    expect(commitPageModeOf('rebase')).toBe('rebase')
+  })
+
+  it('merge prefills MERGE_MSG; the normal draft is kept apart and comes back afterwards', () => {
+    const storage = memoryStorage({ [draftKey('s')]: 'my draft' })
+    const commit = store(storage)
+    commit.setOperation({ mode: 'merge', message: "Merge branch 'f'", key: 'k1' })
+    expect(commit.getState().mode).toBe('merge')
+    expect(visibleMessage(commit.getState())).toBe("Merge branch 'f'")
+    commit.setOperation({ mode: 'normal' })
+    expect(visibleMessage(commit.getState())).toBe('my draft')
+    expect(storage.data.get(draftKey('s'))).toBe('my draft')
+  })
+
+  it('a user edit is never overwritten by a later prefill of the same operation', () => {
+    const commit = store()
+    commit.setOperation({ mode: 'merge', message: 'A', key: 'k1' })
+    commit.setMessage('edited')
+    commit.setOperation({ mode: 'merge', message: 'B', key: 'k1' })
+    expect(visibleMessage(commit.getState())).toBe('edited')
+    // Without an edit the newer MERGE_MSG is taken.
+    const fresh = store()
+    fresh.setOperation({ mode: 'merge', key: 'k1' })
+    fresh.setOperation({ mode: 'merge', message: 'B', key: 'k1' })
+    expect(visibleMessage(fresh.getState())).toBe('B')
+  })
+
+  it('a new operation (other key) starts from its own MERGE_MSG', () => {
+    const commit = store()
+    commit.setOperation({ mode: 'merge', message: 'A', key: 'k1' })
+    commit.setMessage('edited')
+    commit.setOperation({ mode: 'merge', message: 'C', key: 'k2' })
+    expect(visibleMessage(commit.getState())).toBe('C')
+  })
+
+  it('runOperation: submitting → success with the commit (merge clears the message, joins history)', async () => {
+    const commit = store()
+    commit.setOperation({ mode: 'merge', message: 'M', key: 'k' })
+    let resolve!: (value: { kind: 'done'; value: CommitResultValue }) => void
+    const task = () => new Promise<{ kind: 'done'; value: CommitResultValue }>((done) => { resolve = done })
+    const pending = commit.runOperation(task)
+    expect(commit.getState().phase).toBe('submitting')
+    expect(commit.runOperation(task)).toBe(pending)
+    resolve({ kind: 'done', value: { sha: 'f'.repeat(40), shortSha: 'fffffff' } })
+    await pending
+    expect(commit.getState()).toMatchObject({ phase: 'success', lastCommit: { shortSha: 'fffffff' } })
+    expect(visibleMessage(commit.getState())).toBe('')
+    expect(commit.getState().history[0]).toBe('M')
+  })
+
+  it('runOperation: continue result uses HEAD; failure keeps the error; a conflict goes back to idle', async () => {
+    const commit = store()
+    commit.setOperation({ mode: 'sequencer' })
+    await commit.runOperation(async () => ({ kind: 'done', value: { operation: null, head: 'e'.repeat(40) } }))
+    expect(commit.getState().lastCommit).toEqual({ sha: 'e'.repeat(40), shortSha: 'eeeeeee' })
+    const error: GitError = { code: 'git/locked', message: 'lock' }
+    await commit.runOperation(async () => ({ kind: 'failed', error, message: { key: 'write.error.git/locked' } }))
+    expect(commit.getState()).toMatchObject({ phase: 'failure', error })
+    await commit.runOperation(async () => ({ kind: 'conflict', error: { code: 'git/conflict', message: '' }, details: {} }))
+    expect(commit.getState()).toMatchObject({ phase: 'idle', error: null })
+  })
+})
+
+describe('operationGate (A3 T9)', () => {
+  const base = {
+    writePolicy: { mode: 'read-write' } as const,
+    pendingWrites: 0,
+    message: 'Merge',
+    phase: 'idle' as const,
+  }
+
+  it('merge: 提交合并, disabled while conflicts are left or the message is empty', () => {
+    const ok = operationGate({ ...base, mode: 'merge', status: statusFixture({ operation: 'merge' }) }, zhT)
+    expect(ok).toMatchObject({ submitLabel: '提交合并', canSubmit: true, showMessage: true, disabledReason: null })
+    const conflicts = operationGate({ ...base, mode: 'merge', status: statusFixture({ operation: 'merge', conflicts: [{ path: 'a', status: 'U' }, { path: 'b', status: 'U' }] }) }, zhT)
+    expect(conflicts).toMatchObject({ canSubmit: false, disabledReason: '还有 2 个冲突未解决' })
+    const empty = operationGate({ ...base, message: ' ', mode: 'merge', status: statusFixture({ operation: 'merge' }) }, zhT)
+    expect(empty.canSubmit).toBe(false)
+  })
+
+  it('cherry-pick / revert: 继续拣选 / 继续回滚 without a message box', () => {
+    const pick = operationGate({ ...base, message: '', mode: 'sequencer', status: statusFixture({ operation: 'cherry-pick' }) }, zhT)
+    expect(pick).toMatchObject({ submitLabel: '继续拣选', canSubmit: true, showMessage: false })
+    const revert = operationGate({ ...base, mode: 'sequencer', status: statusFixture({ operation: 'revert' }) }, zhT)
+    expect(revert.submitLabel).toBe('继续回滚')
+  })
+
+  it('rebase: explanation + 继续变基', () => {
+    const gate = operationGate({ ...base, mode: 'rebase', status: statusFixture({ operation: 'rebase' }) }, zhT)
+    expect(gate).toMatchObject({ submitLabel: '继续变基', showMessage: false })
+    expect(gate.explanation).toContain('横幅')
+  })
+
+  it('read-only and pending writes block; submitting disables', () => {
+    const readOnly = operationGate({ ...base, writePolicy: { mode: 'read-only', reason: 'nope' }, mode: 'merge', status: statusFixture({ operation: 'merge' }) }, zhT)
+    expect(readOnly).toMatchObject({ canSubmit: false, disabledReason: 'nope' })
+    const pending = operationGate({ ...base, pendingWrites: 1, mode: 'merge', status: statusFixture({ operation: 'merge' }) }, zhT)
+    expect(pending.canSubmit).toBe(false)
+    const submitting = operationGate({ ...base, phase: 'submitting', mode: 'merge', status: statusFixture({ operation: 'merge' }) }, zhT)
+    expect(submitting).toMatchObject({ canSubmit: false, submitting: true })
   })
 })

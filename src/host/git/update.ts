@@ -21,6 +21,7 @@ import { MERGE_HOOKS, REBASE_HOOKS, assertCleanUnlessStash, runIntegration } fro
 import { networkFailure } from './push.ts'
 import { dirtyTrackedPaths, dirtyWorktree, queryOf, readHeadPosition } from './smart-stash.ts'
 import {
+  OBJECT_ID_PATTERN,
   CLEAN_BATCH_MAX,
   assertNoOperation,
   batches,
@@ -34,8 +35,6 @@ import {
   readRemotes,
   redactedFailure,
 } from './write-support.ts'
-
-const SHA_PATTERN = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/
 
 /** Backup names tried before giving up (`<base>`, `<base>-2` … `<base>-100`). */
 const BACKUP_ATTEMPTS = 100
@@ -146,7 +145,7 @@ async function isAncestor(ctx: WriteContext, ancestor: string, descendant: strin
 async function reflogForkPoint(ctx: WriteContext, upstreamRef: string, newSha: string): Promise<string | undefined> {
   const result = await query(ctx, ['merge-base', '--fork-point', upstreamRef, 'HEAD'])
   const forkPoint = result.stdout.trim()
-  if (result.exitCode !== 0 || !SHA_PATTERN.test(forkPoint)) return undefined
+  if (result.exitCode !== 0 || !OBJECT_ID_PATTERN.test(forkPoint)) return undefined
   return (await isAncestor(ctx, forkPoint, newSha)) ? undefined : forkPoint
 }
 

@@ -1193,7 +1193,7 @@ export interface MergeFileValue {
   theirs: MergeSide | null
   /** 任一侧超过大小/行数上限。 */
   tooLarge: boolean
-  /** 工作区文件的 `hash-object`（经 clean filter）；文件不存在为 null。`mergeApply` 据此判断加载后是否被改。 */
+  /** 工作区文件的 `hash-object`（经 clean filter）；文件不存在或 `special` 非 null 时为 null。`mergeApply` 据此判断加载后是否被改。 */
   worktreeSha: string | null
   draft: MergeDraft | null
   /** 存在草稿但 `stages` 与当前三方不符（已作废，`draft` 为 null）。 */
@@ -1206,8 +1206,18 @@ export interface MergeFileValue {
    * 超过 2 MiB / 20 000 行、含 NUL 或不是合法 UTF-8 → null。未解决路径省略。
    */
   worktreeText?: string | null
+  /**
+   * 裁定 19（B1 终审，向后兼容扩展）：只对未解决的文本冲突给出——工作区文件是否仍含 `<<<<<<<`/`>>>>>>>`
+   * 冲突标记。false 表示加载前已被改过（手改、Agent、rerere），「应用更改」会覆盖这些修改。其他情况省略。
+   */
+  worktreeHasMarkers?: boolean
+  /** 符号链接（120000）或子模块（160000）冲突：三方不读内容（`text` 为 null），窗口降级为二选一 / 在终端解决。 */
+  special?: MergeFileSpecial
   version?: number
 }
+
+/** 不能按文本合并的特殊条目。 */
+export type MergeFileSpecial = 'symlink' | 'submodule' | null
 
 /** `mergeDraftSave`：`draft.stages` 与当前索引不符 → `git/stale-target`（target `conflict`）。 */
 export interface MergeDraftSaveRequest extends WriteRequest {

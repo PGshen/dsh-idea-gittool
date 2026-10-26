@@ -72,7 +72,8 @@ async function unmergedStages(ctx: WriteContext): Promise<Map<string, Set<number
   return unmerged
 }
 
-async function hasMarkers(ctx: WriteContext, path: string): Promise<boolean> {
+/** The worktree file of `path` still has default-size conflict markers (read through git, no symlink following). */
+export async function hasMarkers(ctx: WriteContext, path: string): Promise<boolean> {
   const result = await query(ctx, ['grep', '-q', '-E', '-e', MARKER_PATTERN, '--', path])
   if (result.exitCode === 0) return true
   if (result.exitCode === 1) return false

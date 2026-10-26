@@ -18,6 +18,7 @@ import type { GitRunResult, GitRunner, WriteContext, WriteOperation } from '../g
 import { GIT_BASE_ARGV, GitCommandFailure, failureFromExit } from '../git-executor.ts'
 import { cleanupDraftsAfterStep } from './merge-write.ts'
 import {
+  OBJECT_ID_PATTERN,
   hasHook,
   invalidPayload,
   outputSummary,
@@ -51,12 +52,10 @@ export interface ReadOperationStateOptions {
 
 type Query = (args: readonly string[]) => Promise<GitRunResult>
 
-const SHA_PATTERN = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/
-
 /** First line of a state file when it is a full object name. */
 async function readSha(path: string): Promise<string | undefined> {
   const first = (await readStateFile(path))?.split('\n')[0]?.trim()
-  return first !== undefined && SHA_PATTERN.test(first) ? first : undefined
+  return first !== undefined && OBJECT_ID_PATTERN.test(first) ? first : undefined
 }
 
 async function shortOf(query: Query, sha: string): Promise<string> {
@@ -349,9 +348,10 @@ export const operationCommitOperation: WriteOperation<OperationCommitInput, Omit
     const result = await ctx.git([...GIT_BASE_ARGV, 'commit', '-F', '-'], { stdin: input.message })
     if (result.exitCode !== 0) throw await classifyFailure(ctx, result, 'git commit')
     const head = await readHead(ctx)
-    await cleanupDraftsAfterStep(ctx, (await detectOperationIn(gitDir)) === null)
+    const ended = (await detectOperationIn(gitDir)) === null
+    await cleanupDraftsAfterStep(ctx, ended)
     // The commit exists: a failed restore is reported in the value, never as a failed commit (评审 M3).
-    const outcome = (await detectOperationIn(gitDir)) === null ? await finishPendingStash(ctx, pending, matches) : {}
+    const outcome = ended ? await finishPendingStash(ctx, pending, matches) : {}
     return { ...head, ...outcome }
   },
 }

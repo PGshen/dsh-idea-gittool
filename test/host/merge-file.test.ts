@@ -1,6 +1,6 @@
 // B1 T2：mergeFile 读三方与草稿（真实临时仓库）。
 import { createHash } from 'node:crypto'
-import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -292,6 +292,55 @@ describe('mergeFile', () => {
         details: { target: 'conflict' },
       })
     }
+  })
+
+  it('ruling 19: worktreeHasMarkers tells whether an unresolved text file still has conflict markers', async () => {
+    const repo = makeRepo()
+    mergeStopped(repo)
+    const ctx = contextFor(repo)
+    const fresh = await readMergeFile(ctx, 'uu.txt')
+    expect(fresh.worktreeHasMarkers).toBe(true)
+    expect(fresh.special).toBeNull()
+    // Edited by hand (or by an agent / rerere) without markers: applying would overwrite it.
+    repo.write('uu.txt', 'a\nhand made\nc\n')
+    expect((await readMergeFile(ctx, 'uu.txt')).worktreeHasMarkers).toBe(false)
+    // Not reported for delete-kind conflicts (not text-merged) or resolved paths.
+    expect((await readMergeFile(ctx, 'du.txt')).worktreeHasMarkers).toBeUndefined()
+    const op = resolveConflictOperation
+    await op.run(ctx, op.parse({ sessionId: 's', requestId: 'r', path: 'aa.txt', resolution: 'ours' }))
+    expect((await readMergeFile(ctx, 'aa.txt')).worktreeHasMarkers).toBeUndefined()
+  })
+
+  it('symlink and submodule conflicts are special: no side content is read, no markers check', async () => {
+    const repo = makeRepo()
+    symlinkSync('target-base', join(repo.root, 'link'))
+    repo.write('keep.txt', 'k\n')
+    repo.commit('base')
+    const commitA = repo.git('rev-parse', 'HEAD').trim()
+    repo.git('update-index', '--add', '--cacheinfo', `160000,${commitA},sub`)
+    repo.git('commit', '-q', '-m', 'gitlink')
+    repo.git('checkout', '-q', '-b', 'feature')
+    unlinkSync(join(repo.root, 'link'))
+    symlinkSync('target-feature', join(repo.root, 'link'))
+    repo.git('add', 'link')
+    repo.git('update-index', '--cacheinfo', `160000,${'a'.repeat(40)},sub`)
+    repo.git('commit', '-q', '-m', 'feature')
+    repo.git('checkout', '-q', 'main')
+    unlinkSync(join(repo.root, 'link'))
+    symlinkSync('target-main', join(repo.root, 'link'))
+    repo.git('add', 'link')
+    repo.git('update-index', '--cacheinfo', `160000,${'b'.repeat(40)},sub`)
+    repo.git('commit', '-q', '-m', 'main')
+    expect(repo.gitResult('merge', '--no-edit', 'feature').status).not.toBe(0)
+    const ctx = contextFor(repo)
+    const link = await readMergeFile(ctx, 'link')
+    expect(link.special).toBe('symlink')
+    expect(link.ours).toMatchObject({ text: null, binary: false })
+    expect(link.worktreeHasMarkers).toBeUndefined()
+    const sub = await readMergeFile(ctx, 'sub')
+    expect(sub.special).toBe('submodule')
+    expect(sub.ours).toMatchObject({ blob: 'b'.repeat(40), text: null })
+    expect(sub.theirs).toMatchObject({ blob: 'a'.repeat(40), text: null })
   })
 
   it('does not trust resolve-undo leftovers once the operation has ended', async () => {

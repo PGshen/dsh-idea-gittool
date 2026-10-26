@@ -34,17 +34,16 @@ import {
   sameStages,
   stageShas,
 } from './merge-file.ts'
-import { deleteRefs, invalidPayload, payloadRecord, redactedFailure, writeJsonRef } from './write-support.ts'
+import { OBJECT_ID_PATTERN, deleteRefs, invalidPayload, payloadRecord, redactedFailure, writeJsonRef } from './write-support.ts'
 
 /** Largest `result` accepted by `mergeApply` (UTF-8 bytes). */
 export const MERGE_APPLY_RESULT_MAX_BYTES = 8 * 1024 * 1024
-/** Largest draft accepted by `mergeDraftSave` (result plus chunk list). */
+/** Most chunks a draft may list in `mergeDraftSave` (its `result` is bounded like `mergeApply`'s). */
 const MERGE_DRAFT_MAX_CHUNKS = 100_000
-const SHA_PATTERN = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/
 
 function parseNullableSha(value: unknown, label: string): string | null {
   if (value === null) return null
-  if (typeof value !== 'string' || !SHA_PATTERN.test(value)) throw invalidPayload(`${label} must be an object id or null`)
+  if (typeof value !== 'string' || !OBJECT_ID_PATTERN.test(value)) throw invalidPayload(`${label} must be an object id or null`)
   return value
 }
 
@@ -137,7 +136,7 @@ export const mergeApplyOperation: WriteOperation<MergeApplyInput, Omit<ResolveCo
   parse(payload) {
     const record = payloadRecord(payload)
     const expected = record.expectedWorktreeSha
-    if (expected !== null && (typeof expected !== 'string' || !SHA_PATTERN.test(expected))) {
+    if (expected !== null && (typeof expected !== 'string' || !OBJECT_ID_PATTERN.test(expected))) {
       throw invalidPayload('expectedWorktreeSha must be an object id or null')
     }
     return {
@@ -166,7 +165,7 @@ export const mergeApplyOperation: WriteOperation<MergeApplyInput, Omit<ResolveCo
     }
 
     const sha = (await write(ctx, ['hash-object', '-w', '--stdin', `--path=${path}`], 'git hash-object', input.result)).trim()
-    if (!SHA_PATTERN.test(sha)) throw new GitCommandFailure('git/exec-failed', 'git hash-object returned no object id')
+    if (!OBJECT_ID_PATTERN.test(sha)) throw new GitCommandFailure('git/exec-failed', 'git hash-object returned no object id')
     await write(ctx, ['update-index', '--cacheinfo', `${mode},${sha},${path}`], 'git update-index')
     await write(ctx, ['checkout-index', '-f', '--', path], 'git checkout-index')
     await deleteRefs(ctx, mergeDraftRef(path)).catch(() => undefined)

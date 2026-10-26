@@ -13,6 +13,9 @@ import { GIT_BASE_ARGV, GitCommandFailure, failureFromExit } from '../git-execut
 import { validateRepoPath } from './diff.ts'
 import { detectOperation } from './status.ts'
 
+/** A full object id (SHA-1 or SHA-256 hex). */
+export const OBJECT_ID_PATTERN = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/
+
 /** Hook output kept in `git/hook-failed` details (UTF-8 bytes). */
 export const HOOK_OUTPUT_MAX_BYTES = 4096
 
@@ -123,8 +126,6 @@ export async function readJsonRef(ctx: WriteContext, ref: string): Promise<unkno
     throw new JsonRefInvalid(ref, 'malformed JSON')
   }
 }
-
-const OBJECT_ID_PATTERN = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/
 
 /** Write `value` as a JSON blob (`hash-object -w --stdin`, confined); returns the blob id. */
 export async function storeJsonBlob(ctx: WriteContext, value: unknown): Promise<string> {

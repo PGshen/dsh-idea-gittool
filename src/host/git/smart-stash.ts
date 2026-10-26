@@ -20,7 +20,7 @@ import type { DirtyWorktreeDetails, RepoOperation, SmartOperationKind, SmartStas
 import { DIRTY_PATHS_LIMIT } from '../../shared/protocol.ts'
 import type { GitRunResult, WriteContext } from '../git-executor.ts'
 import { GIT_BASE_ARGV, GitCommandFailure, messageOf } from '../git-executor.ts'
-import { deleteRefs, outputSummary, queryOk, redactedFailure, writeJsonRef } from './write-support.ts'
+import { OBJECT_ID_PATTERN, deleteRefs, outputSummary, queryOk, redactedFailure, writeJsonRef } from './write-support.ts'
 import { detectOperationIn, readStateFile, rebaseStateDir } from './status.ts'
 
 export interface SmartStashOptions<V = unknown> {
@@ -86,8 +86,6 @@ const SMART_OPERATIONS: readonly SmartOperationKind[] = [
   'update',
 ]
 
-const SHA_PATTERN = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/
-
 export function stashMessage(operation: SmartOperationKind): string {
   return `dsh-git: before ${operation}`
 }
@@ -95,7 +93,7 @@ export function stashMessage(operation: SmartOperationKind): string {
 async function resolveRef(query: GitQuery, ref: string): Promise<string | undefined> {
   const result = await query(['rev-parse', '-q', '--verify', ref])
   const sha = result.stdout.trim()
-  return result.exitCode === 0 && SHA_PATTERN.test(sha) ? sha : undefined
+  return result.exitCode === 0 && OBJECT_ID_PATTERN.test(sha) ? sha : undefined
 }
 
 /** The pending marker, or undefined when absent or not well-formed (a stash is never inferred). */
@@ -114,7 +112,7 @@ export async function readPendingStash(query: GitQuery): Promise<PendingStash | 
   const { operation, branch, headSha, createdAt } = parsed as Record<string, unknown>
   if (typeof operation !== 'string' || !SMART_OPERATIONS.includes(operation as SmartOperationKind)) return undefined
   if (branch !== null && (typeof branch !== 'string' || !branch.startsWith('refs/heads/'))) return undefined
-  if (typeof headSha !== 'string' || !SHA_PATTERN.test(headSha)) return undefined
+  if (typeof headSha !== 'string' || !OBJECT_ID_PATTERN.test(headSha)) return undefined
   return {
     stashSha,
     operation: operation as SmartOperationKind,

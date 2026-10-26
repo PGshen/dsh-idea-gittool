@@ -6,18 +6,21 @@
 //   窗口降级为二选一，避免写回时破坏编码；
 // - `worktreeSha` 与写回同一条 clean filter（`hash-object --path`），供 `mergeApply` 检测加载后工作区被改；
 // - 草稿存在 `refs/worktree/dsh-git/merge-draft/<sha1(path)>`（ADR 0008），`version`/`stages`/形状不符或 JSON 损坏即作废；
-// - 已解决路径另给 `worktreeText`（裁定 16）：只读、lstat 确认是普通文件、realpath 仍在仓库内，限额与文本规则同三方。
+// - 已解决路径另给 `worktreeText`（裁定 16）：只读、lstat 确认是普通文件、realpath 仍在仓库内，限额与文本规则同三方；
+// - 未解决的文本冲突另给 `worktreeHasMarkers`（裁定 19）：工作区文件是否仍含冲突标记（与 mark-resolved 同一 `git grep`）；
+//   为 false 说明加载前已被改过（手改、Agent、rerere），窗口提示「应用会覆盖」，「全部简单冲突」跳过；
+// - 符号链接（120000）与子模块（160000）冲突给 `special`，不读三方内容（子模块的 commit 不在本仓库），窗口降级。
 
 import { createHash } from 'node:crypto'
 import { lstat, readFile, realpath } from 'node:fs/promises'
 import { join, relative, isAbsolute } from 'node:path'
 
-import type { ConflictKind, MergeDraft, MergeFileValue, MergeSide, MergeStageShas } from '../../shared/protocol.ts'
+import type { ConflictKind, MergeDraft, MergeFileSpecial, MergeFileValue, MergeSide, MergeStageShas } from '../../shared/protocol.ts'
 import { MERGE_DRAFT_VERSION, validDraftChunkRange } from '../../shared/protocol.ts'
 import type { WriteContext } from '../git-executor.ts'
 import { GitCommandFailure } from '../git-executor.ts'
 import type { StageEntries } from './conflict.ts'
-import { parseStageRecords, unmergedEntries } from './conflict.ts'
+import { hasMarkers, parseStageRecords, unmergedEntries } from './conflict.ts'
 import { detectOperation } from './status.ts'
 import { JsonRefInvalid, query, queryOk, readJsonRef, readRunner, redactedFailure } from './write-support.ts'
 
@@ -41,6 +44,14 @@ export function kindFromStages(stages: ReadonlySet<number>): ConflictKind {
   if (ours) return base ? 'deleted-by-them' : 'added-by-us'
   if (theirs) return base ? 'deleted-by-us' : 'added-by-them'
   return 'both-deleted'
+}
+
+/** Symlink / submodule entries cannot be merged as text (any stage with that mode). */
+export function specialOf(entries: StageEntries): MergeFileSpecial {
+  const modes = [...entries.values()].map(entry => entry.mode)
+  if (modes.includes('160000')) return 'submodule'
+  if (modes.includes('120000')) return 'symlink'
+  return null
 }
 
 export function staleConflict(path: string): GitCommandFailure {
@@ -165,15 +176,22 @@ export async function readMergeFile(ctx: WriteContext, path: string): Promise<Om
   const { entries, resolved } = await conflictStageEntries(ctx, path)
 
   const stages = stageShas(entries)
+  const special = specialOf(entries)
   const sides: Record<'base' | 'ours' | 'theirs', MergeSide | null> = { base: null, ours: null, theirs: null }
   let tooLarge = false
   for (const key of ['base', 'ours', 'theirs'] as const) {
     const sha = stages[key]
     if (sha === null) continue
+    if (special !== null) {
+      // A gitlink names a commit of another repository; a symlink's target is not merged as text.
+      sides[key] = { blob: sha, text: null, binary: false, size: 0 }
+      continue
+    }
     const read = await readSide(ctx, sha)
     sides[key] = read.side
     tooLarge ||= read.tooLarge
   }
+  const textConflict = !resolved && special === null && !tooLarge && sides.ours?.text != null && sides.theirs?.text != null
 
   let draft: MergeDraft | null = null
   let draftStale = false
@@ -193,10 +211,13 @@ export async function readMergeFile(ctx: WriteContext, path: string): Promise<Om
     kind: kindFromStages(new Set(entries.keys())),
     ...sides,
     tooLarge,
-    worktreeSha: await hashWorktree(ctx, path),
+    // Special entries are never written back by mergeApply (regular files only); a submodule directory cannot be hashed.
+    worktreeSha: special === null ? await hashWorktree(ctx, path) : null,
     draft,
     draftStale,
     resolved,
+    special,
+    ...(textConflict ? { worktreeHasMarkers: await hasMarkers(ctx, path) } : {}),
     ...(resolved ? { worktreeText: await readWorktreeText(ctx.repoRoot, path) } : {}),
   }
 }

@@ -3,6 +3,8 @@
  * React-free，直接驱动，不需要 DOM。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { zhT } from '../i18n-helpers.tsx'
+import { render } from '../../../src/client/localized-text.ts'
 
 import {
   LOG_EMPTY_PAGE_FOLLOW_LIMIT,
@@ -403,7 +405,7 @@ describe('jump', () => {
     const { store } = harness([page([commit('a')])])
     await store.loadFirstPage()
     expect(store.jumpTo('nope')).toBe(false)
-    expect(store.getState().jumpError).toContain('nope')
+    expect(jumpText(store)).toContain('nope')
     store.clearJumpError()
     expect(store.getState().jumpError).toBeNull()
   })
@@ -597,7 +599,7 @@ describe('locate beyond loaded rows (评审 I4)', () => {
     store.setRefs({ zzz9: [{ ref: 'refs/heads/side', name: 'side', kind: 'local', sha: 'zzz9' }] })
 
     expect(await store.locate('side')).toBe(false)
-    expect(store.getState().jumpError).toContain('不在当前视图')
+    expect(jumpText(store)).toContain('不在当前视图')
   })
 
   it('jumpTo does not flag an error while it is still paging', async () => {
@@ -611,3 +613,8 @@ describe('locate beyond loaded rows (评审 I4)', () => {
     expect(store.getState().jumpError).toBeNull()
   })
 })
+
+function jumpText(store: LogStore): string | null {
+  const value = store.getState().jumpError
+  return value === null ? null : render(zhT, value)
+}

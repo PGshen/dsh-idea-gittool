@@ -73,12 +73,13 @@ async function call<T>(endpoint: string, payload: unknown, signal?: AbortSignal)
       body: JSON.stringify(payload),
       ...(signal === undefined ? {} : { signal }),
     })
-    if (!response.ok) return failure(`HTTP ${response.status}：${endpoint}`)
+    // Transport failures read like Host errors (English, technical); the UI titles them by code.
+    if (!response.ok) return failure(`HTTP ${response.status}: ${endpoint}`)
     const raw: unknown = await response.json()
-    if (!isRpcResult<T>(raw)) return failure('Host 响应不符合 /dsh-git 协议')
+    if (!isRpcResult<T>(raw)) return failure('Host response does not match the /dsh-git protocol')
     return raw
   } catch (error) {
-    if (signal?.aborted === true) return failure('请求已取消')
+    if (signal?.aborted === true) return failure('Request cancelled')
     return failure(error instanceof Error ? error.message : String(error))
   }
 }

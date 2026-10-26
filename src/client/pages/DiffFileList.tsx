@@ -2,10 +2,12 @@
 // 两个组件都无 hook，选中状态由 DiffViewer 的控制器持有。
 import type { ReactNode } from 'react'
 import type { CommitFileEntry } from '../../shared/protocol.ts'
+import type { Translate } from '../i18n.tsx'
 import { StatusLetter } from '../ui/StatusLetter.tsx'
 import css from './DiffFileList.module.css'
 
 export interface DiffFileListProps {
+  t: Translate
   files: readonly CommitFileEntry[]
   /** 当前文件下标；-1 表示不在列表中。 */
   currentIndex: number
@@ -26,10 +28,10 @@ function fileKey(file: CommitFileEntry): string {
  * @param props - 文件、当前下标与选中回调。
  * @returns 文件列表导航。
  */
-export function DiffFileList({ files, currentIndex, onSelect }: DiffFileListProps): ReactNode {
+export function DiffFileList({ t, files, currentIndex, onSelect }: DiffFileListProps): ReactNode {
   return (
-    <nav className={css.list} aria-label="变更文件" data-diff-file-list>
-      <div className={css.title}>变更文件 ({files.length})</div>
+    <nav className={css.list} aria-label={t('detail.files')} data-diff-file-list>
+      <div className={css.title}>{t('diff.files.title', { count: files.length })}</div>
       {files.map((file, index) => (
         <button
           key={fileKey(file)}
@@ -53,11 +55,11 @@ export function DiffFileList({ files, currentIndex, onSelect }: DiffFileListProp
  * @param props - 文件、当前下标与选中回调。
  * @returns 原生 select。
  */
-export function DiffFileSelect({ files, currentIndex, onSelect }: DiffFileListProps): ReactNode {
+export function DiffFileSelect({ t, files, currentIndex, onSelect }: DiffFileListProps): ReactNode {
   return (
     <select
       className={css.select}
-      aria-label="切换文件"
+      aria-label={t('diff.switchFile')}
       value={currentIndex === -1 ? '' : String(currentIndex)}
       onChange={(event) => {
         const file = files[Number(event.currentTarget.value)]

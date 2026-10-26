@@ -3,10 +3,11 @@ import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
-import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { BootstrapCache } from './bootstrap-cache.ts'
 import type { GitClient } from './git-client.ts'
 import css from './GitBody.module.css'
+import { I18nProvider, useT } from './i18n.tsx'
 import { GitWorkbench } from './pages/GitWorkbench.tsx'
 import { createPoller } from './polling.ts'
 import { ReadOnlyBanner } from './read-only-banner.tsx'
@@ -17,7 +18,22 @@ export interface GitBodyInjected {
   gitClient: GitClient
 }
 
-export function GitBody(props: PropsRuntime<'sidebar.right.pane.tab'> & GitBodyInjected): ReactNode {
+/**
+ * Slot entry: the registration declares `locale: 'gitWorkbench'`, so the framework injects `t`
+ * (a new function on every locale switch). It reaches every component through I18nProvider.
+ */
+export type GitBodyProps = PropsRuntime<'sidebar.right.pane.tab'> & PropsLocale<'gitWorkbench'> & GitBodyInjected
+
+export function GitBody(props: GitBodyProps): ReactNode {
+  return (
+    <I18nProvider t={props.t}>
+      <GitBodyContent {...props} />
+    </I18nProvider>
+  )
+}
+
+function GitBodyContent(props: GitBodyProps): ReactNode {
+  const t = useT()
   const { sessionId, useTabInfo, useSessions, bootstrapCache, gitClient } = props
   const cwd = useSessions(state => state.byId[sessionId]?.cwd)
   const { tab } = useTabInfo()
@@ -44,8 +60,8 @@ export function GitBody(props: PropsRuntime<'sidebar.right.pane.tab'> & GitBodyI
     return (
       <div className={css.panel}>
         {failure === null
-          ? <span className={css.muted}>读取中…</span>
-          : <span className={css.error}>{failure.code}：{failure.message}</span>}
+          ? <span className={css.muted}>{t('state.loading')}</span>
+          : <span className={css.error}>{t('error.detail', { code: failure.code, message: failure.message })}</span>}
         {cwd === undefined ? null : <span className={css.mono}>{cwd}</span>}
       </div>
     )
@@ -56,7 +72,7 @@ export function GitBody(props: PropsRuntime<'sidebar.right.pane.tab'> & GitBodyI
       <div className={css.panel}>
         <ReadOnlyBanner policy={value.writePolicy} />
         <span className={css.mono}>{cwd ?? ''}</span>
-        <span className={css.muted}>当前会话目录不在 Git 仓库中。在仓库里打开会话后，这里会显示提交与工作区状态。</span>
+        <span className={css.muted}>{t('body.notRepository')}</span>
       </div>
     )
   }

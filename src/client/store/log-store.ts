@@ -10,6 +10,8 @@ import type {
 } from '../../shared/protocol.ts'
 import { LOG_PAGE_MAX_LIMIT } from '../../shared/protocol.ts'
 import { createGraphLayout } from '../graph/layout.ts'
+import { text } from '../localized-text.ts'
+import type { LocalizedText } from '../localized-text.ts'
 import type { GraphLayout, GraphRow } from '../graph/layout.ts'
 
 /** 每页 100 条（设计 §8.1.3）。 */
@@ -115,7 +117,7 @@ export interface LogState {
   activeIndex: number
   /** 筛选/排序重建计数：表格据此回到顶部（AC4）。 */
   generation: number
-  jumpError: string | null
+  jumpError: LocalizedText | null
   /** 已加载到 2000 行上限，不再自动加载。 */
   atRowLimit: boolean
 }
@@ -373,9 +375,7 @@ export function createLogStore(options: LogStoreOptions): LogStore {
   function failJump(target: string): void {
     const refSha = findRefSha(state.refsBySha, target.toLowerCase())
     setState({
-      jumpError: refSha !== null
-        ? `「${target}」不在当前视图中（已加载 ${state.commits.length} 行）；可在分支面板双击它，过滤到该分支`
-        : `已加载的 ${state.commits.length} 行中未找到「${target}」`,
+      jumpError: text(refSha !== null ? 'log.jump.notInView' : 'log.jump.notFound', { target, count: state.commits.length }),
     })
   }
 
@@ -584,7 +584,7 @@ export function createLogStore(options: LogStoreOptions): LogStore {
     jumpTo(input) {
       const target = input.trim()
       if (target.length === 0) {
-        setState({ jumpError: '请输入哈希、分支或标签' })
+        setState({ jumpError: text('log.jump.empty') })
         return false
       }
       if (selectLoaded(target)) return true
@@ -600,7 +600,7 @@ export function createLogStore(options: LogStoreOptions): LogStore {
     async locate(input) {
       const target = input.trim()
       if (target.length === 0) {
-        setState({ jumpError: '请输入哈希、分支或标签' })
+        setState({ jumpError: text('log.jump.empty') })
         return false
       }
       if (selectLoaded(target)) return true

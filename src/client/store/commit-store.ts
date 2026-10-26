@@ -5,46 +5,14 @@ import { useSyncExternalStore } from 'react'
 import type {
   CommitResultValue,
   GitError,
-  RepoOperation,
   RpcResult,
   StatusValue,
   WritePolicyValue,
 } from '../../shared/protocol.ts'
 import { newRequestId as defaultRequestId } from '../git-client.ts'
 import type { GitClient } from '../git-client.ts'
-import { fillText } from './changes-store.ts'
-
-/** Visible strings of this module; moved into the locale namespace in T7. */
-export const TEXT = {
-  submit: '提交',
-  submitAmend: '修改提交',
-  submitAmendMessage: '仅修改提交信息',
-  reasonReadOnly: '当前仓库为只读，不能提交',
-  reasonNoRepository: '未读取到仓库状态',
-  reasonOperation: '{operation}进行中，请先在横幅中完成或中止后再提交',
-  reasonPending: '等待当前操作完成',
-  reasonNoFiles: '请至少选择一个文件',
-  reasonNoMessage: '请填写提交信息',
-  reasonPushAmend: 'Amend 后推送需要强制推送，请在推送页操作',
-  operationMerge: '合并',
-  operationRebase: '变基',
-  operationCherryPick: '拣选',
-  operationRevert: '回滚提交',
-  operationBisect: '二分查找',
-  rewriteWarning: '这会改写已推送的历史，之后推送需要 force-with-lease',
-  detachedHint: 'HEAD 处于游离状态：提交不会属于任何分支，推送时需显式选择远程分支',
-  subjectTooLong: '主题行 {length} 个字符，建议不超过 {limit} 个',
-  committed: '已提交 {sha}',
-  errorHook: '提交被 Git hook 阻止',
-  errorPathsChanged: '文件已变化，刷新后重试',
-  errorIndexNotClean: '暂存区有未勾选的改动，仅修改提交信息会把它们带进提交；请先处理暂存区',
-  errorSandbox: '沙箱不允许写入该仓库（只读）',
-  errorLocked: '仓库被另一个 Git 进程锁定，请稍后重试',
-  errorOperation: '仓库有进行中的操作，请先在横幅中完成或中止',
-  errorTimeout: '提交超时',
-  errorGeneric: '提交失败',
-  errorDetail: '{code}：{message}',
-} as const
+import { READ_ONLY_REASON_KEY, OPERATION_KEY } from '../locales.ts'
+import type { Translate } from '../localized-text.ts'
 
 export const HISTORY_LIMIT = 20
 export const SUBJECT_SOFT_LIMIT = 72
@@ -127,11 +95,11 @@ export function messageRows(message: string): number {
 }
 
 /** Soft, non-blocking hint when the subject line exceeds 72 characters. */
-export function subjectHint(message: string): string | null {
+export function subjectHint(message: string, t: Translate): string | null {
   const subject = message.split('\n', 1)[0] ?? ''
   const length = [...subject].length
   if (length <= SUBJECT_SOFT_LIMIT) return null
-  return fillText(TEXT.subjectTooLong, { length, limit: SUBJECT_SOFT_LIMIT })
+  return t('commit.subjectTooLong', { length, limit: SUBJECT_SOFT_LIMIT })
 }
 
 export interface ShortcutEventLike {
@@ -187,34 +155,29 @@ export interface CommitGate {
   detachedHint: string | null
 }
 
-const OPERATION_TEXT: Record<Exclude<RepoOperation, null>, string> = {
-  merge: TEXT.operationMerge,
-  rebase: TEXT.operationRebase,
-  'cherry-pick': TEXT.operationCherryPick,
-  revert: TEXT.operationRevert,
-  bisect: TEXT.operationBisect,
-}
-
 /**
  * Decides what the commit controls show and whether they are enabled.
  * @param input - write policy, status snapshot, pending writes and the form state.
+ * @param t - translator for labels and reasons.
  * @returns labels, the disabled reason and warnings.
  */
-export function commitGate(input: CommitGateInput): CommitGate {
+export function commitGate(input: CommitGateInput, t: Translate): CommitGate {
   const { status, amend } = input
   const mode: CommitMode = amend && input.checkedCount === 0 ? 'amend-message' : 'files'
-  const submitLabel = !amend ? TEXT.submit : mode === 'amend-message' ? TEXT.submitAmendMessage : TEXT.submitAmend
+  const submitLabel = !amend ? t('commit.submit') : mode === 'amend-message' ? t('commit.submitAmendMessage') : t('commit.submitAmend')
   let blockReason: string | null = null
-  if (input.writePolicy.mode === 'read-only') blockReason = input.writePolicy.reason ?? TEXT.reasonReadOnly
-  else if (status === null) blockReason = TEXT.reasonNoRepository
-  else if (status.operation !== null) blockReason = fillText(TEXT.reasonOperation, { operation: OPERATION_TEXT[status.operation] })
-  else if (input.pendingWrites > 0) blockReason = TEXT.reasonPending
+  if (input.writePolicy.mode === 'read-only') {
+    const code = input.writePolicy.reasonCode
+    blockReason = code === undefined ? (input.writePolicy.reason ?? t('commit.reasonReadOnly')) : t(READ_ONLY_REASON_KEY[code])
+  } else if (status === null) blockReason = t('commit.reasonNoRepository')
+  else if (status.operation !== null) blockReason = t('commit.reasonOperation', { operation: t(OPERATION_KEY[status.operation]) })
+  else if (input.pendingWrites > 0) blockReason = t('commit.reasonPending')
   const blocked = blockReason !== null
   const submitting = input.phase === 'submitting'
   let disabledReason = blockReason
   if (disabledReason === null && !submitting) {
-    if (normalizeMessage(input.message).trim() === '') disabledReason = TEXT.reasonNoMessage
-    else if (mode === 'files' && input.checkedCount === 0) disabledReason = TEXT.reasonNoFiles
+    if (normalizeMessage(input.message).trim() === '') disabledReason = t('commit.reasonNoMessage')
+    else if (mode === 'files' && input.checkedCount === 0) disabledReason = t('commit.reasonNoFiles')
   }
   const canSubmit = disabledReason === null && !submitting
   const pushed = status !== null && status.upstream !== null && status.ahead === 0
@@ -227,8 +190,8 @@ export function commitGate(input: CommitGateInput): CommitGate {
     canSubmit,
     canPush: canSubmit && !amend,
     pushNeedsPage: status === null || status.upstream === null || status.detached,
-    rewriteWarning: amend && pushed ? TEXT.rewriteWarning : null,
-    detachedHint: status?.detached === true ? TEXT.detachedHint : null,
+    rewriteWarning: amend && pushed ? t('commit.rewriteWarning') : null,
+    detachedHint: status?.detached === true ? t('commit.detachedHint') : null,
   }
 }
 
@@ -255,24 +218,24 @@ function hookOutput(details: Record<string, unknown> | undefined): string | null
 }
 
 /** Actionable copy for a failed commit (design §8.2.4, plan T5). */
-export function commitErrorView(error: GitError): CommitErrorView {
+export function commitErrorView(error: GitError, t: Translate): CommitErrorView {
   switch (error.code) {
     case 'git/hook-failed':
-      return { title: TEXT.errorHook, detail: hookOutput(error.details) ?? error.message, action: 'console' }
+      return { title: t('commit.errorHook'), detail: hookOutput(error.details) ?? error.message, action: 'console' }
     case 'git/paths-changed':
-      return { title: TEXT.errorPathsChanged, detail: null, action: 'refresh' }
+      return { title: t('commit.errorPathsChanged'), detail: null, action: 'refresh' }
     case 'git/index-not-clean':
-      return { title: TEXT.errorIndexNotClean, detail: null, action: null }
+      return { title: t('commit.errorIndexNotClean'), detail: null, action: null }
     case 'git/sandbox-denied':
-      return { title: TEXT.errorSandbox, detail: error.message, action: null }
+      return { title: t('commit.errorSandbox'), detail: error.message, action: null }
     case 'git/locked':
-      return { title: TEXT.errorLocked, detail: null, action: 'console' }
+      return { title: t('commit.errorLocked'), detail: null, action: 'console' }
     case 'git/operation-in-progress':
-      return { title: TEXT.errorOperation, detail: null, action: 'refresh' }
+      return { title: t('commit.errorOperation'), detail: null, action: 'refresh' }
     case 'git/timeout':
-      return { title: TEXT.errorTimeout, detail: null, action: 'console' }
+      return { title: t('commit.errorTimeout'), detail: null, action: 'console' }
     default:
-      return { title: TEXT.errorGeneric, detail: fillText(TEXT.errorDetail, { code: error.code, message: error.message }), action: 'console' }
+      return { title: t('commit.errorGeneric'), detail: t('error.detail', { code: error.code, message: error.message }), action: 'console' }
   }
 }
 

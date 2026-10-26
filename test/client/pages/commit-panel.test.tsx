@@ -1,6 +1,7 @@
 // T5 commit page: orchestration (runCommit) and render snapshots of the panel and message box.
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
+import { zhT } from '../i18n-helpers.tsx'
 import { CommitMessage, historyPreview } from '../../../src/client/pages/CommitMessage.tsx'
 import { CommitPanel, runCommit } from '../../../src/client/pages/CommitPanel.tsx'
 import type { CommitPanelProps } from '../../../src/client/pages/CommitPanel.tsx'
@@ -27,7 +28,7 @@ function setup(options: { status?: StatusValue; result?: RpcResult<CommitResultV
     message: commitStore.getState().message,
     amend: commitStore.getState().amend,
     phase: commitStore.getState().phase,
-  })
+  }, zhT)
   const render = (overrides: Partial<CommitPanelProps> = {}): string => renderToStaticMarkup(
     <CommitPanel
       changesStore={changesStore}

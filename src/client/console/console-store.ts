@@ -5,6 +5,8 @@ import { CONSOLE_OUTPUT_MAX_BYTES } from '../../shared/protocol.ts'
 import type { ConsoleRecord, ConsoleValue, GitError, RpcResult } from '../../shared/protocol.ts'
 import { createPoller, DEFAULT_POLL_INTERVAL_MS } from '../polling.ts'
 import type { Poller } from '../polling.ts'
+import { text } from '../localized-text.ts'
+import type { LocalizedText } from '../localized-text.ts'
 
 // ---------------------------------------------------------------------------
 // 纯函数：脱敏、截断、argv 拆分与展示
@@ -129,11 +131,11 @@ export function isFailedRecord(record: ConsoleRecord): boolean {
 }
 
 /** 退出码列的文本。 */
-export function exitLabel(record: ConsoleRecord): string {
-  if (record.timedOut === true) return '超时'
-  if (record.cancelled === true) return '已取消'
-  if (record.exitCode === null) return '—'
-  return `退出码 ${record.exitCode}`
+export function exitLabel(record: ConsoleRecord): LocalizedText {
+  if (record.timedOut === true) return text('console.exit.timeout')
+  if (record.cancelled === true) return text('console.exit.cancelled')
+  if (record.exitCode === null) return text('console.exit.unknown')
+  return text('console.exit.code', { code: record.exitCode })
 }
 
 /** 折叠时的单行摘要：失败优先 stderr，否则 stdout 的首个非空行。 */

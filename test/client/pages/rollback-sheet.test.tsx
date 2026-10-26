@@ -4,6 +4,8 @@
  */
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
+import { zh } from '../../../src/client/locales.ts'
+import { zhT } from '../i18n-helpers.tsx'
 import type { RollbackValue } from '../../../src/shared/protocol.ts'
 import type { RollbackState, RollbackTarget } from '../../../src/client/store/push-store.ts'
 import {
@@ -12,7 +14,6 @@ import {
   ROLLBACK_VISIBLE_ROWS,
   RollbackSheet,
   RollbackSheetView,
-  TEXT,
 } from '../../../src/client/pages/RollbackSheet.tsx'
 import type { RollbackSheetViewProps } from '../../../src/client/pages/RollbackSheet.tsx'
 
@@ -47,6 +48,7 @@ const IDLE: RollbackState = { deleteConfirmed: false, busy: false, error: null, 
 
 function props(overrides: Partial<RollbackSheetViewProps> = {}): RollbackSheetViewProps {
   return {
+    t: zhT,
     targets: TARGETS,
     state: IDLE,
     readOnlyReason: null,
@@ -70,7 +72,7 @@ describe('RollbackSheetView', () => {
     expect(html).toContain('data-untracked="true"')
     expect(html).toContain('将丢弃 3 个文件的未提交改动，且无法恢复。暂存区里的内容会保留。')
     expect(html).toContain('删除 2 个未跟踪文件且无法恢复')
-    expect(html).toContain(TEXT.untrackedSkipHint)
+    expect(html).toContain(zh['rollback.untrackedSkipHint'])
     expect(html).not.toMatch(/type="checkbox"[^>]*checked=""/)
   })
 
@@ -89,7 +91,7 @@ describe('RollbackSheetView', () => {
 
   it('cancel calls onCancel only (no submit)', () => {
     const p = props()
-    const cancel = findAll(RollbackSheetView(p), element => element.props.children === TEXT.cancel)[0]
+    const cancel = findAll(RollbackSheetView(p), element => element.props.children === zh['action.cancel'])[0]
     invoke(cancel, 'onClick')
     expect(p.onCancel).toHaveBeenCalledTimes(1)
     expect(p.onSubmit).not.toHaveBeenCalled()
@@ -108,7 +110,7 @@ describe('RollbackSheetView', () => {
     const p = props({ targets: onlyNew })
     const tree = RollbackSheetView(p)
     expect(primaryOf(tree)?.props.disabled).toBe(true)
-    expect(renderToStaticMarkup(<RollbackSheetView {...p} />)).toContain(TEXT.block.nothing)
+    expect(renderToStaticMarkup(<RollbackSheetView {...p} />)).toContain(zh['rollback.block.nothing'])
     invoke(formOf(tree), 'onSubmit', { preventDefault: vi.fn() })
     expect(p.onSubmit).not.toHaveBeenCalled()
     expect(primaryOf(RollbackSheetView(props({ targets: onlyNew, state: { ...IDLE, deleteConfirmed: true } })))?.props.disabled).toBe(false)
@@ -118,7 +120,7 @@ describe('RollbackSheetView', () => {
     const p = props({ state: { ...IDLE, busy: true } })
     const tree = RollbackSheetView(p)
     expect(primaryOf(tree)?.props.disabled).toBe(true)
-    expect(renderToStaticMarkup(<RollbackSheetView {...p} />)).toContain(TEXT.submitting)
+    expect(renderToStaticMarkup(<RollbackSheetView {...p} />)).toContain(zh['rollback.submitting'])
   })
 
   it('read-only disables with the reason', () => {
@@ -133,7 +135,7 @@ describe('RollbackSheetView', () => {
     expect(html).toContain('已丢弃 1 个文件的工作区改动')
     expect(html).toContain('暂存区改动已保留（1 个文件）')
     expect(html).toContain('已跳过 2 个未跟踪文件')
-    expect(html).toContain(TEXT.close)
+    expect(html).toContain(zh['action.close'])
     expect(html).not.toContain('<form')
   })
 

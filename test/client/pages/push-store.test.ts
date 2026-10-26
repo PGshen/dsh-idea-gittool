@@ -1,6 +1,7 @@
 // T6 push-store: form defaults + memory, risk gating, request de-duplication, rejection flow,
 // auto-retry exactly once, conflict / auth outcomes, rollback store, Esc helpers.
 import { describe, expect, it, vi } from 'vitest'
+import { interpolate } from '../../../src/client/localized-text.ts'
 import type {
   CommitSummary,
   GitError,
@@ -15,7 +16,6 @@ import {
   createPushStore,
   createRollbackStore,
   defaultPushForm,
-  formatText,
   parseRejectedDetails,
   PUSH_MEMORY_PREFIX,
   pushEscapeAction,
@@ -109,9 +109,9 @@ async function loadedStore(options: { client?: PushClient; storage?: KeyValueSto
   return { store, client }
 }
 
-describe('formatText', () => {
+describe('interpolate', () => {
   it('replaces {name} placeholders and leaves unknown ones', () => {
-    expect(formatText('删除 {count} 个文件 {x}', { count: 3 })).toBe('删除 3 个文件 {x}')
+    expect(interpolate('删除 {count} 个文件 {x}', { count: 3 })).toBe('删除 3 个文件 {x}')
   })
 })
 

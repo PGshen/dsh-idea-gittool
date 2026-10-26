@@ -11,6 +11,9 @@ import type {
   GitError,
   RefEntry,
 } from '../../shared/protocol.ts'
+import { render, text, useT } from '../i18n.tsx'
+import type { LocalizedText, Translate } from '../i18n.tsx'
+import type { GitWorkbenchKey } from '../locales.ts'
 import { Button } from '../ui/Button.tsx'
 import { Chip } from '../ui/Chip.tsx'
 import { EmptyState } from '../ui/EmptyState.tsx'
@@ -36,25 +39,25 @@ export function formatAbsoluteTime(iso: string): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
 }
 
-const RELATIVE_WORDS: Record<RelativeTimeUnit, (n: number) => string> = {
-  now: () => '刚刚',
-  minutes: n => `${n} 分钟前`,
-  hours: n => `${n} 小时前`,
-  days: n => `${n} 天前`,
-  months: n => `${n} 个月前`,
-  years: n => `${n} 年前`,
+const RELATIVE_KEYS: Record<RelativeTimeUnit, GitWorkbenchKey> = {
+  now: 'time.now',
+  minutes: 'time.minutes',
+  hours: 'time.hours',
+  days: 'time.days',
+  months: 'time.months',
+  years: 'time.years',
 }
 
-/** 把 ui-primitives 的相对时间桶翻成中文；hover 到绝对时间上显示。 */
-export function relativeLabel(bucket: RelativeTime): string {
-  return RELATIVE_WORDS[bucket.unit](bucket.n)
+/** 把 ui-primitives 的相对时间桶翻成文案键；hover 到绝对时间上显示。 */
+export function relativeLabel(bucket: RelativeTime): LocalizedText {
+  return text(RELATIVE_KEYS[bucket.unit], { n: bucket.n })
 }
 
 /** 相对时间文案；`now` 由调用方注入，保证快照可复现。 */
-export function formatRelativeTime(iso: string, now: number): string {
+export function formatRelativeTime(iso: string, now: number, t: Translate): string {
   const at = new Date(iso).getTime()
   if (Number.isNaN(at)) return iso
-  return relativeLabel(relativeTime(at, now))
+  return render(t, relativeLabel(relativeTime(at, now)))
 }
 
 /** 作者与提交者不同时才单独显示「提交者」（设计 §8.1.5 第 5 条）。 */
@@ -92,6 +95,7 @@ function copyToClipboard(text: string): void {
 }
 
 export interface ParentLinksProps {
+  t: Translate
   parents: CommitParentValue[]
   onNavigate?: (sha: string) => void
 }
@@ -102,23 +106,24 @@ export interface ParentLinksProps {
  * @param props - 父提交列表与跳转回调。
  * @returns 父提交信息行。
  */
-export function ParentLinks({ parents, onNavigate }: ParentLinksProps): ReactNode {
+export function ParentLinks({ t, parents, onNavigate }: ParentLinksProps): ReactNode {
   if (parents.length === 0) {
     return (
       <div className={css.metaRow}>
-        <span className={css.muted}>没有父提交（根提交）</span>
+        <span className={css.muted}>{t('detail.root')}</span>
       </div>
     )
   }
   return (
     <div className={css.metaRow} data-parents>
-      <span className={css.muted}>父提交</span>
+      <span className={css.muted}>{t('detail.parents')}</span>
       {parents.map(parent => parentButton(parent, onNavigate))}
     </div>
   )
 }
 
 export interface HashRowProps {
+  t: Translate
   sha: string
   shortSha: string
   refs: RefEntry[]
@@ -132,12 +137,12 @@ export interface HashRowProps {
  * @param props - 哈希、refs、是否已复制与复制回调。
  * @returns 哈希信息行。
  */
-export function HashRow({ sha, shortSha, refs, copied, onCopy }: HashRowProps): ReactNode {
+export function HashRow({ t, sha, shortSha, refs, copied, onCopy }: HashRowProps): ReactNode {
   return (
     <div className={css.metaRow}>
       <code className={css.hash} title={sha}>{shortSha}</code>
-      <Button className={css.copyButton} title="复制完整修订号" onClick={() => onCopy(sha)}>
-        {copied ? '已复制' : '复制修订号'}
+      <Button className={css.copyButton} title={t('detail.copyHash.title')} onClick={() => onCopy(sha)}>
+        {copied ? t('detail.copied') : t('detail.copyHash')}
       </Button>
       {refs.map(ref => (
         <Chip key={ref.ref} kind={ref.kind} title={ref.ref}>{ref.name}</Chip>
@@ -147,6 +152,7 @@ export function HashRow({ sha, shortSha, refs, copied, onCopy }: HashRowProps): 
 }
 
 export interface FilesModeToggleProps {
+  t: Translate
   mode: ChangedFilesMode
   onChange: (mode: ChangedFilesMode) => void
 }
@@ -156,16 +162,16 @@ export interface FilesModeToggleProps {
  * @param props - 当前模式与切换回调。
  * @returns 切换按钮。
  */
-export function FilesModeToggle({ mode, onChange }: FilesModeToggleProps): ReactNode {
+export function FilesModeToggle({ t, mode, onChange }: FilesModeToggleProps): ReactNode {
   const next: ChangedFilesMode = mode === 'tree' ? 'flat' : 'tree'
   return (
     <Button
       className={css.modeToggle}
       data-files-mode-toggle
-      title={next === 'flat' ? '切换为扁平列表' : '切换为按目录分组'}
+      title={t(next === 'flat' ? 'detail.mode.toFlat' : 'detail.mode.toTree')}
       onClick={() => onChange(next)}
     >
-      {next === 'flat' ? '扁平' : '按目录'}
+      {t(next === 'flat' ? 'detail.mode.flat' : 'detail.mode.tree')}
     </Button>
   )
 }
@@ -187,8 +193,8 @@ function parentButton(parent: CommitParentValue, onNavigate: ((sha: string) => v
 }
 
 /** 合并提交的分组标题：「对父提交 1a2b3c4 的变更」。 */
-function parentGroupLabel(parent: CommitParentValue | undefined, parentSha: string): string {
-  return `对父提交 ${parent?.shortSha ?? parentSha.slice(0, 8)} 的变更`
+function parentGroupLabel(t: Translate, parent: CommitParentValue | undefined, parentSha: string): string {
+  return t('detail.parentGroup', { sha: parent?.shortSha ?? parentSha.slice(0, 8) })
 }
 
 /**
@@ -210,6 +216,7 @@ export function CommitDetail({
   onRetry,
   onCopy,
 }: CommitDetailProps): ReactNode {
+  const t = useT()
   const [bodyExpanded, setBodyExpanded] = useState<boolean>(defaultBodyExpanded ?? false)
   const [collapsedParents, setCollapsedParents] = useState<ReadonlySet<string>>(
     () => new Set(defaultCollapsedParents ?? []),
@@ -223,9 +230,9 @@ export function CommitDetail({
       <div className={css.stateBox}>
         <EmptyState
           error
-          title="读取提交详情失败"
-          hint={error?.message ?? '请重试'}
-          action={onRetry === undefined ? undefined : { label: '重试', onClick: onRetry }}
+          title={t('detail.loadFailed')}
+          hint={error?.message ?? t('action.retryHint')}
+          action={onRetry === undefined ? undefined : { label: t('action.retry'), onClick: onRetry }}
         />
       </div>
     )
@@ -233,7 +240,7 @@ export function CommitDetail({
   if (detail === null) {
     return (
       <p className={css.state} role="status">
-        {status === 'loading' ? '加载提交详情…' : '选择一个提交查看详情'}
+        {t(status === 'loading' ? 'detail.loading' : 'detail.placeholder')}
       </p>
     )
   }
@@ -263,6 +270,7 @@ export function CommitDetail({
       <h2 className={css.subject} title={detail.subject}>{detail.subject}</h2>
 
       <HashRow
+        t={t}
         sha={detail.sha}
         shortSha={detail.shortSha}
         refs={detail.refs}
@@ -276,7 +284,7 @@ export function CommitDetail({
       <div className={css.metaRow}>
         <span className={css.author}>{detail.author.name} &lt;{detail.author.email}&gt;</span>
         <span className={css.separator}>·</span>
-        <time dateTime={detail.author.date} title={formatRelativeTime(detail.author.date, now)}>
+        <time dateTime={detail.author.date} title={formatRelativeTime(detail.author.date, now, t)}>
           {formatAbsoluteTime(detail.author.date)}
         </time>
       </div>
@@ -284,38 +292,38 @@ export function CommitDetail({
       {committerDiffers(detail) ? (
         <div className={css.metaRow} data-committer>
           <span className={css.author}>
-            提交者 {detail.committer.name} &lt;{detail.committer.email}&gt;
+            {t('detail.committer', { name: detail.committer.name, email: detail.committer.email })}
           </span>
           <span className={css.separator}>·</span>
-          <time dateTime={detail.committer.date} title={formatRelativeTime(detail.committer.date, now)}>
+          <time dateTime={detail.committer.date} title={formatRelativeTime(detail.committer.date, now, t)}>
             {formatAbsoluteTime(detail.committer.date)}
           </time>
         </div>
       ) : null}
 
-      <ParentLinks parents={detail.parents} onNavigate={onNavigate} />
+      <ParentLinks t={t} parents={detail.parents} onNavigate={onNavigate} />
 
       {detail.body.trim() === '' ? null : (
         <div className={css.body} data-body-collapsed={collapsedBody && !expanded ? 'true' : undefined}>
           <pre className={expanded ? css.bodyText : `${css.bodyText} ${css.bodyClamped}`}>{detail.body}</pre>
           {collapsedBody ? (
             <Button className={css.bodyToggle} onClick={() => setBodyExpanded(current => !current)}>
-              {expanded ? '收起' : '展开全部'}
+              {t(expanded ? 'detail.body.collapse' : 'detail.body.expand')}
             </Button>
           ) : null}
         </div>
       )}
 
       {detail.truncated ? (
-        <p className={css.note} data-detail-truncated>变更文件过多，仅显示前 {detail.files.length} 个。</p>
+        <p className={css.note} data-detail-truncated>{t('detail.truncated', { count: detail.files.length })}</p>
       ) : null}
 
       {hasParentGroups ? (
         <div className={css.groups}>
           <div className={css.filesToolbar} data-files-toolbar>
-            <span className={css.filesLabel}>变更文件</span>
+            <span className={css.filesLabel}>{t('detail.files')}</span>
             <span className={css.count}>{detail.files.length}</span>
-            <FilesModeToggle mode={filesMode} onChange={setFilesMode} />
+            <FilesModeToggle t={t} mode={filesMode} onChange={setFilesMode} />
           </div>
           {detail.parentGroups?.map((group) => {
             const isCollapsed = collapsedParents.has(group.parentSha)
@@ -328,7 +336,7 @@ export function CommitDetail({
                   onClick={() => toggleParentGroup(group.parentSha)}
                 >
                   <span className={css.chevron} aria-hidden="true">{isCollapsed ? '▸' : '▾'}</span>
-                  <span>{parentGroupLabel(parents.get(group.parentSha), group.parentSha)}</span>
+                  <span>{parentGroupLabel(t, parents.get(group.parentSha), group.parentSha)}</span>
                   <span className={css.count}>{group.files.length}</span>
                 </button>
                 {isCollapsed ? null : (
@@ -346,10 +354,10 @@ export function CommitDetail({
       ) : (
         <ChangedFilesTree
           files={detail.files}
-          label="变更文件"
+          label={t('detail.files')}
           mode={filesMode}
           selectedPath={selectedFile?.path}
-          headerExtra={<FilesModeToggle mode={filesMode} onChange={setFilesMode} />}
+          headerExtra={<FilesModeToggle t={t} mode={filesMode} onChange={setFilesMode} />}
           onOpenFile={onOpenFile}
         />
       )}

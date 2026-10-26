@@ -1,18 +1,9 @@
 // Commit message box (design §8.2.3): 3–8 rows auto-size, subject length hint, history, Cmd/Ctrl+Enter.
 import { useEffect, useRef, useState } from 'react'
 import type { ReactNode, RefObject } from 'react'
+import { useT } from '../i18n.tsx'
 import { isSubmitShortcut, messageRows, subjectHint } from '../store/commit-store.ts'
 import css from './CommitMessage.module.css'
-
-/** Visible strings of this module; moved into the locale namespace in T7. */
-export const TEXT = {
-  label: '提交信息',
-  placeholder: '提交信息（第一行为主题，空一行后写正文）',
-  history: '历史 ▾',
-  historyLabel: '最近的提交信息',
-  historyEmpty: '还没有提交历史',
-  shortcutHint: '⌘/Ctrl+Enter 提交',
-} as const
 
 /** First line of a history entry, for the dropdown. */
 export function historyPreview(message: string): string {
@@ -33,12 +24,13 @@ export interface CommitMessageProps {
 }
 
 export function CommitMessage({ value, onChange, onSubmit, history, onPickHistory, disabled = false, textareaRef }: CommitMessageProps): ReactNode {
+  const t = useT()
   const [historyOpen, setHistoryOpen] = useState(false)
   const localRef = useRef<HTMLTextAreaElement>(null)
   const ref = textareaRef ?? localRef
   const caretToEnd = useRef(false)
   const menuRef = useRef<HTMLDivElement>(null)
-  const hint = subjectHint(value)
+  const hint = subjectHint(value, t)
 
   useEffect(() => {
     if (!caretToEnd.current) return
@@ -62,7 +54,7 @@ export function CommitMessage({ value, onChange, onSubmit, history, onPickHistor
   return (
     <div className={css.root} data-commit-message>
       <div className={css.header}>
-        <label className={css.label} htmlFor="dsh-git-commit-message">{TEXT.label}</label>
+        <label className={css.label} htmlFor="dsh-git-commit-message">{t('message.label')}</label>
         <div ref={menuRef} className={css.historyAnchor}>
           <button
             type="button"
@@ -72,13 +64,13 @@ export function CommitMessage({ value, onChange, onSubmit, history, onPickHistor
             disabled={disabled}
             onClick={() => setHistoryOpen(open => !open)}
           >
-            {TEXT.history}
+            {t('message.history')}
           </button>
           {historyOpen
             ? (
                 <div
                   role="listbox"
-                  aria-label={TEXT.historyLabel}
+                  aria-label={t('message.historyLabel')}
                   className={css.historyMenu}
                   onKeyDown={(event) => {
                     if (event.key === 'Escape') {
@@ -89,7 +81,7 @@ export function CommitMessage({ value, onChange, onSubmit, history, onPickHistor
                   }}
                 >
                   {history.length === 0
-                    ? <div className={css.historyEmpty}>{TEXT.historyEmpty}</div>
+                    ? <div className={css.historyEmpty}>{t('message.historyEmpty')}</div>
                     : history.map(item => (
                         <button
                           key={item}
@@ -118,7 +110,7 @@ export function CommitMessage({ value, onChange, onSubmit, history, onPickHistor
         className={css.input}
         rows={messageRows(value)}
         value={value}
-        placeholder={TEXT.placeholder}
+        placeholder={t('message.placeholder')}
         spellCheck={false}
         disabled={disabled}
         aria-describedby={hint === null ? undefined : 'dsh-git-commit-subject-hint'}
@@ -132,7 +124,7 @@ export function CommitMessage({ value, onChange, onSubmit, history, onPickHistor
       />
       <div className={css.footer}>
         {hint === null ? <span /> : <span id="dsh-git-commit-subject-hint" className={css.hint} data-subject-hint>{hint}</span>}
-        <span className={css.shortcut}>{TEXT.shortcutHint}</span>
+        <span className={css.shortcut}>{t('message.shortcutHint')}</span>
       </div>
     </div>
   )

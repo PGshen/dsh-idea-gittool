@@ -4,6 +4,7 @@
  */
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
+import { zhT } from './i18n-helpers.tsx'
 
 import {
   DocumentActions,
@@ -13,7 +14,7 @@ import {
 import type { DocumentActionsProps } from '../../src/client/document-actions.tsx'
 
 function renderActions(props: Partial<DocumentActionsProps> & { absolutePath: string }): string {
-  return renderToStaticMarkup(<DocumentActions {...(props as DocumentActionsProps)} />)
+  return renderToStaticMarkup(<DocumentActions {...({ t: zhT, ...props } as DocumentActionsProps)} />)
 }
 
 describe('toRepoRelativePath', () => {

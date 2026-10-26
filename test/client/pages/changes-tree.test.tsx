@@ -1,6 +1,7 @@
 // T4 rendering: page tabs badge, changes tree rows/menu, title dot states.
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
+import { zhT } from '../i18n-helpers.tsx'
 import { GitTitleView, titleDot } from '../../../src/client/GitTitle.tsx'
 import {
   ChangeContextMenu,
@@ -48,20 +49,20 @@ describe('PageTabs', () => {
 
 describe('titleDot', () => {
   it('no dot for a clean tree or before the first load', () => {
-    expect(titleDot(null)).toBeNull()
-    expect(titleDot(bootstrap(null))).toBeNull()
-    expect(titleDot(bootstrap(statusFixture()))).toBeNull()
+    expect(titleDot(null, zhT)).toBeNull()
+    expect(titleDot(bootstrap(null), zhT)).toBeNull()
+    expect(titleDot(bootstrap(statusFixture()), zhT)).toBeNull()
   })
 
   it('brand dot with the uncommitted count', () => {
-    const dot = titleDot(bootstrap(statusFixture({ unstaged: [entry('a', 'M')], staged: [entry('a', 'M')], untracked: [entry('b', '?')] })))
+    const dot = titleDot(bootstrap(statusFixture({ unstaged: [entry('a', 'M')], staged: [entry('a', 'M')], untracked: [entry('b', '?')] })), zhT)
     expect(dot).toEqual({ tone: 'brand', tooltip: '2 个未提交文件' })
   })
 
   it('warning dot for conflicts or an operation in progress', () => {
-    expect(titleDot(bootstrap(statusFixture({ operation: 'merge', conflicts: [entry('a', 'U'), entry('b', 'U')] }))))
+    expect(titleDot(bootstrap(statusFixture({ operation: 'merge', conflicts: [entry('a', 'U'), entry('b', 'U')] })), zhT))
       .toEqual({ tone: 'warning', tooltip: '合并进行中 · 2 个冲突' })
-    expect(titleDot(bootstrap(statusFixture({ operation: 'rebase' }))))
+    expect(titleDot(bootstrap(statusFixture({ operation: 'rebase' })), zhT))
       .toEqual({ tone: 'warning', tooltip: '变基进行中' })
   })
 

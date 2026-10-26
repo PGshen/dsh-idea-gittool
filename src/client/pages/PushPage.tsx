@@ -8,7 +8,6 @@ import type { GitError, PushRejectedDetails, PushValue } from '../../shared/prot
 import {
   browserStorage,
   createPushStore,
-  formatText,
   pushEscapeAction,
   pushSubmitBlock,
   rememberFocus,
@@ -23,47 +22,14 @@ import type {
   PushState,
   PushStore,
 } from '../store/push-store.ts'
+import { useT } from '../i18n.tsx'
+import type { Translate } from '../i18n.tsx'
 import { Button } from '../ui/Button.tsx'
 import { EmptyState } from '../ui/EmptyState.tsx'
 import { CommitList, PushOverlayFrame, PushRejectedView, submitHandler, WriteErrorNotice } from './PushRejectedPage.tsx'
 import css from './PushPage.module.css'
 
 /** Every visible string of this file (moved into locales by T7). */
-export const TEXT = {
-  title: '推送',
-  dialogLabel: '推送：{target}',
-  target: '{local} → {remote}/{branch}',
-  detachedLocal: 'HEAD（detached）',
-  loading: '正在读取推送信息…',
-  loadFailed: '读取推送信息失败',
-  retry: '重试',
-  noRemotes: '没有配置远程仓库',
-  noRemotesHint: '先在终端用 git remote add 添加远程仓库，再回来推送。',
-  remote: '远程',
-  branch: '远程分支',
-  branchPlaceholder: '例如 main',
-  detachedHint: '当前处于 detached HEAD，请明确输入要推送到的远程分支。',
-  setUpstream: '设置 upstream（--set-upstream）',
-  tags: '推送标签（--tags）',
-  force: '强制推送（--force-with-lease）',
-  forceImpact: '强制推送会用本地分支覆盖 {remote}/{branch}；远程在你上次获取后又被更新时 Git 会拒绝。',
-  forceRisk: '我了解强制推送会覆盖远程上他人的提交',
-  commits: '将推送 {count} 个提交',
-  noCommits: '没有待推送的提交',
-  cancel: '取消',
-  submit: '推送',
-  submitForce: '强制推送',
-  submitting: '正在推送…',
-  readOnly: '只读模式：{reason}',
-  block: {
-    loading: '',
-    busy: '',
-    'no-remote': '请选择远程仓库',
-    'no-branch': '请输入远程分支',
-    'detached-branch': 'detached HEAD：请输入要推送到的远程分支',
-    'risk-unconfirmed': '勾选风险确认后才能强制推送',
-  },
-} as const
 
 /** Write to the clipboard; silently skipped without navigator (SSR / unit tests). */
 function copyToClipboard(text: string): void {
@@ -71,11 +37,10 @@ function copyToClipboard(text: string): void {
   void navigator.clipboard.writeText(text).catch(() => undefined)
 }
 
-export function pushBlockText(reason: PushBlockReason | null, readOnlyReason: string | null): string | null {
-  if (readOnlyReason !== null) return formatText(TEXT.readOnly, { reason: readOnlyReason })
-  if (reason === null) return null
-  const text = TEXT.block[reason]
-  return text === '' ? null : text
+export function pushBlockText(t: Translate, reason: PushBlockReason | null, readOnlyReason: string | null): string | null {
+  if (readOnlyReason !== null) return t('write.readOnly', { reason: readOnlyReason })
+  if (reason === null || reason === 'loading' || reason === 'busy') return null
+  return t(`push.block.${reason}`)
 }
 
 // ---------------------------------------------------------------------------
@@ -83,6 +48,7 @@ export function pushBlockText(reason: PushBlockReason | null, readOnlyReason: st
 // ---------------------------------------------------------------------------
 
 export interface PushPageViewProps {
+  t: Translate
   state: PushState
   readOnlyReason: string | null
   rootRef?: Ref<HTMLDivElement>
@@ -96,6 +62,7 @@ export interface PushPageViewProps {
 }
 
 export function PushPageView({
+  t,
   state,
   readOnlyReason,
   rootRef,
@@ -109,36 +76,36 @@ export function PushPageView({
 }: PushPageViewProps): ReactNode {
   const { form, preview } = state
   const busy = state.busy !== null
-  const local = preview === null ? '' : preview.detached || preview.branch === null ? TEXT.detachedLocal : preview.branch
+  const local = preview === null ? '' : preview.detached || preview.branch === null ? t('push.detachedLocal') : preview.branch
   const target = preview === null
     ? undefined
-    : formatText(TEXT.target, { local, remote: form.remote || '?', branch: form.branch.trim() || '?' })
+    : t('push.target', { local, remote: form.remote || '?', branch: form.branch.trim() || '?' })
 
   let body: ReactNode
   if (state.previewStatus === 'error') {
     body = (
       <div className={css.state}>
-        <EmptyState error title={TEXT.loadFailed} hint={state.previewError?.message} action={{ label: TEXT.retry, onClick: onRetryLoad }} />
+        <EmptyState error title={t('push.loadFailed')} hint={state.previewError?.message} action={{ label: t('action.retry'), onClick: onRetryLoad }} />
       </div>
     )
   } else if (preview === null) {
-    body = <p className={css.loading} role="status">{TEXT.loading}</p>
+    body = <p className={css.loading} role="status">{t('push.loading')}</p>
   } else if (preview.remotes.length === 0) {
     body = (
       <div className={css.state}>
-        <EmptyState title={TEXT.noRemotes} hint={TEXT.noRemotesHint} />
+        <EmptyState title={t('push.noRemotes')} hint={t('push.noRemotesHint')} />
       </div>
     )
   } else {
     const block = pushSubmitBlock(state)
     const disabled = readOnlyReason !== null || block !== null
-    const blockText = pushBlockText(block, readOnlyReason)
-    const submitLabel = busy ? TEXT.submitting : form.forceWithLease ? TEXT.submitForce : TEXT.submit
+    const blockText = pushBlockText(t, block, readOnlyReason)
+    const submitLabel = busy ? t('push.submitting') : form.forceWithLease ? t('push.submitForce') : t('push.submit')
     body = (
       <form className={css.body} onSubmit={submitHandler(() => { if (!disabled) onSubmit() })} data-push-form>
         <fieldset className={css.fields} disabled={busy}>
           <label className={css.field}>
-            <span className={css.label}>{TEXT.remote}</span>
+            <span className={css.label}>{t('push.remote')}</span>
             <select
               className={css.control}
               value={form.remote}
@@ -149,12 +116,12 @@ export function PushPageView({
             </select>
           </label>
           <label className={css.field}>
-            <span className={css.label}>{TEXT.branch}</span>
+            <span className={css.label}>{t('push.branch')}</span>
             <input
               className={css.control}
               type="text"
               value={form.branch}
-              placeholder={TEXT.branchPlaceholder}
+              placeholder={t('push.branchPlaceholder')}
               spellCheck={false}
               autoComplete="off"
               aria-invalid={block === 'detached-branch' || block === 'no-branch' ? true : undefined}
@@ -162,43 +129,43 @@ export function PushPageView({
               data-field="branch"
             />
           </label>
-          {preview.detached ? <p className={css.hint} data-detached-hint>{TEXT.detachedHint}</p> : null}
+          {preview.detached ? <p className={css.hint} data-detached-hint>{t('push.detachedHint')}</p> : null}
           <label className={css.check}>
             <input type="checkbox" checked={form.setUpstream} onChange={event => onFormChange({ setUpstream: event.currentTarget.checked })} data-field="setUpstream" />
-            <span>{TEXT.setUpstream}</span>
+            <span>{t('push.setUpstream')}</span>
           </label>
           <label className={css.check}>
             <input type="checkbox" checked={form.tags} onChange={event => onFormChange({ tags: event.currentTarget.checked })} data-field="tags" />
-            <span>{TEXT.tags}</span>
+            <span>{t('push.tags')}</span>
           </label>
           <label className={css.check}>
             <input type="checkbox" checked={form.forceWithLease} onChange={event => onFormChange({ forceWithLease: event.currentTarget.checked })} data-field="forceWithLease" />
-            <span>{TEXT.force}</span>
+            <span>{t('push.force')}</span>
           </label>
           {form.forceWithLease ? (
             <div className={css.danger} data-force-risk>
-              <p className={css.dangerText}>{formatText(TEXT.forceImpact, { remote: form.remote, branch: form.branch.trim() || '?' })}</p>
+              <p className={css.dangerText}>{t('push.forceImpact', { remote: form.remote, branch: form.branch.trim() || '?' })}</p>
               <label className={css.check}>
                 <input type="checkbox" checked={form.riskConfirmed} onChange={event => onFormChange({ riskConfirmed: event.currentTarget.checked })} data-field="riskConfirmed" />
-                <span>{TEXT.forceRisk}</span>
+                <span>{t('push.forceRisk')}</span>
               </label>
             </div>
           ) : null}
         </fieldset>
 
         <section className={css.section}>
-          <h3 className={css.sectionTitle}>{formatText(TEXT.commits, { count: preview.commits.length })}</h3>
+          <h3 className={css.sectionTitle}>{t('push.commits', { count: preview.commits.length })}</h3>
           {preview.commits.length === 0
-            ? <p className={css.hint}>{TEXT.noCommits}</p>
-            : <CommitList commits={preview.commits} truncated={preview.truncated} label={formatText(TEXT.commits, { count: preview.commits.length })} />}
+            ? <p className={css.hint}>{t('push.noCommits')}</p>
+            : <CommitList t={t} commits={preview.commits} truncated={preview.truncated} label={t('push.commits', { count: preview.commits.length })} />}
         </section>
 
-        {state.error === null ? null : <WriteErrorNotice error={state.error} onCopy={onCopy} onShowConsole={onShowConsole} />}
+        {state.error === null ? null : <WriteErrorNotice t={t} error={state.error} onCopy={onCopy} onShowConsole={onShowConsole} />}
 
         <footer className={css.footer}>
           {blockText === null ? <span /> : <span className={css.blockReason} data-block-reason>{blockText}</span>}
           <span className={css.actions}>
-            <Button disabled={busy} onClick={onClose}>{TEXT.cancel}</Button>
+            <Button disabled={busy} onClick={onClose}>{t('action.cancel')}</Button>
             <Button
               type="submit"
               tone={form.forceWithLease ? 'danger' : 'primary'}
@@ -216,9 +183,10 @@ export function PushPageView({
 
   return (
     <PushOverlayFrame
-      title={TEXT.title}
+      t={t}
+      title={t('push.title')}
       {...(target === undefined ? {} : { subtitle: target })}
-      label={formatText(TEXT.dialogLabel, { target: target ?? '' })}
+      label={t('push.dialogLabel', { target: target ?? '' })}
       busy={busy}
       rootRef={rootRef}
       onBack={onClose}
@@ -344,12 +312,14 @@ export function PushPage(props: PushPageProps): ReactNode {
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
     handlePushEscape(event, store.getState(), { back, close })
   }
+  const t = useT()
   const readOnlyReason = props.readOnlyReason ?? null
   const onCopy = props.onCopy ?? copyToClipboard
 
   if (state.view === 'rejected') {
     return (
       <PushRejectedView
+        t={t}
         state={state}
         readOnlyReason={readOnlyReason}
         rootRef={rootRef}
@@ -366,6 +336,7 @@ export function PushPage(props: PushPageProps): ReactNode {
   }
   return (
     <PushPageView
+      t={t}
       state={state}
       readOnlyReason={readOnlyReason}
       rootRef={rootRef}

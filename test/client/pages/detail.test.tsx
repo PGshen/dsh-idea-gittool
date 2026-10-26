@@ -8,6 +8,8 @@ process.env.TZ = 'Asia/Shanghai'
 
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
+import { render } from '../../../src/client/localized-text.ts'
+import { zhT } from '../i18n-helpers.tsx'
 import type { CommitDetailValue, CommitFileEntry } from '../../../src/shared/protocol.ts'
 import {
   BODY_COLLAPSE_LINES,
@@ -281,14 +283,14 @@ describe('详情辅助函数', () => {
   })
 
   it('relativeLabel 覆盖全部时间桶', () => {
-    expect(relativeLabel({ unit: 'now', n: 0 })).toBe('刚刚')
-    expect(relativeLabel({ unit: 'hours', n: 3 })).toBe('3 小时前')
-    expect(relativeLabel({ unit: 'years', n: 2 })).toBe('2 年前')
+    expect(render(zhT, relativeLabel({ unit: 'now', n: 0 }))).toBe('刚刚')
+    expect(render(zhT, relativeLabel({ unit: 'hours', n: 3 }))).toBe('3 小时前')
+    expect(render(zhT, relativeLabel({ unit: 'years', n: 2 }))).toBe('2 年前')
   })
 
   it('formatRelativeTime 处理非法时间', () => {
-    expect(formatRelativeTime('not-a-date', NOW)).toBe('not-a-date')
-    expect(formatRelativeTime(AUTHOR_DATE, NOW)).toBe('2 天前')
+    expect(formatRelativeTime('not-a-date', NOW, zhT)).toBe('not-a-date')
+    expect(formatRelativeTime(AUTHOR_DATE, NOW, zhT)).toBe('2 天前')
   })
 })
 
@@ -320,18 +322,19 @@ describe('CommitDetail 交互', () => {
   it('父提交按钮点击后用完整 sha 回调跳转；没有回调时按钮禁用', () => {
     const navigated: string[] = []
     const parents = detail().parents
-    const tree = ParentLinks({ parents, onNavigate: sha => navigated.push(sha) })
+    const tree = ParentLinks({ t: zhT, parents, onNavigate: sha => navigated.push(sha) })
     const buttons = findAll(tree, element => element.type === 'button')
     expect(buttons).toHaveLength(1)
     click(buttons[0])
     expect(navigated).toEqual(['aaaaaaaabbbbccccddddeeeeffff000011112222'])
-    const disabled = findAll(ParentLinks({ parents }), element => element.type === 'button')
+    const disabled = findAll(ParentLinks({ t: zhT, parents }), element => element.type === 'button')
     expect(disabled[0]?.props.disabled).toBe(true)
   })
 
   it('合并提交的多个父提交都可点击', () => {
     const navigated: string[] = []
     const tree = ParentLinks({
+      t: zhT,
       parents: [
         { sha: 'a'.repeat(40), shortSha: 'aaaaaaa', subject: 'one' },
         { sha: 'b'.repeat(40), shortSha: 'bbbbbbb', subject: 'two' },
@@ -345,12 +348,12 @@ describe('CommitDetail 交互', () => {
   it('复制按钮把完整 sha 交给复制回调，复制后文案变为「已复制」', () => {
     const copied: string[] = []
     const value = detail()
-    const tree = HashRow({ sha: value.sha, shortSha: value.shortSha, refs: value.refs, copied: false, onCopy: text => copied.push(text) })
+    const tree = HashRow({ t: zhT, sha: value.sha, shortSha: value.shortSha, refs: value.refs, copied: false, onCopy: text => copied.push(text) })
     const copyButton = findAll(tree, element => element.props.title === '复制完整修订号')[0]
     click(copyButton)
     expect(copied).toEqual([value.sha])
     const html = renderToStaticMarkup(
-      <HashRow sha={value.sha} shortSha={value.shortSha} refs={value.refs} copied onCopy={() => {}} />,
+      <HashRow t={zhT} sha={value.sha} shortSha={value.shortSha} refs={value.refs} copied onCopy={() => {}} />,
     )
     expect(html).toContain('已复制')
   })
@@ -366,10 +369,10 @@ describe('CommitDetail 交互', () => {
 
   it('文件模式切换按钮在树/扁平之间切换', () => {
     const modes: string[] = []
-    const tree = FilesModeToggle({ mode: 'tree', onChange: mode => modes.push(mode) })
+    const tree = FilesModeToggle({ t: zhT, mode: 'tree', onChange: mode => modes.push(mode) })
     if (!isElement(tree)) throw new Error('expected element')
     click(tree)
-    const flat = FilesModeToggle({ mode: 'flat', onChange: mode => modes.push(mode) })
+    const flat = FilesModeToggle({ t: zhT, mode: 'flat', onChange: mode => modes.push(mode) })
     if (!isElement(flat)) throw new Error('expected element')
     click(flat)
     expect(modes).toEqual(['flat', 'tree'])

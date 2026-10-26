@@ -5,6 +5,7 @@
  */
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
+import { zhT } from '../i18n-helpers.tsx'
 import type { CommitFileEntry, DiffFileValue, DiffHunk, DiffRequest } from '../../../src/shared/protocol.ts'
 import { buildDiffRows, DiffHunks, HunkHeaderRow } from '../../../src/client/pages/DiffHunks.tsx'
 import { DiffFileList, DiffFileSelect } from '../../../src/client/pages/DiffFileList.tsx'
@@ -137,7 +138,7 @@ describe('DiffHunks', () => {
 
   it('hunk 头点击回调折叠切换', () => {
     const toggled: number[] = []
-    const row = HunkHeaderRow({ hunkIndex: 3, header: '@@ -1 +1 @@', collapsed: false, lineCount: 2, onToggle: index => toggled.push(index) })
+    const row = HunkHeaderRow({ t: zhT, hunkIndex: 3, header: '@@ -1 +1 @@', collapsed: false, lineCount: 2, onToggle: index => toggled.push(index) })
     if (!isElement(row)) throw new Error('expected element')
     invoke(row, 'onClick')
     expect(toggled).toEqual([3])
@@ -216,6 +217,7 @@ describe('DiffContent 内容规则', () => {
 describe('DiffViewerView', () => {
   function view(overrides: Partial<DiffViewerViewProps> = {}): DiffViewerViewProps {
     return {
+      t: zhT,
       request: REQUEST,
       state: { request: REQUEST, status: 'ready', value: diffOf(), error: null },
       files: FILES,
@@ -282,6 +284,7 @@ describe('DiffViewerHeader 交互', () => {
   it('返回、上一个/下一个、复制路径分别回调', () => {
     const calls: string[] = []
     const tree = DiffViewerHeader({
+      t: zhT,
       path: 'src/log/LogTable.tsx',
       status: 'M',
       source: ['日志'],
@@ -304,7 +307,7 @@ describe('DiffViewerHeader 交互', () => {
 describe('DiffFileList', () => {
   it('点击文件回调选中；当前文件 aria-current', () => {
     const selected: string[] = []
-    const tree = DiffFileList({ files: FILES, currentIndex: 1, onSelect: file => selected.push(file.path) })
+    const tree = DiffFileList({ t: zhT, files: FILES, currentIndex: 1, onSelect: file => selected.push(file.path) })
     const buttons = findAll(tree, element => element.type === 'button')
     expect(buttons).toHaveLength(2)
     expect(buttons[1]?.props['aria-current']).toBe('true')
@@ -314,7 +317,7 @@ describe('DiffFileList', () => {
 
   it('窄屏下拉：选择回调对应文件', () => {
     const selected: string[] = []
-    const tree = DiffFileSelect({ files: FILES, currentIndex: 0, onSelect: file => selected.push(file.path) })
+    const tree = DiffFileSelect({ t: zhT, files: FILES, currentIndex: 0, onSelect: file => selected.push(file.path) })
     const select = findAll(tree, element => element.type === 'select')[0]
     invoke(select, 'onChange', { currentTarget: { value: '1' } })
     expect(selected).toEqual(['src/log/FilterBar.tsx'])

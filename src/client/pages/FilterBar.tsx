@@ -1,9 +1,12 @@
 // 日志筛选栏（设计 §8.1.2）：搜索（.* / Aa）、分支多选、用户多选、图选项、跳转、刷新。
 // 纯展示组件：防抖与请求都在 log-store 里，这里只把输入翻译成 store 调用。
 // 菜单用原生 <details>，不引入弹层依赖；已生效的条件在第二行显示成可移除的胶囊。
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import type { KeyboardEvent, ReactNode, Ref } from 'react'
 import type { RefKind } from '../../shared/protocol.ts'
+import { render, text, useT } from '../i18n.tsx'
+import type { LocalizedText } from '../i18n.tsx'
+import type { GitWorkbenchKey } from '../locales.ts'
 import type { LogFilterState, LogOrder } from '../store/log-store.ts'
 import { Button } from '../ui/Button.tsx'
 import { Chip } from '../ui/Chip.tsx'
@@ -43,7 +46,7 @@ export interface BranchOption {
 
 export interface FilterChipItem {
   key: string
-  label: string
+  label: LocalizedText
   /** 点 × 时应用的 patch。 */
   remove: Partial<LogFilterState>
 }
@@ -54,20 +57,20 @@ export function filterChips(filter: LogFilterState): FilterChipItem[] {
   for (const branch of filter.branches) {
     chips.push({
       key: `branch:${branch}`,
-      label: `分支: ${branch}`,
+      label: text('filter.chip.branch', { name: branch }),
       remove: { branches: filter.branches.filter((value) => value !== branch) },
     })
   }
   for (const author of filter.authors) {
     chips.push({
       key: `author:${author}`,
-      label: `用户: ${author}`,
+      label: text('filter.chip.author', { name: author }),
       remove: { authors: filter.authors.filter((value) => value !== author) },
     })
   }
-  if (filter.order === 'topo') chips.push({ key: 'order', label: '拓扑排序', remove: { order: 'date' } })
-  if (filter.firstParent) chips.push({ key: 'firstParent', label: '仅第一父提交', remove: { firstParent: false } })
-  if (filter.noMerges) chips.push({ key: 'noMerges', label: '不显示合并提交', remove: { noMerges: false } })
+  if (filter.order === 'topo') chips.push({ key: 'order', label: text('filter.chip.topo'), remove: { order: 'date' } })
+  if (filter.firstParent) chips.push({ key: 'firstParent', label: text('filter.firstParent'), remove: { firstParent: false } })
+  if (filter.noMerges) chips.push({ key: 'noMerges', label: text('filter.noMerges'), remove: { noMerges: false } })
   return chips
 }
 
@@ -81,10 +84,10 @@ export function hasActiveFilter(filter: LogFilterState): boolean {
   return filter.query.length > 0 || filterChips(filter).length > 0
 }
 
-const BRANCH_GROUPS: readonly { kind: RefKind; label: string }[] = [
-  { kind: 'local', label: '本地' },
-  { kind: 'remote', label: '远程' },
-  { kind: 'tag', label: '标签' },
+const BRANCH_GROUPS: readonly { kind: RefKind; label: GitWorkbenchKey }[] = [
+  { kind: 'local', label: 'filter.group.local' },
+  { kind: 'remote', label: 'filter.group.remote' },
+  { kind: 'tag', label: 'filter.group.tag' },
 ]
 
 export interface FilterBarProps {
@@ -93,7 +96,8 @@ export interface FilterBarProps {
   filter: LogFilterState
   branchOptions: readonly BranchOption[]
   authorOptions: readonly string[]
-  jumpError: string | null
+  /** 跳转失败说明；显示在跳转框正下方。 */
+  jumpError: LocalizedText | null
   searchRef?: Ref<HTMLInputElement>
   onQueryChange(raw: string): void
   /** Enter：立即应用。 */
@@ -126,9 +130,11 @@ export function FilterBar({
   onRefresh,
   onLeave,
 }: FilterBarProps): ReactNode {
+  const t = useT()
   const [jump, setJump] = useState('')
   const chips = filterChips(filter)
   const barRef = useRef<HTMLDivElement>(null)
+  const jumpErrorId = useId()
 
   // 菜单：点外部关闭、同时只开一个；Esc 关闭并把焦点还给 summary。
   useEffect(() => {
@@ -180,7 +186,7 @@ export function FilterBar({
   }
 
   return (
-    <div ref={barRef} className={css.bar} role="toolbar" aria-label="日志筛选">
+    <div ref={barRef} className={css.bar} role="toolbar" aria-label={t('filter.toolbar')}>
       <div className={css.controls}>
         <div className={css.search}>
           <input
@@ -188,8 +194,8 @@ export function FilterBar({
             className={css.searchInput}
             type="search"
             value={query}
-            placeholder="文本或哈希"
-            aria-label="搜索提交"
+            placeholder={t('filter.search.placeholder')}
+            aria-label={t('filter.search.label')}
             spellCheck={false}
             onChange={(event) => onQueryChange(event.target.value)}
             onKeyDown={onSearchKey}
@@ -198,7 +204,7 @@ export function FilterBar({
             type="button"
             className={css.toggle}
             aria-pressed={filter.regex}
-            title="正则表达式"
+            title={t('filter.regex')}
             onClick={() => onFilterChange({ regex: !filter.regex })}
           >
             .*
@@ -207,7 +213,7 @@ export function FilterBar({
             type="button"
             className={css.toggle}
             aria-pressed={filter.caseSensitive}
-            title="区分大小写"
+            title={t('filter.caseSensitive')}
             onClick={() => onFilterChange({ caseSensitive: !filter.caseSensitive })}
           >
             Aa
@@ -216,16 +222,16 @@ export function FilterBar({
 
         <details className={css.menu} data-menu="branches">
           <summary className={css.menuButton}>
-            分支{filter.branches.length > 0 ? ` (${filter.branches.length})` : ''} ▾
+            {t('filter.branches')}{filter.branches.length > 0 ? ` (${filter.branches.length})` : ''} ▾
           </summary>
-          <div className={css.menuBody} role="group" aria-label="分支筛选">
-            {branchOptions.length === 0 ? <span className={css.menuEmpty}>没有分支</span> : null}
+          <div className={css.menuBody} role="group" aria-label={t('filter.branches.label')}>
+            {branchOptions.length === 0 ? <span className={css.menuEmpty}>{t('filter.branches.empty')}</span> : null}
             {BRANCH_GROUPS.map(({ kind, label }) => {
               const options = branchOptions.filter((option) => option.kind === kind)
               if (options.length === 0) return null
               return (
                 <fieldset key={kind} className={css.menuGroup}>
-                  <legend className={css.menuLegend}>{label}</legend>
+                  <legend className={css.menuLegend}>{t(label)}</legend>
                   {options.map((option) => (
                     <label key={`${kind}:${option.name}`} className={css.menuItem}>
                       <input
@@ -244,10 +250,10 @@ export function FilterBar({
 
         <details className={css.menu} data-menu="authors">
           <summary className={css.menuButton}>
-            用户{filter.authors.length > 0 ? ` (${filter.authors.length})` : ''} ▾
+            {t('filter.authors')}{filter.authors.length > 0 ? ` (${filter.authors.length})` : ''} ▾
           </summary>
-          <div className={css.menuBody} role="group" aria-label="用户筛选">
-            {authorOptions.length === 0 ? <span className={css.menuEmpty}>没有用户</span> : null}
+          <div className={css.menuBody} role="group" aria-label={t('filter.authors.label')}>
+            {authorOptions.length === 0 ? <span className={css.menuEmpty}>{t('filter.authors.empty')}</span> : null}
             {authorOptions.map((author) => (
               <label key={author} className={css.menuItem}>
                 <input
@@ -262,8 +268,8 @@ export function FilterBar({
         </details>
 
         <details className={css.menu} data-menu="graph">
-          <summary className={css.menuButton}>图选项 ▾</summary>
-          <div className={css.menuBody} role="group" aria-label="图选项">
+          <summary className={css.menuButton}>{t('filter.graph')} ▾</summary>
+          <div className={css.menuBody} role="group" aria-label={t('filter.graph')}>
             {(['date', 'topo'] as const satisfies readonly LogOrder[]).map((order) => (
               <label key={order} className={css.menuItem}>
                 <input
@@ -272,7 +278,7 @@ export function FilterBar({
                   checked={filter.order === order}
                   onChange={() => onFilterChange({ order })}
                 />
-                <span className={css.menuLabel}>{order === 'date' ? '按提交日期' : '按拓扑'}</span>
+                <span className={css.menuLabel}>{t(order === 'date' ? 'filter.order.date' : 'filter.order.topo')}</span>
               </label>
             ))}
             <label className={css.menuItem}>
@@ -281,7 +287,7 @@ export function FilterBar({
                 checked={filter.firstParent}
                 onChange={() => onFilterChange({ firstParent: !filter.firstParent })}
               />
-              <span className={css.menuLabel}>仅第一父提交</span>
+              <span className={css.menuLabel}>{t('filter.firstParent')}</span>
             </label>
             <label className={css.menuItem}>
               <input
@@ -289,39 +295,43 @@ export function FilterBar({
                 checked={filter.noMerges}
                 onChange={() => onFilterChange({ noMerges: !filter.noMerges })}
               />
-              <span className={css.menuLabel}>不显示合并提交</span>
+              <span className={css.menuLabel}>{t('filter.noMerges')}</span>
             </label>
           </div>
         </details>
 
-        <input
-          className={jumpError === null ? css.jump : `${css.jump} ${css.jumpInvalid}`}
-          type="text"
-          value={jump}
-          placeholder="跳转到哈希/分支/标签"
-          aria-label="跳转"
-          aria-invalid={jumpError !== null}
-          title={jumpError ?? undefined}
-          spellCheck={false}
-          onChange={(event) => {
-            setJump(event.target.value)
-            if (jumpError !== null) onJumpEdit()
-          }}
-          onKeyDown={onJumpKey}
-        />
+        <div className={css.jumpField}>
+          <input
+            className={jumpError === null ? css.jump : `${css.jump} ${css.jumpInvalid}`}
+            type="text"
+            value={jump}
+            placeholder={t('filter.jump.placeholder')}
+            aria-label={t('filter.jump.label')}
+            aria-invalid={jumpError !== null}
+            aria-describedby={jumpError === null ? undefined : jumpErrorId}
+            spellCheck={false}
+            onChange={(event) => {
+              setJump(event.target.value)
+              if (jumpError !== null) onJumpEdit()
+            }}
+            onKeyDown={onJumpKey}
+          />
+          {/* 失败说明是可见文本（A1 验收：只放在 title 里看不到）。 */}
+          {jumpError === null ? null : (
+            <div id={jumpErrorId} className={css.jumpError} role="alert">{render(t, jumpError)}</div>
+          )}
+        </div>
 
         {onRefresh === undefined ? null : (
-          <Button onClick={onRefresh} title="刷新（Cmd/Ctrl+R）">刷新</Button>
+          <Button onClick={onRefresh} title={t('filter.refresh.title')}>{t('filter.refresh')}</Button>
         )}
       </div>
-
-      {jumpError === null ? null : <div className={css.jumpError} role="alert">{jumpError}</div>}
 
       {chips.length === 0 ? null : (
         <div className={css.chips} data-filter-chips="">
           {chips.map((chip) => (
-            <Chip key={chip.key} kind="filter" title={`移除「${chip.label}」`} onClick={() => onFilterChange(chip.remove)}>
-              {chip.label} ×
+            <Chip key={chip.key} kind="filter" title={t('filter.chip.remove', { label: render(t, chip.label) })} onClick={() => onFilterChange(chip.remove)}>
+              {render(t, chip.label)} ×
             </Chip>
           ))}
         </div>

@@ -29,6 +29,8 @@ import { PageTabs } from './PageTabs.tsx'
 import type { WorkbenchPage } from './PageTabs.tsx'
 import { PushPage } from './PushPage.tsx'
 import { RollbackSheet } from './RollbackSheet.tsx'
+import { text, useT } from '../i18n.tsx'
+import { readOnlyMessage } from '../localized-text.ts'
 import { ReadOnlyBanner } from '../read-only-banner.tsx'
 import { createDetailStore, useDetailState } from '../store/detail-store.ts'
 import { createLogStore } from '../store/log-store.ts'
@@ -36,6 +38,7 @@ import { BranchPanel } from './BranchPanel.tsx'
 import { createBranchesStore, useBranchesState } from './branch-store.ts'
 import { CommitDetail } from './CommitDetail.tsx'
 import { DiffViewer } from './DiffViewer.tsx'
+import type { DiffSourcePart } from './DiffViewer.tsx'
 import css from './GitWorkbench.module.css'
 import { LogPage } from './LogPage.tsx'
 import type { LogSelection } from './LogPage.tsx'
@@ -59,7 +62,7 @@ export interface GitWorkbenchProps {
 interface OpenDiff {
   request: DiffRequest
   files: CommitFileEntry[]
-  source: string[]
+  source: DiffSourcePart[]
 }
 
 /** Push 覆盖页的打开方式：普通打开，或直接停在 Push Rejected（提交并推送被拒）。 */
@@ -117,6 +120,7 @@ export function logRefreshKey(head: string | null | undefined, refsBySha: Record
 }
 
 export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
+  const t = useT()
   const { sessionId, client, value, onRefresh } = props
   const status = value.status
 
@@ -256,7 +260,7 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
         ...(parent === undefined ? {} : { parent }),
       },
       files: diffFilesOf(commit),
-      source: ['日志', commit.shortSha],
+      source: [text('diff.source.log'), commit.shortSha],
     })
   }, [sessionId])
 
@@ -289,7 +293,7 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
     setDiff({
       request: { sessionId, scope, path },
       files: changeFilesFor(status, scope),
-      source: ['提交', scope === 'staged' ? '已暂存' : '工作区'],
+      source: [text('diff.source.commit'), text(scope === 'staged' ? 'diff.source.staged' : 'diff.source.worktree')],
     })
   }, [sessionId, status])
 
@@ -327,9 +331,7 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
     void onRefresh()
   }, [client, onRefresh, sessionId])
 
-  const readOnlyReason = value.writePolicy.mode === 'read-only'
-    ? (value.writePolicy.reason ?? '只读模式')
-    : null
+  const readOnlyReason = readOnlyMessage(t, value.writePolicy, 'readOnly.title')
 
   const renderDetail = useCallback(() => (
     detail.status === 'idle' ? null : (

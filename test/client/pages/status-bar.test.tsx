@@ -1,6 +1,8 @@
 // T7 状态栏：分支/detached、↑↓、工作区摘要、贮藏数、操作进度、刷新时间与自动刷新开关。
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
+import { zhT } from '../i18n-helpers.tsx'
+import { render as renderText } from '../../../src/client/localized-text.ts'
 import { formatClock, StatusBar, summarizeWorktree } from '../../../src/client/pages/StatusBar.tsx'
 import type { StatusBarProps } from '../../../src/client/pages/StatusBar.tsx'
 import { statusFixture } from './branch-fixtures.ts'
@@ -18,21 +20,26 @@ function render(overrides: Partial<StatusBarProps> = {}): string {
   return renderToStaticMarkup(<StatusBar {...props} />)
 }
 
+function summary(status: Parameters<typeof summarizeWorktree>[0]): { tone: string; text: string } {
+  const value = summarizeWorktree(status)
+  return { tone: value.tone, text: renderText(zhT, value.text) }
+}
+
 describe('summarizeWorktree', () => {
   it('冲突优先，其次修改数，没有改动给「无改动」', () => {
-    expect(summarizeWorktree(statusFixture())).toEqual({ tone: 'changes', text: '3 个修改' })
-    expect(summarizeWorktree(statusFixture({ unstaged: [], untracked: [] }))).toEqual({ tone: 'clean', text: '无改动' })
-    expect(summarizeWorktree(statusFixture({ conflicts: [{ path: 'a', status: 'U' }, { path: 'b', status: 'U' }] })))
+    expect(summary(statusFixture())).toEqual({ tone: 'changes', text: '3 个修改' })
+    expect(summary(statusFixture({ unstaged: [], untracked: [] }))).toEqual({ tone: 'clean', text: '无改动' })
+    expect(summary(statusFixture({ conflicts: [{ path: 'a', status: 'U' }, { path: 'b', status: 'U' }] })))
       .toEqual({ tone: 'conflict', text: '2 个冲突' })
   })
 
   it('截断时显示「n+ 个修改」', () => {
-    expect(summarizeWorktree(statusFixture({ truncated: true })).text).toBe('3+ 个修改')
+    expect(summary(statusFixture({ truncated: true })).text).toBe('3+ 个修改')
   })
 
   it('staged 与 unstaged 同一路径只计一次', () => {
     const status = statusFixture({ staged: [{ path: 'src/a.ts', status: 'M' }] })
-    expect(summarizeWorktree(status).text).toBe('3 个修改')
+    expect(summary(status).text).toBe('3 个修改')
   })
 })
 

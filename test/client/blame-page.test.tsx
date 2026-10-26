@@ -3,6 +3,7 @@
  */
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
+import { zhT } from './i18n-helpers.tsx'
 
 import {
   BlameEmptyState,
@@ -55,6 +56,7 @@ describe('BlamePage', () => {
   it('reads the target from the tab navigation and renders the empty state', () => {
     const props = {
       useTabInfo: () => ({ tab: { navigation: { params: { absolutePath: '/repo/src/a.ts' } } } }),
+      t: zhT,
     } as unknown as BlamePageProps
     const html = renderToStaticMarkup(BlamePage(props))
     expect(html).toContain('/repo/src/a.ts')

@@ -40,7 +40,15 @@ import { BranchPanel } from './BranchPanel.tsx'
 import { BranchSheet } from './BranchSheets.tsx'
 import { BranchesPage } from './BranchesPage.tsx'
 import { SmartCheckoutSheet } from './SmartCheckoutSheet.tsx'
-import { FETCH_ALL, branchActionContext, createBranchActionRunner, outcomeNotice } from './branch-actions.ts'
+import { CommitOpSheet } from './CommitOpSheet.tsx'
+import { FetchSheet } from './FetchSheet.tsx'
+import { MergePage } from './MergePage.tsx'
+import { PullPage } from './PullPage.tsx'
+import { ResetSheet } from './ResetSheet.tsx'
+import { UpdateProjectPage } from './UpdateProjectPage.tsx'
+import { commitActionEffect } from './commit-actions.ts'
+import type { CommitActionId } from './commit-actions.ts'
+import { FETCH_ALL, branchActionContext, createBranchActionRunner, outcomeNotice, writeBlock } from './branch-actions.ts'
 import type { ActionNotice as ActionNoticeValue, BranchActionRunnerDeps, QuickActionId } from './branch-actions.ts'
 import { createBranchesStore, useBranchesState } from './branch-store.ts'
 import { CommitDetail } from './CommitDetail.tsx'
@@ -447,6 +455,22 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
 
   const readOnlyReason = readOnlyMessage(t, value.writePolicy, 'readOnly.title')
 
+  // Integrate pages (A3 T8): writes are blocked while read-only or an operation is in progress;
+  // fetch only needs a writable repository.
+  const integrateBlock = writeBlock(branchContext)
+  const fetchBlock = writeBlock({ writable: branchContext.writable, operation: null })
+  const blockText = (reason: typeof integrateBlock): string | null => (reason === undefined ? null : t(reason.key, reason.params))
+  const runCommitAction = useCallback((id: CommitActionId, commit: CommitSummary, trigger: FocusTarget | null, childSha: string | null) => {
+    const effect = commitActionEffect(id, commit, childSha)
+    if (effect === null) return
+    if (effect.kind === 'copy') void globalThis.navigator?.clipboard?.writeText(effect.value)
+    else if (effect.kind === 'jump') navigateTo(effect.sha)
+    else {
+      setNotice(null)
+      overlays.open(effect.overlay, trigger)
+    }
+  }, [navigateTo, overlays.open])
+
   const renderDetail = useCallback(() => (
     detail.status === 'idle' ? null : (
       <CommitDetail
@@ -510,6 +534,16 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
         onToggleBranches={() => { branchesStore.setOpen(!branches.open) }}
         onPush={() => { openPush({}) }}
         ahead={status?.ahead ?? 0}
+        onFetch={() => {
+          setNotice(null)
+          overlays.open({ kind: 'fetch' })
+        }}
+        fetchDisabledReason={blockText(fetchBlock)}
+        onPull={() => {
+          setNotice(null)
+          overlays.open({ kind: 'pull' })
+        }}
+        pullDisabledReason={blockText(integrateBlock)}
       />
       <PageTabs page={page} onChange={setPage} uncommittedCount={uncommittedCount(status)} />
       <ActionNotice notice={notice} onDismiss={() => { setNotice(null) }} />
@@ -523,6 +557,7 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
             onSelect={onSelect}
             onOpenCommit={onOpenCommit}
             renderDetail={renderDetail}
+            commitMenu={{ writable: branchContext.writable, operation: branchContext.operation, onAction: runCommitAction }}
             {...(wide ? { sidebar: branchPanel } : {})}
           />
         ) : page === 'branches' ? (
@@ -546,7 +581,7 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
             onQuickAction={runQuickAction}
             onFetch={(trigger) => {
               setNotice(null)
-              void branchRunner.fetch(trigger)
+              overlays.open({ kind: 'fetch' }, trigger)
             }}
             onRetry={() => { void loadSideData() }}
             onOpenConsole={() => { setConsoleOpen(true) }}
@@ -619,7 +654,7 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
         )}
         {overlay?.kind !== 'branchSheet' ? null : (
           <BranchSheet
-            key={`${overlay.mode}:${overlay.branch ?? ''}:${overlay.startPoint ?? ''}`}
+            key={`${overlay.mode}:${overlay.branch ?? ''}:${overlay.startPoint ?? ''}:${overlay.revision ?? ''}`}
             overlay={overlay}
             actions={actions}
             runner={branchRunner}
@@ -635,6 +670,72 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
             actions={actions}
             onOutcome={reportOutcome}
             onClose={() => { overlays.closeIf('smartCheckout') }}
+          />
+        )}
+        {overlay?.kind !== 'merge' && overlay?.kind !== 'rebase' ? null : (
+          <MergePage
+            key={overlay.kind}
+            mode={overlay.kind}
+            preselect={overlay.kind === 'merge' ? overlay.ref : overlay.onto}
+            branches={branches.value}
+            current={status?.branch ?? null}
+            block={integrateBlock}
+            actions={actions}
+            onOutcome={reportOutcome}
+            onNotice={setNotice}
+            onClose={() => { overlays.closeIf(overlay.kind) }}
+          />
+        )}
+        {overlay?.kind !== 'pull' ? null : (
+          <PullPage
+            prefill={{ remote: overlay.remote, branch: overlay.branch }}
+            branches={branches.value}
+            block={integrateBlock}
+            loadRemotes={() => client.pushPreview(sessionId)}
+            actions={actions}
+            onOutcome={reportOutcome}
+            onNotice={setNotice}
+            onClose={() => { overlays.closeIf('pull') }}
+          />
+        )}
+        {overlay?.kind !== 'updateProject' ? null : (
+          <UpdateProjectPage
+            status={status}
+            block={integrateBlock}
+            actions={actions}
+            onOutcome={reportOutcome}
+            onNotice={setNotice}
+            onClose={() => { overlays.closeIf('updateProject') }}
+          />
+        )}
+        {overlay?.kind !== 'reset' ? null : (
+          <ResetSheet
+            key={overlay.sha}
+            sha={overlay.sha}
+            loadPreview={request => client.resetPreview({ sessionId, ...request })}
+            actions={actions}
+            onOutcome={reportOutcome}
+            onClose={() => { overlays.closeIf('reset') }}
+          />
+        )}
+        {overlay?.kind !== 'fetch' ? null : (
+          <FetchSheet
+            loadRemotes={() => client.pushPreview(sessionId)}
+            actions={actions}
+            onClose={() => { overlays.closeIf('fetch') }}
+          />
+        )}
+        {overlay?.kind !== 'commitOp' ? null : (
+          <CommitOpSheet
+            key={`${overlay.op}:${overlay.sha}`}
+            op={overlay.op}
+            sha={overlay.sha}
+            shortSha={overlay.shortSha}
+            subject={overlay.subject}
+            actions={actions}
+            onOutcome={reportOutcome}
+            onNotice={setNotice}
+            onClose={() => { overlays.closeIf('commitOp') }}
           />
         )}
         {overlay?.kind !== 'dirtyWorktree' || actionState.ask === null ? null : (

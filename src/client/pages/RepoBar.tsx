@@ -1,5 +1,5 @@
 // 仓库栏（设计 §7.1）：仓库名 + 截断路径 + 非 Wide 档的「分支」入口 + `⋯` 菜单（刷新 / Git 控制台）。
-// A1 只读：获取/拉取/推送等写入口留到 A2。
+// 获取/拉取/推送各自打开自己的表单（A3 T8 起获取与拉取在此）；只读或操作进行中时禁用并说明原因。
 import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useT } from '../i18n.tsx'
@@ -22,6 +22,16 @@ export interface RepoBarProps {
   onPush?: () => void
   /** 待推送提交数，>0 时按钮带 ↑n。 */
   ahead?: number
+  /** 打开获取弹层（A3 T8）；未传时不显示。 */
+  onFetch?: () => void
+  /** 获取进行中（同一个获取动作在别处运行）。 */
+  fetching?: boolean
+  /** 非空时获取按钮禁用，内容作为 title。 */
+  fetchDisabledReason?: string | null
+  /** 打开拉取页（A3 T8）；未传时不显示。 */
+  onPull?: () => void
+  /** 非空时拉取按钮禁用，内容作为 title。 */
+  pullDisabledReason?: string | null
   /** 初始展开菜单（测试/静态渲染用）。 */
   defaultMenuOpen?: boolean
   /** 路径展示的最大字符数。 */
@@ -90,6 +100,35 @@ export function RepoBar(props: RepoBarProps): ReactNode {
             </button>
           )
         : null}
+      {props.onFetch === undefined
+        ? null
+        : (
+            <button
+              type="button"
+              className={css.button}
+              data-repo-fetch=""
+              aria-busy={props.fetching === true ? true : undefined}
+              disabled={props.fetching === true || (props.fetchDisabledReason ?? null) !== null}
+              {...(props.fetchDisabledReason ? { title: props.fetchDisabledReason } : {})}
+              onClick={props.onFetch}
+            >
+              {props.fetching === true ? t('repo.fetching') : t('repo.fetch')}
+            </button>
+          )}
+      {props.onPull === undefined
+        ? null
+        : (
+            <button
+              type="button"
+              className={css.button}
+              data-repo-pull=""
+              disabled={(props.pullDisabledReason ?? null) !== null}
+              {...(props.pullDisabledReason ? { title: props.pullDisabledReason } : {})}
+              onClick={props.onPull}
+            >
+              {t('repo.pull')}
+            </button>
+          )}
       {props.onPush === undefined
         ? null
         : (

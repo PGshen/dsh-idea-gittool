@@ -35,7 +35,7 @@ export function initialSheetForm(overlay: BranchSheetOverlay): SheetForm {
   return {
     name: overlay.mode === 'rename' ? (overlay.branch ?? '') : '',
     checkout: true,
-    revision: '',
+    revision: overlay.revision ?? '',
     force: false,
     forceConfirmed: false,
   }

@@ -35,8 +35,12 @@ export type WorkbenchOverlay =
   | { kind: 'updateProject' }
   | { kind: 'reset'; sha: string }
   | { kind: 'stashCreate' }
+  /** Fetch sheet (repo bar and Branches page). */
+  | { kind: 'fetch' }
+  /** Confirmation of a cherry-pick / revert chosen in the commit context menu. */
+  | { kind: 'commitOp'; op: 'cherryPick' | 'revert'; sha: string; shortSha: string; subject: string }
   /** `sha` is the branch tip the user saw (delete sends it as `expectedSha`). */
-  | { kind: 'branchSheet'; mode: BranchSheetMode; branch?: string; startPoint?: string; sha?: string }
+  | { kind: 'branchSheet'; mode: BranchSheetMode; branch?: string; startPoint?: string; sha?: string; revision?: string }
   | { kind: 'smartCheckout'; target: CheckoutTarget; paths: string[] }
   /** "Uncommitted changes" question of the action store (DirtyWorktreeSheet reads the ask). */
   | { kind: 'dirtyWorktree' }
@@ -56,6 +60,8 @@ export const OVERLAY_LEVEL: Record<WorkbenchOverlayKind, 1 | 2> = {
   rollback: 2,
   reset: 2,
   stashCreate: 2,
+  fetch: 2,
+  commitOp: 2,
   branchSheet: 2,
   smartCheckout: 2,
   dirtyWorktree: 2,

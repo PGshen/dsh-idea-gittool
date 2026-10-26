@@ -72,7 +72,7 @@ const DELETE_CURRENT = text('branch.disabled.deleteCurrent')
 const DETACHED = text('branch.disabled.detached')
 
 /** Reason why every write is blocked right now, if any. */
-function writeBlock(context: BranchActionContext): LocalizedText | undefined {
+export function writeBlock(context: Pick<BranchActionContext, 'writable' | 'operation'>): LocalizedText | undefined {
   if (!context.writable) return READ_ONLY
   if (context.operation !== null) return OPERATION
   return undefined

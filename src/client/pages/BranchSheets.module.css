@@ -171,3 +171,13 @@
   border-left: 2px solid var(--dsw-alias-state-error-primary);
   background: var(--dsw-alias-bg-layer-1);
 }
+
+.modes {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}

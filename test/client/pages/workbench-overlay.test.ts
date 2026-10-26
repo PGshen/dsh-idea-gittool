@@ -92,8 +92,8 @@ describe('handleOverlayEscape', () => {
 describe('WorkbenchOverlay kinds', () => {
   it('every kind has a navigation level (1 = overlay page, 2 = sheet)', () => {
     expect(Object.keys(OVERLAY_LEVEL).sort()).toEqual([
-      'branchSheet', 'conflicts', 'diff', 'dirtyWorktree', 'merge', 'pull', 'push', 'pushRejected', 'rebase',
-      'reset', 'rollback', 'smartCheckout', 'stashCreate', 'updateProject',
+      'branchSheet', 'commitOp', 'conflicts', 'diff', 'dirtyWorktree', 'fetch', 'merge', 'pull', 'push', 'pushRejected',
+      'rebase', 'reset', 'rollback', 'smartCheckout', 'stashCreate', 'updateProject',
     ])
     expect(OVERLAY_LEVEL.diff).toBe(1)
     expect(OVERLAY_LEVEL.rollback).toBe(2)

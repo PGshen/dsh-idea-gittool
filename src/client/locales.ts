@@ -9,6 +9,7 @@ import { enCommon, zhCommon } from './locales/common.ts'
 import { enCore, zhCore } from './locales/core.ts'
 import { enDetail, zhDetail } from './locales/detail.ts'
 import { enDocument, zhDocument } from './locales/document.ts'
+import { enIntegrate, zhIntegrate } from './locales/integrate.ts'
 import { enLog, zhLog } from './locales/log.ts'
 import { enPush, zhPush } from './locales/push.ts'
 import { enShell, zhShell } from './locales/shell.ts'
@@ -32,6 +33,7 @@ export const zh = {
   ...zhDocument,
   ...zhActions,
   ...zhBranch,
+  ...zhIntegrate,
 }
 
 export type GitWorkbenchKey = keyof typeof zh
@@ -48,6 +50,7 @@ export const en = {
   ...enDocument,
   ...enActions,
   ...enBranch,
+  ...enIntegrate,
 } satisfies Record<GitWorkbenchKey, string>
 
 /** In-progress repository operation → its display name. */

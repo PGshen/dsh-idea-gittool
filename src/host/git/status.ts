@@ -1,13 +1,14 @@
 // status 命令与 `--porcelain=v2 -z` 解析（可行性调研 §6.3、§8.3）。
 // 机器可读：不用 `--short`，不依赖人类可读的本地化文案。
 
-import { access } from 'node:fs/promises'
+import { access, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
 import type {
   ConflictKind,
   FileEntry,
   FileStatusCode,
+  OperationStep,
   RepoOperation,
   StatusValue,
 } from '../../shared/protocol.ts'
@@ -70,13 +71,19 @@ export async function readStatus(
   cwd: string,
   options: ReadStatusOptions = {},
 ): Promise<StatusValue> {
-  const operation = await detectOperation(run, cwd, options.signal)
+  const gitDir = await resolveGitDir(run, cwd, options.signal)
+  const operation = gitDir === undefined ? null : await detectOperationIn(gitDir)
   const result = await run(buildStatusArgv(), { cwd, signal: options.signal })
   if (result.exitCode !== 0) throw failureFromExit(result, 'git status')
   const status = parseStatusPorcelainV2Z(result.stdout, {
     entryLimit: options.entryLimit,
     operation,
   })
+  if (operation === 'rebase' && gitDir !== undefined) {
+    // Same reader as `operationState` (A3 T2): two small files, no git call.
+    const step = await readRebaseStep(gitDir)
+    if (step !== undefined) status.operationStep = step
+  }
   const stashCount = await readStashCount(run, cwd, options.signal)
   if (stashCount !== undefined) status.stashCount = stashCount
   return status
@@ -289,23 +296,36 @@ function unparseable(chunk: string): GitCommandFailure {
   })
 }
 
+/** Absolute git directory of `cwd` (per worktree); undefined when git cannot tell. */
+export async function resolveGitDir(
+  run: GitRunner,
+  cwd: string,
+  signal: AbortSignal | undefined,
+): Promise<string | undefined> {
+  let resolved: GitRunResult
+  try {
+    resolved = await run([...GIT_BASE_ARGV, 'rev-parse', '--absolute-git-dir'], { cwd, signal })
+  } catch {
+    // The status read that follows reports the authoritative failure.
+    return undefined
+  }
+  if (resolved.exitCode !== 0) return undefined
+  const gitDir = resolved.stdout.trim()
+  return gitDir === '' ? undefined : gitDir
+}
+
 /** Detect an in-progress merge/rebase/cherry-pick/revert from git's marker files. */
 export async function detectOperation(
   run: GitRunner,
   cwd: string,
   signal: AbortSignal | undefined,
 ): Promise<RepoOperation> {
-  let resolved: GitRunResult
-  try {
-    resolved = await run([...GIT_BASE_ARGV, 'rev-parse', '--absolute-git-dir'], { cwd, signal })
-  } catch {
-    // The status read that follows reports the authoritative failure.
-    return null
-  }
-  if (resolved.exitCode !== 0) return null
-  const gitDir = resolved.stdout.trim()
-  if (gitDir === '') return null
+  const gitDir = await resolveGitDir(run, cwd, signal)
+  return gitDir === undefined ? null : await detectOperationIn(gitDir)
+}
 
+/** {@link detectOperation} for an already resolved git directory. */
+export async function detectOperationIn(gitDir: string): Promise<RepoOperation> {
   if ((await pathExists(join(gitDir, 'rebase-merge'))) || (await pathExists(join(gitDir, 'rebase-apply')))) {
     return 'rebase'
   }
@@ -315,6 +335,38 @@ export async function detectOperation(
   // `git bisect` keeps BISECT_START for the whole session (removed by `bisect reset`).
   if (await pathExists(join(gitDir, 'BISECT_START'))) return 'bisect'
   return null
+}
+
+/** Trimmed content of a small git state file; undefined when absent or unreadable. */
+export async function readStateFile(path: string): Promise<string | undefined> {
+  try {
+    return (await readFile(path, 'utf8')).trim()
+  } catch {
+    return undefined
+  }
+}
+
+/** The rebase state directory in use (`rebase-merge` for the merge backend, `rebase-apply` for apply). */
+export async function rebaseStateDir(gitDir: string): Promise<string | undefined> {
+  for (const name of ['rebase-merge', 'rebase-apply']) {
+    const dir = join(gitDir, name)
+    if (await pathExists(dir)) return dir
+  }
+  return undefined
+}
+
+/**
+ * Rebase progress: `rebase-merge/{msgnum,end}` or `rebase-apply/{next,last}`.
+ * Undefined outside a rebase or when the counters are missing or malformed.
+ */
+export async function readRebaseStep(gitDir: string): Promise<OperationStep | undefined> {
+  const dir = await rebaseStateDir(gitDir)
+  if (dir === undefined) return undefined
+  const merge = dir.endsWith('rebase-merge')
+  const current = Number(await readStateFile(join(dir, merge ? 'msgnum' : 'next')))
+  const total = Number(await readStateFile(join(dir, merge ? 'end' : 'last')))
+  if (!Number.isInteger(current) || !Number.isInteger(total) || current < 1 || total < 1) return undefined
+  return { current: Math.min(current, total), total }
 }
 
 async function pathExists(path: string): Promise<boolean> {

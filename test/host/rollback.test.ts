@@ -30,9 +30,18 @@ function contextFor(repo: TempRepo): WriteContext {
   return bindWriteContext(createGitRunner(createFakeSubprocess()), repo.root, { kind: 'unconfined' }, new AbortController().signal)
 }
 
-async function rollback(repo: TempRepo, paths: string[], deleteUntracked: boolean) {
+async function rollback(repo: TempRepo, paths: string[], deleteUntracked: boolean, confirmedUntracked?: string[]) {
   const op = rollbackOperation
-  return await op.run(contextFor(repo), op.parse({ sessionId: 's', requestId: 'r', paths, deleteUntracked }))
+  return await op.run(
+    contextFor(repo),
+    op.parse({
+      sessionId: 's',
+      requestId: 'r',
+      paths,
+      deleteUntracked,
+      ...(confirmedUntracked === undefined ? {} : { confirmedUntracked }),
+    }),
+  )
 }
 
 function porcelain(repo: TempRepo): string[] {
@@ -59,6 +68,29 @@ describe('rollbackOperation.parse', () => {
     expect(codeOf({ paths: ['a', 'a'], deleteUntracked: false })).toBe('git/invalid-payload')
     expect(codeOf({ paths: ['a/../b'], deleteUntracked: false })).toBe('git/invalid-payload')
     expect(codeOf({ paths: ['a'], deleteUntracked: true })).toBe('ok')
+  })
+
+  it('validates confirmedUntracked like other path lists (A3 T5, TD-8)', () => {
+    const codeOf = (confirmedUntracked: unknown): string => {
+      try {
+        rollbackOperation.parse({ paths: ['a'], deleteUntracked: true, confirmedUntracked })
+      } catch (error) {
+        if (error instanceof GitCommandFailure) return error.code
+        throw error
+      }
+      return 'ok'
+    }
+    expect(codeOf(undefined)).toBe('ok')
+    expect(codeOf([])).toBe('ok')
+    expect(codeOf(['a', 'dir/b'])).toBe('ok')
+    expect(codeOf('a')).toBe('git/invalid-payload')
+    expect(codeOf(['a', 'a'])).toBe('git/invalid-payload')
+    expect(codeOf(['/abs'])).toBe('git/invalid-payload')
+    expect(codeOf(['a/../b'])).toBe('git/invalid-payload')
+    expect(codeOf([42])).toBe('git/invalid-payload')
+    expect(codeOf(Array.from({ length: WRITE_PATHS_MAX + 1 }, (_, index) => `f${String(index)}`))).toBe(
+      'git/invalid-payload',
+    )
   })
 })
 
@@ -113,7 +145,7 @@ describe('rollbackOperation.run', () => {
     repo.write('dir/two.txt', '2\n')
     repo.write('-rf', 'not an option\n')
 
-    const value = await rollback(repo, ['dir/one.txt', '-rf'], true)
+    const value = await rollback(repo, ['dir/one.txt', '-rf'], true, ['dir/one.txt', '-rf'])
 
     expect(value).toEqual({ restored: [], deleted: ['dir/one.txt', '-rf'], keptStaged: [], skipped: [] })
     expect(existsSync(join(repo.root, 'dir', 'one.txt'))).toBe(false)
@@ -126,6 +158,31 @@ describe('rollbackOperation.run', () => {
     repo.write('u.txt', 'u\n')
     const value = await rollback(repo, ['u.txt'], false)
     expect(value.skipped).toEqual(['u.txt'])
+    expect(existsSync(join(repo.root, 'u.txt'))).toBe(true)
+  })
+
+  it('deletes only untracked files that were confirmed (TD-8)', async () => {
+    const repo = makeRepo()
+    repo.write('a.txt', 'a\n')
+    repo.commit('base')
+    repo.write('a.txt', 'changed\n')
+    repo.write('seen.txt', 'confirmed\n')
+    repo.write('late.txt', 'appeared after the dialog\n')
+
+    // `a.txt` is tracked at execution time: confirming it never deletes it.
+    const value = await rollback(repo, ['a.txt', 'seen.txt', 'late.txt'], true, ['seen.txt', 'a.txt', 'other.txt'])
+
+    expect(value).toEqual({ restored: ['a.txt'], deleted: ['seen.txt'], keptStaged: [], skipped: ['late.txt'] })
+    expect(existsSync(join(repo.root, 'seen.txt'))).toBe(false)
+    expect(existsSync(join(repo.root, 'late.txt'))).toBe(true)
+    expect(existsSync(join(repo.root, 'a.txt'))).toBe(true)
+  })
+
+  it('deletes nothing when confirmedUntracked is absent (TD-8)', async () => {
+    const repo = makeRepo()
+    repo.write('u.txt', 'u\n')
+    const value = await rollback(repo, ['u.txt'], true)
+    expect(value).toEqual({ restored: [], deleted: [], keptStaged: [], skipped: ['u.txt'] })
     expect(existsSync(join(repo.root, 'u.txt'))).toBe(true)
   })
 
@@ -152,7 +209,10 @@ describe('long path lists (A3 T1, TD-9)', () => {
     const ctx = bindWriteContext(createGitRunner(fake), repo.root, { kind: 'unconfined' }, new AbortController().signal)
     const op = rollbackOperation
 
-    const value = await op.run(ctx, op.parse({ paths: [...tracked, ...untracked], deleteUntracked: true }))
+    const value = await op.run(
+      ctx,
+      op.parse({ paths: [...tracked, ...untracked], deleteUntracked: true, confirmedUntracked: untracked }),
+    )
 
     expect(value.restored).toHaveLength(tracked.length)
     expect(value.deleted).toHaveLength(untracked.length)

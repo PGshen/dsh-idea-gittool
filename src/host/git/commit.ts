@@ -251,7 +251,8 @@ export async function readCommit(
   return value
 }
 
-function toFileEntry(change: RawChange, parent: string | null): CommitFileEntry {
+/** A changed path as a file entry; `parent` null for root diffs (no parentSha). */
+export function toFileEntry(change: RawChange, parent: string | null): CommitFileEntry {
   const entry: CommitFileEntry = { path: change.path, status: change.status }
   if (change.origPath !== undefined) entry.origPath = change.origPath
   if (change.additions !== undefined) entry.additions = change.additions

@@ -1,0 +1,155 @@
+/* Commit page layout (design §8.2.1): tree on top, message and actions at the bottom. */
+.root {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  color: var(--dsw-alias-label-primary);
+  font-size: 12px;
+}
+
+.tree {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  min-height: 80px;
+}
+
+.tree > * {
+  flex: 1 1 auto;
+}
+
+.bottom {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px 8px 8px;
+  border-top: 0.5px solid var(--dsw-alias-border-l2);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.amend {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+}
+
+.spacer {
+  flex: 1 1 auto;
+}
+
+.split {
+  position: relative;
+  display: inline-flex;
+  gap: 1px;
+}
+
+.menu {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 4px);
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  min-width: 180px;
+  padding: 4px 0;
+  border: 0;
+  border-radius: 6px;
+  background: var(--dsw-specific-menu);
+  box-shadow: var(--dsw-elevation-panel);
+  backdrop-filter: var(--dsw-menu-backdrop-filter);
+}
+
+.menuItem {
+  padding: 4px 12px;
+  border: 0;
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.menuItem:hover,
+.menuItem:focus-visible {
+  background: var(--dsw-alias-interactive-bg-hover);
+  outline: none;
+}
+
+.notes {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  font-size: 11px;
+  list-style: none;
+}
+
+.reason {
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.warning {
+  color: var(--dsw-alias-state-warn);
+}
+
+.hint {
+  color: var(--dsw-alias-label-secondary);
+}
+
+.success {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  color: var(--dsw-alias-state-success);
+  font-size: 12px;
+}
+
+.dismiss {
+  padding: 0 4px;
+  border: 0;
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary);
+  font: inherit;
+  cursor: pointer;
+}
+
+.error {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 8px;
+  border: 0.5px solid var(--dsw-alias-state-error-primary);
+  border-radius: 4px;
+  background: var(--dsw-alias-bg-layer-1);
+}
+
+.errorTitle {
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.errorDetail {
+  max-height: 120px;
+  margin: 0;
+  overflow: auto;
+  color: var(--dsw-alias-label-secondary);
+  font-family: var(--dsw-font-markdown-code-block-font-family);
+  font-size: 11px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.errorActions {
+  display: flex;
+  gap: 6px;
+}

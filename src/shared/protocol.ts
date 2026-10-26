@@ -1200,6 +1200,12 @@ export interface MergeFileValue {
   draftStale: boolean
   /** 已解决路径：三方来自 resolve-undo。 */
   resolved: boolean
+  /**
+   * 裁定 16（B1 T7，向后兼容扩展）：只对已解决路径给出——工作区文件的当前内容（未经 clean filter，
+   * 例如 autocrlf 下为 CRLF）。不是仓库内的普通文件（缺失、符号链接、经符号链接的目录指向仓库外）、
+   * 超过 2 MiB / 20 000 行、含 NUL 或不是合法 UTF-8 → null。未解决路径省略。
+   */
+  worktreeText?: string | null
   version?: number
 }
 

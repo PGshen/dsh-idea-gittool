@@ -19,6 +19,7 @@ import type { ActionOutcome, ActionStore, ActionStatus } from '../store/action-s
 import type { CommitPageMode } from '../store/commit-store.ts'
 import { allResolved, autoMerge } from '../merge/merge-model.ts'
 import { isTextConflict } from '../store/conflict-store.ts'
+import type { ConflictStore } from '../store/conflict-store.ts'
 import { mergeTexts } from '../store/merge-store.ts'
 import { normalizeMessage } from '../store/commit-store.ts'
 import type { ActionNotice } from './branch-actions.ts'
@@ -172,6 +173,27 @@ export async function resolveAllSimple(deps: SimpleAllDeps, entries: readonly Fi
 /** 「已解决 N 个文件，M 个文件需要手动处理」. */
 export function simpleAllSummary(outcome: SimpleAllOutcome): LocalizedText {
   return text('conflict.simpleAll.done', { resolved: outcome.resolved.length, manual: outcome.manual.length })
+}
+
+/**
+ * The list's 「全部简单冲突」: written files are not reviewed (confirmation 2) and their counts reload;
+ * the list always reloads. Never rejects: a thrown write ends with `conflict.simpleAll.failed`.
+ */
+export async function runSimpleAll(
+  deps: SimpleAllDeps,
+  entries: readonly FileEntry[],
+  store: Pick<ConflictStore, 'unmarkReviewed' | 'invalidateCount' | 'refresh'>,
+): Promise<LocalizedText> {
+  try {
+    const outcome = await resolveAllSimple(deps, entries)
+    store.unmarkReviewed(outcome.resolved)
+    for (const path of outcome.resolved) store.invalidateCount(path)
+    return simpleAllSummary(outcome)
+  } catch {
+    return text('conflict.simpleAll.failed')
+  } finally {
+    void store.refresh()
+  }
 }
 
 export type OperationStepKind = OperationControlAction | 'commit'

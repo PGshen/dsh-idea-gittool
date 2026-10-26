@@ -120,7 +120,7 @@ export function MergeWindowView(props: MergeWindowViewProps): ReactNode {
       <MergeFallback
         t={t}
         reason={fallbackReason(file)}
-        actions={props.operation === null || file.resolved ? [] : conflictRowActions(entry, withStashLabel(props.operation, t('conflict.stashLabel')))}
+        actions={props.operation === null ? [] : conflictRowActions(entry, withStashLabel(props.operation, t('conflict.stashLabel')))}
         busy={props.fallback.busy}
         blockReason={blockReason}
         error={props.fallback.error}
@@ -254,7 +254,7 @@ export interface MergeWindowProps {
    * T7: filled while a file is open. The workbench asks it before another entry point replaces the
    * window; true = the window holds that navigation to ask save / discard / cancel first.
    */
-  leaveGuard?: { current: ((go: () => void) => boolean) | null } | undefined
+  leaveGuard?: { current: ((go: () => void, cancel?: () => void) => boolean) | null } | undefined
 }
 
 const PANES: readonly MergePane[] = ['left', 'result', 'right']

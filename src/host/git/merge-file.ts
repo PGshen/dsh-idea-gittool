@@ -5,9 +5,12 @@
 // - 单侧超过 2 MiB 或 20 000 行 → `text: null` + `tooLarge`；含 NUL 或不是合法 UTF-8（解码出替换字符）→ 二进制，
 //   窗口降级为二选一，避免写回时破坏编码；
 // - `worktreeSha` 与写回同一条 clean filter（`hash-object --path`），供 `mergeApply` 检测加载后工作区被改；
-// - 草稿存在 `refs/worktree/dsh-git/merge-draft/<sha1(path)>`（ADR 0008），`version`/`stages`/形状不符或 JSON 损坏即作废。
+// - 草稿存在 `refs/worktree/dsh-git/merge-draft/<sha1(path)>`（ADR 0008），`version`/`stages`/形状不符或 JSON 损坏即作废；
+// - 已解决路径另给 `worktreeText`（裁定 16）：只读、lstat 确认是普通文件、realpath 仍在仓库内，限额与文本规则同三方。
 
 import { createHash } from 'node:crypto'
+import { lstat, readFile, realpath } from 'node:fs/promises'
+import { join, relative, isAbsolute } from 'node:path'
 
 import type { ConflictKind, MergeDraft, MergeFileValue, MergeSide, MergeStageShas } from '../../shared/protocol.ts'
 import { MERGE_DRAFT_VERSION, validDraftChunkRange } from '../../shared/protocol.ts'
@@ -68,6 +71,32 @@ async function readSide(
   if (text.includes('\0') || text.includes('�')) return { side: { blob: sha, text: null, binary: true, size }, tooLarge: false }
   if (countLines(text) > MERGE_SIDE_MAX_LINES) return { side: { blob: sha, text: null, binary: false, size }, tooLarge: true }
   return { side: { blob: sha, text, binary: false, size }, tooLarge: false }
+}
+
+/** Text by the side rules (NUL / invalid UTF-8 → not text; over the line limit → null). */
+function textOf(text: string): string | null {
+  if (text.includes('\0') || text.includes('\uFFFD')) return null
+  return countLines(text) > MERGE_SIDE_MAX_LINES ? null : text
+}
+
+/**
+ * Worktree content of a resolved path (ruling 16): a regular file (not a symlink) whose real path is
+ * inside the repository, within the side limits and valid UTF-8 text; anything else is null.
+ */
+export async function readWorktreeText(repoRoot: string, path: string): Promise<string | null> {
+  const file = join(repoRoot, path)
+  try {
+    const info = await lstat(file)
+    if (!info.isFile() || info.size > MERGE_SIDE_MAX_BYTES) return null
+    // A symlinked parent directory could lead outside the repository.
+    const inside = relative(await realpath(repoRoot), await realpath(file))
+    if (inside === '' || inside.startsWith('..') || isAbsolute(inside)) return null
+    const bytes = await readFile(file)
+    if (bytes.length > MERGE_SIDE_MAX_BYTES) return null
+    return textOf(bytes.toString('utf8'))
+  } catch {
+    return null
+  }
 }
 
 /** Blob of `path` in the worktree through the clean filter; null when the file is missing. */
@@ -168,5 +197,6 @@ export async function readMergeFile(ctx: WriteContext, path: string): Promise<Om
     draft,
     draftStale,
     resolved,
+    ...(resolved ? { worktreeText: await readWorktreeText(ctx.repoRoot, path) } : {}),
   }
 }

@@ -35,7 +35,7 @@ import menuCss from './CommitContextMenu.module.css'
 import { finishRowMenu, rowMenuAnchor } from './menu-focus.ts'
 import { useFloatingMenu } from './menu-position.ts'
 import type { MenuAnchor } from './menu-position.ts'
-import { finishOperation, mergeMessageOf, resolveAllSimple, resolveConflictFile, simpleAllSummary, unresolveConflictFile } from './operation-actions.ts'
+import { finishOperation, mergeMessageOf, resolveConflictFile, runSimpleAll, unresolveConflictFile } from './operation-actions.ts'
 import { useInitialFocus } from './integrate-parts.tsx'
 import integrateCss from './Integrate.module.css'
 import css from './ConflictsPage.module.css'
@@ -546,15 +546,9 @@ export function ConflictsPage({ store, actions, mergeMessage, blockReason, loadC
     setSimpleBusy(true)
     setSummary(null)
     setError(null)
-    void resolveAllSimple({ actions, trigger, loadFile: merge.loadFile }, value.conflicts).then((outcome) => {
-      // Resolved without anyone looking: not reviewed (confirmation 2).
-      store.unmarkReviewed(outcome.resolved)
-      for (const path of outcome.resolved) store.invalidateCount(path)
-      void store.refresh()
-      if (!mounted.current) return
-      setSimpleBusy(false)
-      setSummary(simpleAllSummary(outcome))
-    })
+    void runSimpleAll({ actions, trigger, loadFile: merge.loadFile }, value.conflicts, store)
+      .then((result) => { if (mounted.current) setSummary(result) })
+      .finally(() => { if (mounted.current) setSimpleBusy(false) })
   }
 
   const closeMenu = (): void => {

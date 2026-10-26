@@ -2,8 +2,9 @@
 // through mergeApply, only when every chunk resolves automatically (no draft is written); restoring
 // maps the Host's failures to the list's messages.
 import { describe, expect, it, vi } from 'vitest'
-import { resolveAllSimple, simpleAllSummary, unresolveConflictFile } from '../../../src/client/pages/operation-actions.ts'
-import { text } from '../../../src/client/localized-text.ts'
+import { resolveAllSimple, runSimpleAll, simpleAllSummary, unresolveConflictFile } from '../../../src/client/pages/operation-actions.ts'
+import { render, text } from '../../../src/client/localized-text.ts'
+import { enT } from '../i18n-helpers.tsx'
 import { autoMerge } from '../../../src/client/merge/merge-model.ts'
 import type { ActionOutcome, ActionStore } from '../../../src/client/store/action-store.ts'
 import type { MergeFileValue, MergeSide, RpcResult } from '../../../src/shared/protocol.ts'
@@ -83,5 +84,32 @@ describe('unresolveConflictFile', () => {
     expect(execFailed).toEqual({ kind: 'error', message: text('conflict.unresolve.terminal') })
     const stale = await unresolveConflictFile({ actions: run({ kind: 'failed', error: { code: 'git/stale-target', message: 'x' }, message: text('merge.error.stale') }), trigger: null }, 'a')
     expect(stale).toEqual({ kind: 'error', message: text('conflict.unresolve.unavailable'), stale: true })
+  })
+})
+
+describe('runSimpleAll (the list button)', () => {
+  const store = () => ({ unmarkReviewed: vi.fn(), invalidateCount: vi.fn(), refresh: vi.fn(async () => undefined) })
+
+  it('updates the review state and always settles with a text, even when a write throws', async () => {
+    const ok = store()
+    const loadFile = async (path: string) => ({ ok: true, value: file(path, SIMPLE) }) as RpcResult<MergeFileValue>
+    const done = vi.fn(async (_e: string, payload: { path: string }) => ({ kind: 'done', value: { path: payload.path, remaining: 0 } }))
+    const summary = await runSimpleAll({ actions: { run: done } as unknown as Pick<ActionStore, 'run'>, loadFile, trigger: null }, [conflictEntry('simple')], ok)
+    expect(summary).toEqual(text('conflict.simpleAll.done', { resolved: 1, manual: 0 }))
+    expect(ok.unmarkReviewed).toHaveBeenCalledWith(['simple'])
+    expect(ok.invalidateCount).toHaveBeenCalledWith('simple')
+    expect(ok.refresh).toHaveBeenCalled()
+
+    const broken = store()
+    const throwing = vi.fn(async () => { throw new Error('network') })
+    const failed = await runSimpleAll({ actions: { run: throwing } as unknown as Pick<ActionStore, 'run'>, loadFile, trigger: null }, [conflictEntry('simple')], broken)
+    expect(failed).toEqual(text('conflict.simpleAll.failed'))
+    expect(broken.refresh).toHaveBeenCalled()
+  })
+})
+
+describe('summary wording', () => {
+  it('reads right for one file in English (no plural to get wrong)', () => {
+    expect(render(enT, text('conflict.simpleAll.done', { resolved: 1, manual: 1 }))).toBe('Files resolved: 1; need manual resolution: 1')
   })
 })

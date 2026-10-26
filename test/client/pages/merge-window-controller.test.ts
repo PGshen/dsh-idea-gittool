@@ -344,3 +344,29 @@ describe('T7 Review Changes runner (ruling 12)', () => {
     expect(runner.start([])).toBeNull()
   })
 })
+
+describe('T7 fix 6: a held prompt of a pending action (dirty-worktree ask) is cancelled with the question', () => {
+  it('cancel / Esc / a newer outside navigation run the held cancel; save or discard do not', async () => {
+    const { controller } = await setup()
+    controller.run({ type: 'accept', id: 0, side: 'left' })
+    const go = vi.fn()
+    const cancel = vi.fn()
+    controller.guardLeave(go, cancel)
+    controller.answerLeave('cancel')
+    expect(cancel).toHaveBeenCalledTimes(1)
+
+    controller.guardLeave(go, cancel)
+    controller.command('back')
+    expect(controller.getState().confirm).toBeNull()
+    expect(cancel).toHaveBeenCalledTimes(2)
+
+    controller.guardLeave(go, cancel)
+    controller.guardLeave(vi.fn())
+    expect(cancel).toHaveBeenCalledTimes(3)
+
+    controller.guardLeave(go, cancel)
+    controller.answerLeave('discard')
+    expect(cancel).toHaveBeenCalledTimes(3)
+    expect(go).toHaveBeenCalledTimes(1)
+  })
+})

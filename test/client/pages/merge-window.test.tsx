@@ -200,14 +200,6 @@ describe('MergeWindowView: two-choice fallback (AC8)', () => {
     expect(html).not.toContain('data-merge-apply')
   })
 
-  it('T7: an already resolved binary file offers no A3 choices (they only apply to unresolved files)', async () => {
-    const binary = { ours: side(null, '2'.repeat(40), true), theirs: side(null, '3'.repeat(40), true), base: side(null, '1'.repeat(40), true) }
-    const state = await loaded(file({ ...binary, resolved: true }))
-    const html = view(state)
-    expect(html).not.toContain('采用 main')
-    expect(html).toContain('在终端解决')
-  })
-
   it('delete kinds offer keep / delete', async () => {
     const state = await loaded(file({ kind: 'deleted-by-them', theirs: null }))
     const html = view(state)

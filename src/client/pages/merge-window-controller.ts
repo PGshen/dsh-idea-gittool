@@ -33,7 +33,11 @@ export function mergeKeyCommand(event: MergeKeyEvent): MergeCommand | null {
 }
 
 /** Where the window goes: back to the list, another file, or (T7) somewhere another entry point chose. */
-export type LeaveTarget = { kind: 'close' } | { kind: 'file'; path: string } | { kind: 'external'; go: () => void }
+export type LeaveTarget =
+  | { kind: 'close' }
+  | { kind: 'file'; path: string }
+  /** `cancel`: the held navigation was a pending action's prompt; not leaving answers it as cancelled. */
+  | { kind: 'external'; go: () => void; cancel?: () => void }
 export type LeaveAnswer = 'save' | 'discard' | 'cancel'
 export type NavigationDirection = 'next' | 'prev'
 
@@ -76,7 +80,7 @@ export interface MergeWindowController {
    * T7: another entry point is about to replace the window. True when the window holds it to ask
    * save / discard / cancel first (`go` runs after save or discard); false when it may go right away.
    */
-  guardLeave(go: () => void): boolean
+  guardLeave(go: () => void, cancel?: () => void): boolean
   answerLeave(answer: LeaveAnswer): void
   requestApply(): void
   confirmApply(): void
@@ -104,6 +108,13 @@ export function createMergeWindowController(deps: MergeWindowControllerDeps): Me
     if (target.kind === 'close') deps.onClose()
     else if (target.kind === 'file') deps.onOpenFile(target.path)
     else target.go()
+  }
+
+  /** Closes an open question; a held outside prompt is answered as cancelled. */
+  const dropConfirm = (): void => {
+    const confirm = ui.confirm
+    set({ confirm: null })
+    if (confirm?.kind === 'leave' && confirm.target.kind === 'external') confirm.target.cancel?.()
   }
 
   const requestLeave = (target: LeaveTarget): void => {
@@ -159,7 +170,7 @@ export function createMergeWindowController(deps: MergeWindowControllerDeps): Me
         case 'nextChunk': navigate('next'); return
         case 'prevChunk': navigate('prev'); return
         case 'back':
-          if (ui.confirm !== null) set({ confirm: null })
+          if (ui.confirm !== null) dropConfirm()
           else requestLeave({ kind: 'close' })
           return
         case 'undo': store.undo(); return
@@ -177,16 +188,17 @@ export function createMergeWindowController(deps: MergeWindowControllerDeps): Me
       }
     },
     requestLeave,
-    guardLeave: (go) => {
+    guardLeave: (go, cancel) => {
       if (!store.getState().dirty) return false
-      set({ confirm: { kind: 'leave', target: { kind: 'external', go } } })
+      if (ui.confirm !== null) dropConfirm()
+      set({ confirm: { kind: 'leave', target: cancel === undefined ? { kind: 'external', go } : { kind: 'external', go, cancel } } })
       return true
     },
     answerLeave: (answer) => {
       const confirm = ui.confirm
       if (confirm?.kind !== 'leave') return
       if (answer === 'cancel') {
-        set({ confirm: null })
+        dropConfirm()
         return
       }
       if (answer === 'discard') {
@@ -208,7 +220,7 @@ export function createMergeWindowController(deps: MergeWindowControllerDeps): Me
     confirmApply: () => {
       if (ui.confirm?.kind === 'apply') apply()
     },
-    cancelConfirm: () => { if (ui.confirm !== null) set({ confirm: null }) },
+    cancelConfirm: () => { if (ui.confirm !== null) dropConfirm() },
   }
 }
 

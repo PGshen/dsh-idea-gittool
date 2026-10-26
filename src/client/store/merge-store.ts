@@ -6,7 +6,7 @@
 //   model-driven changes never go through `applyEdit`.
 // - Writes (draft save, apply, unresolve) go through the ActionStore; read-only mode is rejected here first.
 import { useSyncExternalStore } from 'react'
-import type { DiffFileValue, GitError, MergeFileValue, MergeStageShas, RpcResult } from '../../shared/protocol.ts'
+import type { GitError, MergeFileValue, MergeStageShas, RpcResult } from '../../shared/protocol.ts'
 import { text } from '../localized-text.ts'
 import type { LocalizedText } from '../localized-text.ts'
 import {
@@ -16,7 +16,6 @@ import {
   applyEdit,
   applyNonConflicting,
   createModel,
-  editedModel,
   ignore,
   resolveSimple,
   resolveWhole,
@@ -24,7 +23,7 @@ import {
   toDraft,
 } from '../merge/merge-model.ts'
 import type { MergeModel, MergeSideName, MergeTexts } from '../merge/merge-model.ts'
-import { gitBlobSha, rebuildWorktree, replayResolved } from '../merge/resolved-replay.ts'
+import { resolvedModel } from '../merge/resolved-replay.ts'
 import type { ActionStore } from './action-store.ts'
 
 export type MergeStatus = 'idle' | 'loading' | 'ready' | 'saving' | 'applying' | 'error'
@@ -61,14 +60,12 @@ export interface MergeStoreDeps {
   actions: Pick<ActionStore, 'run'>
   /** Non-null in read-only mode: the reason shown instead of sending a write. */
   readOnlyReason?: () => LocalizedText | null
-  /**
-   * T7: diffs of a resolved file (`staged` = HEAD → index, `worktree` = index → worktree), used to
-   * rebuild its worktree text when no replay explains it. Without it such files fail to load.
-   */
-  loadDiff?: (path: string, scope: 'staged' | 'worktree') => Promise<RpcResult<DiffFileValue>>
   /** A file finished loading in the window (Review Changes marks it reviewed). */
   onOpened?: (path: string) => void
-  /** Loading failed: the `mergeFile` error, or null when a resolved file's worktree could not be read. */
+  /**
+   * Loading failed: the `mergeFile` error, or null for a resolved file the window cannot review (no
+   * readable worktree text, or binary / too large: there is nothing left to choose for it).
+   */
   onLoadFailed?: (path: string, error: GitError | null) => void
   /** `mergeApply` succeeded (refresh the conflict list, advance the Review Changes queue). */
   onApplied?: (path: string, remaining: number) => void
@@ -174,28 +171,6 @@ export function createMergeStore(deps: MergeStoreDeps): MergeStore {
     emit(withModel(next, { error: null }))
   }
 
-  /**
-   * A resolved file (Review Changes): the Result is the worktree file. A draft is used only when its
-   * Result is exactly the worktree; else a replay that explains the worktree keeps its chunk states;
-   * else the worktree text rebuilt from the diffs with every chunk edited; else null.
-   */
-  async function resolvedModel(path: string, file: MergeFileValue, texts: MergeTexts): Promise<MergeModel | null> {
-    if (file.draft !== null && gitBlobSha(file.draft.result) === file.worktreeSha) {
-      const restored = createModel(texts, file.draft)
-      if (restored !== null) return restored
-    }
-    const replayed = replayResolved(texts, file.worktreeSha)
-    if (replayed !== null || deps.loadDiff === undefined || texts.ours === null) return replayed
-    try {
-      const [staged, worktree] = await Promise.all([deps.loadDiff(path, 'staged'), deps.loadDiff(path, 'worktree')])
-      if (!staged.ok || !worktree.ok) return null
-      const rebuilt = rebuildWorktree(texts.ours, staged.value, worktree.value, file.worktreeSha)
-      return rebuilt === null ? null : editedModel(createModel(texts), rebuilt)
-    } catch {
-      return null
-    }
-  }
-
   function readOnlyBlock(): boolean {
     const reason = deps.readOnlyReason?.() ?? null
     if (reason === null) return false
@@ -233,15 +208,16 @@ export function createMergeStore(deps: MergeStoreDeps): MergeStore {
       const texts = mergeTexts(file)
       let model: MergeModel | null = null
       let draftDiscarded = file.draftStale
-      if (texts !== null && file.resolved) {
-        draftDiscarded = false
-        model = await resolvedModel(path, file, texts)
-        if (mine !== seq) return
+      if (file.resolved) {
+        // Ruling 16: the Result is the worktree text; without text sides or worktree text the
+        // resolved file is not reviewable (the Review queue skips it).
+        model = texts === null ? null : resolvedModel(texts, file.worktreeText, file.draft)
         if (model === null) {
           emit({ ...IDLE, status: 'error', path, error: text('merge.error.worktreeUnreadable') })
           deps.onLoadFailed?.(path, null)
           return
         }
+        draftDiscarded = false
       } else if (texts !== null) {
         if (file.draft !== null) {
           model = createModel(texts, file.draft)

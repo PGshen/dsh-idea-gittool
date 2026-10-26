@@ -1,6 +1,7 @@
 // B1 T2：mergeFile 读三方与草稿（真实临时仓库）。
 import { createHash } from 'node:crypto'
-import { rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -235,6 +236,44 @@ describe('mergeFile', () => {
     expect(after.ours?.blob).toBe(before.ours?.blob)
     expect(after.theirs?.text).toBe('a\nfeature\nc\n')
     expect(after.base?.text).toBe('a\nb\nc\n')
+  })
+
+  it('ruling 16: worktreeText is the worktree file of a resolved path only', async () => {
+    const repo = makeRepo()
+    mergeStopped(repo)
+    const ctx = contextFor(repo)
+    expect((await readMergeFile(ctx, 'uu.txt')).worktreeText).toBeUndefined()
+    const op = resolveConflictOperation
+    await op.run(ctx, op.parse({ sessionId: 's', requestId: 'r', path: 'uu.txt', resolution: 'ours' }))
+    expect((await readMergeFile(ctx, 'uu.txt')).worktreeText).toBe('a\nmain\nc\n')
+    // Edited after resolving (e.g. by an agent): the current worktree content, CRLF kept.
+    repo.write('uu.txt', 'a\r\nmine\r\nc')
+    expect((await readMergeFile(ctx, 'uu.txt')).worktreeText).toBe('a\r\nmine\r\nc')
+  })
+
+  it('ruling 16: worktreeText is null for a missing, binary, oversized or symlinked worktree file', async () => {
+    const repo = makeRepo()
+    mergeStopped(repo)
+    const ctx = contextFor(repo)
+    const op = resolveConflictOperation
+    await op.run(ctx, op.parse({ sessionId: 's', requestId: 'r', path: 'uu.txt', resolution: 'ours' }))
+    const text = async (): Promise<string | null | undefined> => (await readMergeFile(ctx, 'uu.txt')).worktreeText
+    rmSync(join(repo.root, 'uu.txt'))
+    expect(await text()).toBeNull()
+    writeFileSync(join(repo.root, 'uu.txt'), Buffer.from([0x61, 0x00, 0x62]))
+    expect(await text()).toBeNull()
+    writeFileSync(join(repo.root, 'uu.txt'), Buffer.from([0x61, 0xff, 0xfe, 0x0a]))
+    expect(await text()).toBeNull()
+    writeFileSync(join(repo.root, 'uu.txt'), 'x\n'.repeat(20_001))
+    expect(await text()).toBeNull()
+    writeFileSync(join(repo.root, 'uu.txt'), 'y'.repeat(2 * 1024 * 1024 + 1))
+    expect(await text()).toBeNull()
+    const outside = mkdtempSync(join(tmpdir(), 'dsh-merge-outside-'))
+    cleanups.push(() => { rmSync(outside, { recursive: true, force: true }) })
+    writeFileSync(join(outside, 'secret.txt'), 'secret\n')
+    rmSync(join(repo.root, 'uu.txt'))
+    symlinkSync(join(outside, 'secret.txt'), join(repo.root, 'uu.txt'))
+    expect(await text()).toBeNull()
   })
 
   it('does not open resolved delete-kind conflicts (resolve-undo lacks stage 2 or 3)', async () => {

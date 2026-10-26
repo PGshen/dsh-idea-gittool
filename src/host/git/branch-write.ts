@@ -15,6 +15,7 @@ import type {
   CreateBranchValue,
   DeleteBranchValue,
   RenameBranchValue,
+  WouldOverwriteDetails,
 } from '../../shared/protocol.ts'
 import { DIRTY_PATHS_LIMIT } from '../../shared/protocol.ts'
 import type { GitRunResult, WriteContext, WriteOperation } from '../git-executor.ts'
@@ -79,35 +80,52 @@ async function assertBranchAbsent(ctx: WriteContext, name: string): Promise<void
   }
 }
 
+/** Headers of the lists `switch` prints before refusing; `untracked` lists files git will not clobber. */
+const OVERWRITE_HEADERS: ReadonlyArray<{ pattern: RegExp; untracked: boolean }> = [
+  { pattern: /Your local changes to the following files would be overwritten by (checkout|switch)/i, untracked: false },
+  { pattern: /untracked working tree files would be (overwritten|removed) by (checkout|switch)/i, untracked: true },
+  { pattern: /Updating the following directories would lose untracked files in them/i, untracked: true },
+]
+
 /**
- * Paths git lists under "… would be overwritten by checkout:" (tracked changes or untracked
- * files in the way). Each listed path is a tab-indented line; LC_ALL=C keeps the wording stable.
+ * `git/would-overwrite` details from a refused `switch` (git 2.50, LC_ALL=C): tracked local
+ * changes go to `paths`, untracked files/directories in the way to `untracked`. Each listed
+ * path is a tab-indented line after its header. Undefined when stderr is not such a refusal.
  */
-export function overwrittenPaths(stderr: string): string[] | undefined {
-  if (!/would be overwritten by (checkout|switch)/i.test(stderr)) return undefined
+export function wouldOverwriteDetails(stderr: string): WouldOverwriteDetails | undefined {
   const paths: string[] = []
-  let inList = false
+  const untracked: string[] = []
+  let matched = false
+  let list: string[] | undefined
   for (const line of stderr.split('\n')) {
-    if (/would be overwritten by/i.test(line)) {
-      inList = true
+    const header = OVERWRITE_HEADERS.find((candidate) => candidate.pattern.test(line))
+    if (header !== undefined) {
+      matched = true
+      list = header.untracked ? untracked : paths
       continue
     }
-    if (inList && line.startsWith('\t')) {
-      paths.push(line.slice(1))
+    if (list !== undefined && line.startsWith('\t')) {
+      list.push(line.slice(1))
       continue
     }
-    inList = false
+    list = undefined
   }
-  return paths
+  if (!matched) return undefined
+  return {
+    paths: paths.slice(0, DIRTY_PATHS_LIMIT),
+    ...(untracked.length === 0 ? {} : { untracked: untracked.slice(0, DIRTY_PATHS_LIMIT) }),
+  }
 }
 
 /** Classify a failed `switch`: would-overwrite (with paths) or a redacted generic failure. */
 function switchFailure(result: GitRunResult): GitCommandFailure {
-  const paths = overwrittenPaths(result.stderr)
-  if (paths !== undefined) {
-    return new GitCommandFailure('git/would-overwrite', 'local changes would be overwritten by checkout', {
-      paths: paths.slice(0, DIRTY_PATHS_LIMIT),
-    })
+  const details = wouldOverwriteDetails(result.stderr)
+  if (details !== undefined) {
+    return new GitCommandFailure(
+      'git/would-overwrite',
+      'local changes or untracked files would be overwritten by checkout',
+      { ...details },
+    )
   }
   return redactedFailure(result, 'git switch')
 }
@@ -226,15 +244,18 @@ export const createBranchOperation: WriteOperation<CreateBranchInput, Omit<Creat
   async run(ctx, input) {
     await assertBranchName(ctx, input.name)
     await assertBranchAbsent(ctx, input.name)
-    // The start point is resolved once, so the branch points at exactly the commit validated here.
-    const sha = await resolveCommit(ctx, input.startPoint, 'startPoint')
+    // Validate the start point, then hand git its NAME: starting from a remote-tracking branch
+    // lets `branch.autoSetupMerge` set the upstream (设计 §11「跟踪远程」); a local branch or sha does not.
+    await resolveCommit(ctx, input.startPoint, 'startPoint')
     if (input.checkout) {
       await assertNoOperation(ctx)
-      await runSwitch(ctx, ['-c', input.name, '--end-of-options', sha])
+      await runSwitch(ctx, ['-c', input.name, '--end-of-options', input.startPoint])
     } else {
-      const result = await ctx.git([...GIT_BASE_ARGV, 'branch', '--no-track', '--', input.name, sha])
+      const result = await ctx.git([...GIT_BASE_ARGV, 'branch', '--', input.name, input.startPoint])
       if (result.exitCode !== 0) throw redactedFailure(result, 'git branch')
     }
+    const sha = await refSha(ctx, `refs/heads/${input.name}`)
+    if (sha === undefined) throw new GitCommandFailure('git/exec-failed', `branch "${input.name}" was not created`)
     return { branch: input.name, sha, checkedOut: input.checkout }
   },
 }

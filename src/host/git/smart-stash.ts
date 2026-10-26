@@ -294,8 +294,9 @@ export async function withSmartStash<V>(
     await keepPending(ctx, stashSha, options.operation, head)
     return { value, outcome: { stashKept: true } }
   }
-  await popStash(ctx, stashSha)
-  return { value, outcome: { stashRestored: true } }
+  // The stash may have been dropped meanwhile (e.g. by the Agent): report it, never claim a restore.
+  const restored = await popStash(ctx, stashSha)
+  return { value, outcome: restored ? { stashRestored: true } : { stashMissing: true } }
 }
 
 function isConflict(error: unknown): boolean {

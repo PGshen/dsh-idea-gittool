@@ -12,6 +12,7 @@ import {
   createBranchOperation,
   deleteBranchOperation,
   renameBranchOperation,
+  wouldOverwriteDetails,
 } from '../../src/host/git/branch-write.ts'
 import { createTempRepo } from './fixtures.ts'
 import type { TempRepo } from './fixtures.ts'
@@ -106,6 +107,45 @@ function featureBranch(repo: TempRepo): void {
   repo.commit('feature edits')
   repo.git('checkout', '-q', 'main')
 }
+
+describe('wouldOverwriteDetails (stderr samples, git 2.50)', () => {
+  it('separates tracked local changes from untracked files in the way', () => {
+    const stderr = [
+      'error: Your local changes to the following files would be overwritten by checkout:',
+      '\tnotes.txt',
+      '\t说明 文件.txt',
+      'Please commit your changes or stash them before you switch branches.',
+      'error: The following untracked working tree files would be overwritten by checkout:',
+      '\tnew file.txt',
+      'Please move or remove them before you switch branches.',
+      'Aborting',
+    ].join('\n')
+    expect(wouldOverwriteDetails(stderr)).toEqual({
+      paths: ['notes.txt', '说明 文件.txt'],
+      untracked: ['new file.txt'],
+    })
+  })
+
+  it('reads the untracked-only, removed-by-checkout and lost-directory variants into untracked', () => {
+    expect(
+      wouldOverwriteDetails(
+        'error: The following untracked working tree files would be overwritten by checkout:\n\tnewfile\nPlease move or remove them before you switch branches.\nAborting\n',
+      ),
+    ).toEqual({ paths: [], untracked: ['newfile'] })
+    expect(
+      wouldOverwriteDetails(
+        'error: The following untracked working tree files would be removed by checkout:\n\tgone.txt\nPlease move or remove them before you switch branches.\nAborting\n',
+      ),
+    ).toEqual({ paths: [], untracked: ['gone.txt'] })
+    expect(
+      wouldOverwriteDetails('error: Updating the following directories would lose untracked files in them:\n\td\n\nAborting\n'),
+    ).toEqual({ paths: [], untracked: ['d'] })
+  })
+
+  it('returns undefined for unrelated failures', () => {
+    expect(wouldOverwriteDetails("fatal: invalid reference: nope\n")).toBeUndefined()
+  })
+})
 
 describe('checkoutOperation.parse', () => {
   it('validates target kind, name and mode', () => {
@@ -207,6 +247,30 @@ describe('checkout', () => {
     expect(stashCount(repo)).toBe(1)
   })
 
+  it('reports untracked files in the way separately (stash cannot help with them)', async () => {
+    const repo = makeRepo()
+    featureBranch(repo)
+    repo.git('checkout', '-q', 'feature')
+    repo.write('only-on-feature.txt', 'feature\n')
+    repo.commit('add file on feature')
+    repo.git('checkout', '-q', 'main')
+    repo.write('only-on-feature.txt', 'my untracked\n')
+    const failure = await failureOf(checkout(contextFor(repo), 'local', 'feature'))
+    expect(failure.code).toBe('git/would-overwrite')
+    expect(failure.details).toEqual({ paths: [], untracked: ['only-on-feature.txt'] })
+    expect(read(repo, 'only-on-feature.txt')).toBe('my untracked\n')
+  })
+
+  it('force mode also discards unrelated tracked edits (switch --discard-changes)', async () => {
+    const repo = makeRepo()
+    featureBranch(repo)
+    repo.write('README.md', '# unrelated edit\n')
+    repo.write('notes.txt', 'mine\n')
+    await checkout(contextFor(repo), 'local', 'feature', 'force')
+    expect(read(repo, 'README.md')).toBe('# fixture\n')
+    expect(repo.git('status', '--porcelain')).toBe('')
+  })
+
   it('force mode discards the changes that would be overwritten', async () => {
     const repo = makeRepo()
     featureBranch(repo)
@@ -271,6 +335,27 @@ describe('createBranch', () => {
       checkedOut: true,
     })
     expect(currentBranch(repo)).toBe('功能/新')
+  })
+
+  it('tracks the remote branch when starting from origin/x, not from a local branch or sha', async () => {
+    const remote = makeRemote()
+    remote.other.git('checkout', '-q', '-b', 'feat')
+    remote.other.write('feat.txt', 'feat\n')
+    const tip = remote.other.commit('feat')
+    remote.other.git('push', '-q', 'origin', 'feat')
+    remote.local.git('fetch', '-q', 'origin')
+    const ctx = contextFor(remote.local)
+    const upstreamOf = (branch: string) => remote.local.gitResult('rev-parse', '--abbrev-ref', `${branch}@{upstream}`)
+
+    expect(await createBranch(ctx, 'mine', 'origin/feat', false)).toEqual({ branch: 'mine', sha: tip, checkedOut: false })
+    expect(upstreamOf('mine').stdout.trim()).toBe('origin/feat')
+    expect(await createBranch(ctx, 'mine-co', 'origin/feat', true)).toMatchObject({ sha: tip, checkedOut: true })
+    expect(upstreamOf('mine-co').stdout.trim()).toBe('origin/feat')
+
+    await createBranch(ctx, 'from-local', 'main', false)
+    expect(upstreamOf('from-local').status).not.toBe(0)
+    await createBranch(ctx, 'from-sha', tip, true)
+    expect(upstreamOf('from-sha').status).not.toBe(0)
   })
 
   it('rejects invalid names, existing branches and unknown start points', async () => {

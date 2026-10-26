@@ -225,6 +225,21 @@ describe('withSmartStash / stash and restore', () => {
     expect(await pendingOf(repo)).toMatchObject({ operation: 'merge' })
   })
 
+  it('answers stashMissing (not stashRestored) when the stash vanished during the operation (T3 fix)', async () => {
+    const repo = makeRepo()
+    branches(repo, false)
+    repo.write('README.md', '# edited\n')
+    const ctx = contextFor(repo)
+
+    const result = await withSmartStash(ctx, { stash: true, operation: 'checkout' }, async () => {
+      repo.git('stash', 'drop', '-q')
+      return 'done'
+    })
+
+    expect(result.outcome).toEqual({ stashMissing: true })
+    expect(stashShas(repo)).toEqual([])
+  })
+
   it('reports git/conflict with stashKept when restoring conflicts with the result', async () => {
     const repo = makeRepo()
     repo.write('shared.txt', 'base\n')

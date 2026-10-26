@@ -15,6 +15,7 @@ import type {
   ConsoleValue,
   DiffFileValue,
   LogValue,
+  OperationStateValue,
   RefsValue,
   StatusValue,
   WritePolicyValue,
@@ -514,13 +515,10 @@ describe('createRpcHandler / A1 read endpoints', () => {
 
 describe('endpoint registry (A3 T1)', () => {
   const A3_PENDING = [
-    'operationState',
     'conflictCommand',
     'resetPreview',
     'stashList',
     'stashFiles',
-    'operationControl',
-    'operationCommit',
     'resolveConflict',
     'checkout',
     'createBranch',
@@ -560,6 +558,28 @@ describe('endpoint registry (A3 T1)', () => {
         message: 'not implemented',
       })
     }
+  })
+
+  it('serves operationState (T2) as a versioned read', async () => {
+    const { handler, repo } = makeHandler()
+    const value = okValue<OperationStateValue>(await handler('operationState', { sessionId: 'session-1' }, SIGNAL))
+    expect(value).toMatchObject({
+      operation: null,
+      ours: { label: 'main', sha: repo.git('rev-parse', 'HEAD').trim() },
+      theirs: { label: '' },
+      conflicts: [],
+      resolved: [],
+      pendingStash: false,
+      version: 0,
+    })
+  })
+
+  it('validates operationControl / operationCommit payloads before the gate (T2)', async () => {
+    const { handler } = makeHandler()
+    const control = await handler('operationControl', { sessionId: 'session-1', requestId: 'r', action: 'quit' }, SIGNAL)
+    expect(errorOf(control).code).toBe('git/invalid-payload')
+    const commit = await handler('operationCommit', { sessionId: 'session-1', requestId: 'r', message: '  ' }, SIGNAL)
+    expect(errorOf(commit).code).toBe('git/invalid-payload')
   })
 
   it('write endpoints are a subset of the registry and require a requestId', async () => {

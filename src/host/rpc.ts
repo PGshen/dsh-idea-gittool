@@ -19,6 +19,7 @@ import type {
   ConsoleValue,
   DiffFileValue,
   LogValue,
+  OperationStateValue,
   PushPreviewValue,
   RefsValue,
   RpcEndpointTypes,
@@ -37,6 +38,7 @@ import { isAbsolute, resolve as resolvePath } from 'node:path'
 import type { GitRunner, WriteOperation } from './git-executor.ts'
 import { GIT_BASE_ARGV, GitCommandFailure, bindWriteContext, messageOf, notImplemented } from './git-executor.ts'
 import { addToVcsOperation, amendMessageOperation, commitFilesOperation } from './git/commit-write.ts'
+import { operationCommitOperation, operationControlOperation, readOperationState } from './git/operation.ts'
 import { pullForPushOperation } from './git/pull.ts'
 import { pushOperation, readPushPreview } from './git/push.ts'
 import { rollbackOperation } from './git/rollback.ts'
@@ -65,6 +67,7 @@ const REFS_CACHE_KEY = 'refs'
 const COMMIT_CACHE_PREFIX = 'commit'
 const DIFF_CACHE_PREFIX = 'diff'
 const PUSH_PREVIEW_CACHE_KEY = 'pushPreview'
+const OPERATION_STATE_CACHE_KEY = 'operationState'
 /** Longest accepted requestId (client-generated UUIDs are 36). */
 const MAX_REQUEST_ID_LENGTH = 100
 
@@ -96,9 +99,9 @@ const DEFAULT_WRITE_OPERATIONS: WriteOperations = {
   addToVcs: addToVcsOperation,
   push: pushOperation,
   pullForPush: pullForPushOperation,
-  // A3: replaced by T2 (operation*), T3 (branches, conflicts), T4 (integrate/update), T5 (stash).
-  operationControl: pendingOperation('operationControl'),
-  operationCommit: pendingOperation('operationCommit'),
+  operationControl: operationControlOperation,
+  operationCommit: operationCommitOperation,
+  // A3: replaced by T3 (branches, conflicts), T4 (integrate/update), T5 (stash).
   resolveConflict: pendingOperation('resolveConflict'),
   checkout: pendingOperation('checkout'),
   createBranch: pendingOperation('createBranch'),
@@ -309,9 +312,17 @@ export function createRpcRuntime(deps: RpcDeps): RpcRuntime {
           return await handleCached<PushPreviewValue>(deps, runtime, payload, signal, PUSH_PREVIEW_CACHE_KEY, (root) =>
             readPushPreview(deps.runner, root, { signal }),
           )
-        // A3 read endpoints registered in T1; T2 (operationState), T3 (conflictCommand),
-        // T4 (resetPreview) and T5 (stashList, stashFiles) replace these cases.
         case 'operationState':
+          return await handleCached<OperationStateValue>(
+            deps,
+            runtime,
+            payload,
+            signal,
+            OPERATION_STATE_CACHE_KEY,
+            (root) => readOperationState(deps.runner, root, { signal }),
+          )
+        // A3 read endpoints registered in T1; T3 (conflictCommand), T4 (resetPreview)
+        // and T5 (stashList, stashFiles) replace these cases.
         case 'conflictCommand':
         case 'resetPreview':
         case 'stashList':

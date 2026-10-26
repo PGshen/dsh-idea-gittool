@@ -153,7 +153,7 @@ describe('pullForPushOperation / autostash conflict（评审 I2）', () => {
 
     const failure = await failureOf(pull(contextFor(remote.local), { mode: 'rebase' }))
     expect(failure.code).toBe('git/conflict')
-    expect(failure.details).toMatchObject({ autostash: true })
+    expect(failure.details).toMatchObject({ stashKept: true })
     // The user's edit is still recoverable from the stash.
     expect(remote.local.git('stash', 'list').trim()).not.toBe('')
   })

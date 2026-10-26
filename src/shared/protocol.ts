@@ -760,9 +760,19 @@ export interface OperationControlValue {
   version?: number
 }
 
-/** `operationCommit`：合并中提交（信息经 stdin `commit -F -`，不带 pathspec）→ {@link CommitResultValue}。 */
+/** `operationCommit`：合并中提交（信息经 stdin `commit -F -`，不带 pathspec）→ {@link OperationCommitValue}。 */
 export interface OperationCommitRequest extends WriteRequest {
   message: string
+}
+
+/**
+ * `operationCommit` 的结果（T2 追加，{@link CommitResultValue} 的超集）：提交结束了合并，
+ * 待恢复贮藏随即按 sha 恢复，字段含义同 {@link OperationControlValue}。
+ */
+export interface OperationCommitValue extends CommitResultValue {
+  stashRestored?: boolean
+  stashMissing?: boolean
+  stashKept?: boolean
 }
 
 // --- 冲突（T3） -----------------------------------------------------------------
@@ -1093,7 +1103,7 @@ export interface RpcEndpointTypes {
   stashList: { request: RpcRequest; value: StashListValue }
   stashFiles: { request: StashFilesRequest; value: StashFilesValue }
   operationControl: { request: OperationControlRequest; value: OperationControlValue }
-  operationCommit: { request: OperationCommitRequest; value: CommitResultValue }
+  operationCommit: { request: OperationCommitRequest; value: OperationCommitValue }
   resolveConflict: { request: ResolveConflictRequest; value: ResolveConflictValue }
   checkout: { request: CheckoutRequest; value: CheckoutValue }
   createBranch: { request: CreateBranchRequest; value: CreateBranchValue }

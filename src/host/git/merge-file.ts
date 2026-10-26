@@ -111,8 +111,13 @@ export async function readMergeFile(ctx: WriteContext, path: string): Promise<Om
     const operation = await detectOperation(readRunner(ctx), ctx.repoRoot, ctx.signal)
     if (operation !== null && operation !== 'bisect') {
       const undo = await queryOk(ctx, ['ls-files', '--resolve-undo', '-z'], 'git ls-files --resolve-undo')
-      entries = parseStageRecords(undo).get(path)
-      resolved = entries !== undefined
+      const candidate = parseStageRecords(undo).get(path)
+      // Only text-style resolutions (stages 2 and 3 both recorded) can be restored and re-applied;
+      // resolved delete-kind conflicts cannot (git-behavior.md §1), so they do not open.
+      if (candidate?.has(2) === true && candidate.has(3)) {
+        entries = candidate
+        resolved = true
+      }
     }
   }
   if (entries === undefined) throw staleConflict(path)

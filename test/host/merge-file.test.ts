@@ -237,6 +237,24 @@ describe('mergeFile', () => {
     expect(after.base?.text).toBe('a\nb\nc\n')
   })
 
+  it('does not open resolved delete-kind conflicts (resolve-undo lacks stage 2 or 3)', async () => {
+    const repo = makeRepo()
+    mergeStopped(repo)
+    const ctx = contextFor(repo)
+    // Unresolved DU/UD still open through the normal path.
+    expect((await readMergeFile(ctx, 'du.txt')).kind).toBe('deleted-by-us')
+    expect((await readMergeFile(ctx, 'ud.txt')).kind).toBe('deleted-by-them')
+    const op = resolveConflictOperation
+    await op.run(ctx, op.parse({ sessionId: 's', requestId: 'r', path: 'du.txt', resolution: 'delete' }))
+    await op.run(ctx, op.parse({ sessionId: 's', requestId: 'r', path: 'ud.txt', resolution: 'ours' }))
+    for (const path of ['du.txt', 'ud.txt']) {
+      expect(await failureOf(readMergeFile(ctx, path))).toMatchObject({
+        code: 'git/stale-target',
+        details: { target: 'conflict' },
+      })
+    }
+  })
+
   it('does not trust resolve-undo leftovers once the operation has ended', async () => {
     const repo = makeRepo()
     mergeStopped(repo)

@@ -160,9 +160,17 @@ describe('handleRollbackOutcome', () => {
 
   it('keeps the sheet open for kept-staged / skipped notes', () => {
     const callbacks = { onDone: vi.fn(), onClose: vi.fn() }
-    handleRollbackOutcome({ kind: 'done', value: { restored: [], deleted: [], keptStaged: ['b'], skipped: [] } }, callbacks)
+    const staysOpen = handleRollbackOutcome({ kind: 'done', value: { restored: [], deleted: [], keptStaged: ['b'], skipped: [] } }, callbacks)
     expect(callbacks.onDone).toHaveBeenCalledTimes(1)
     expect(callbacks.onClose).not.toHaveBeenCalled()
+    // The caller re-focuses the sheet so Esc keeps working on the result view (A2 走查问题 5).
+    expect(staysOpen).toBe(true)
+  })
+
+  it('reports staysOpen=false when it closed or nothing happened', () => {
+    const callbacks = { onDone: vi.fn(), onClose: vi.fn() }
+    expect(handleRollbackOutcome({ kind: 'done', value: { restored: ['a'], deleted: [], keptStaged: [], skipped: [] } }, callbacks)).toBe(false)
+    expect(handleRollbackOutcome({ kind: 'blocked' }, callbacks)).toBe(false)
   })
 
   it('failure and blocked do nothing', () => {

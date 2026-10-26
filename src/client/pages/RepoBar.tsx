@@ -18,6 +18,10 @@ export interface RepoBarProps {
   branchesOpen?: boolean
   /** 控制台里有失败命令时在 ⋯ 上加提示点。 */
   consoleHasErrors?: boolean
+  /** 打开 Push 页（设计 §6 仓库栏「推送」）；未传时不显示。 */
+  onPush?: () => void
+  /** 待推送提交数，>0 时按钮带 ↑n。 */
+  ahead?: number
   /** 初始展开菜单（测试/静态渲染用）。 */
   defaultMenuOpen?: boolean
   /** 路径展示的最大字符数。 */
@@ -86,6 +90,14 @@ export function RepoBar(props: RepoBarProps): ReactNode {
             </button>
           )
         : null}
+      {props.onPush === undefined
+        ? null
+        : (
+            <button type="button" className={css.button} data-repo-push="" onClick={props.onPush}>
+              {t('repo.push')}
+              {(props.ahead ?? 0) > 0 ? ` ↑${String(props.ahead)}` : ''}
+            </button>
+          )}
       <div className={css.menuAnchor} ref={menuRef}>
         <button
           type="button"

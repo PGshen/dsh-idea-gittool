@@ -209,10 +209,15 @@ export interface RollbackSheetProps {
 }
 
 /** Side effects of a finished rollback: report, then close unless the result needs reading. */
-export function handleRollbackOutcome(outcome: RollbackOutcome, callbacks: Pick<RollbackSheetProps, 'onClose' | 'onDone'>): void {
-  if (outcome.kind !== 'done') return
+/** @returns true when the sheet stays open on the result view (the caller re-focuses it). */
+export function handleRollbackOutcome(outcome: RollbackOutcome, callbacks: Pick<RollbackSheetProps, 'onClose' | 'onDone'>): boolean {
+  if (outcome.kind !== 'done') return false
   callbacks.onDone(outcome.value)
-  if (!rollbackResultNeedsAttention(outcome.value)) callbacks.onClose()
+  if (!rollbackResultNeedsAttention(outcome.value)) {
+    callbacks.onClose()
+    return false
+  }
+  return true
 }
 
 export function handleRollbackEscape(
@@ -267,7 +272,9 @@ export function RollbackSheet(props: RollbackSheetProps): ReactNode {
       onDeleteConfirmedChange={confirmed => store.setDeleteConfirmed(confirmed)}
       onSubmit={() => {
         void store.submit().then(outcome => {
-          handleRollbackOutcome(outcome, { onDone: value => propsRef.current.onDone(value), onClose: close })
+          const staysOpen = handleRollbackOutcome(outcome, { onDone: value => propsRef.current.onDone(value), onClose: close })
+          // The submit button is gone on the result view; keep focus inside so Esc still closes.
+          if (staysOpen && mounted.current) rootRef.current?.focus()
         })
       }}
       onCopy={props.onCopy ?? copyToClipboard}

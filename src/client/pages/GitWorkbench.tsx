@@ -76,6 +76,11 @@ export function changeFilesFor(status: StatusValue | null, scope: DiffOpenScope)
   return scope === 'staged' ? status.staged : [...status.conflicts, ...status.unstaged, ...status.untracked]
 }
 
+/** 「已提交 <sha>」提示是否过期：HEAD 已移走（如推送被拒后拉取变基）时不再显示旧哈希。 */
+export function commitFeedbackIsStale(committedSha: string | null, head: string | null): boolean {
+  return committedSha !== null && head !== null && committedSha !== head
+}
+
 /** 回滚目标：未跟踪文件只能删除，需要危险确认。 */
 export function rollbackTargetsFor(status: StatusValue | null, paths: readonly string[]): RollbackTarget[] {
   const untracked = new Set(status?.untracked.map(entry => entry.path) ?? [])
@@ -150,6 +155,15 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
   useEffect(() => { changesStore.setStatus(status) }, [changesStore, status])
   const changes = useChangesState(changesStore)
   const commit = useCommitState(commitStore)
+  const statusSawCommit = useRef(false)
+  const committedSha = commit.phase === 'success' ? (commit.lastCommit?.sha ?? null) : null
+  const statusHead = status?.head ?? null
+  useEffect(() => {
+    // Wait for the status to reach the new commit first; only a later move of HEAD makes it stale.
+    if (commitFeedbackIsStale(committedSha, statusHead) && statusSawCommit.current) commitStore.dismiss()
+    if (committedSha !== null && committedSha === statusHead) statusSawCommit.current = true
+    if (committedSha === null) statusSawCommit.current = false
+  }, [commitStore, committedSha, statusHead])
   const [page, setPage] = useState<WorkbenchPage>('log')
   const [push, setPush] = useState<OpenPush | null>(null)
   const [rollback, setRollback] = useState<RollbackTarget[] | null>(null)
@@ -389,6 +403,8 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
         onRefresh={() => { void refreshAll() }}
         onOpenConsole={() => { setConsoleOpen(true) }}
         onToggleBranches={() => { branchesStore.setOpen(!branches.open) }}
+        onPush={() => { openPush({}) }}
+        ahead={status?.ahead ?? 0}
       />
       <PageTabs page={page} onChange={setPage} uncommittedCount={uncommittedCount(status)} />
       <div className={css.content}>

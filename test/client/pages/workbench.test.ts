@@ -1,6 +1,6 @@
 // A1 工作台接线：日志选择 → 详情动作、Diff 文件列表展开。
 import { describe, expect, it } from 'vitest'
-import { changeFilesFor, detailActionFor, diffFilesOf, logRefreshKey, rollbackTargetsFor } from '../../../src/client/pages/GitWorkbench.tsx'
+import { changeFilesFor, commitFeedbackIsStale, detailActionFor, diffFilesOf, logRefreshKey, rollbackTargetsFor } from '../../../src/client/pages/GitWorkbench.tsx'
 import type { CommitDetailValue, CommitSummary, StatusValue } from '../../../src/shared/protocol.ts'
 
 function summary(sha: string): CommitSummary {
@@ -103,5 +103,14 @@ describe('rollbackTargetsFor', () => {
       { path: 'u.txt', untracked: false },
       { path: 'n.txt', untracked: true },
     ])
+  })
+})
+
+describe('commitFeedbackIsStale（A2 走查问题 3）', () => {
+  it('HEAD 已不是刚提交的哈希（例如拉取变基后）时，「已提交」提示过期', () => {
+    expect(commitFeedbackIsStale('ed51451aaa', '426a6a2bbb')).toBe(true)
+    expect(commitFeedbackIsStale('ed51451aaa', 'ed51451aaa')).toBe(false)
+    expect(commitFeedbackIsStale(null, '426a6a2bbb')).toBe(false)
+    expect(commitFeedbackIsStale('ed51451aaa', null)).toBe(false)
   })
 })

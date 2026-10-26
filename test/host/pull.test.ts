@@ -158,3 +158,37 @@ describe('pullForPushOperation / autostash conflict（评审 I2）', () => {
     expect(remote.local.git('stash', 'list').trim()).not.toBe('')
   })
 })
+
+describe('pullForPushOperation / keeps the staging area（演示问题 1）', () => {
+  for (const mode of ['rebase', 'merge'] as const) {
+    it(`restores staged vs unstaged exactly after a ${mode}`, async () => {
+      const remote = setup()
+      diverge(remote, false)
+      // A staged change, an unstaged change, and a file with both (MM).
+      remote.local.write('staged.txt', 'staged\n')
+      remote.local.git('add', 'staged.txt')
+      remote.local.write('README.md', '# unstaged\n')
+      remote.local.write('mine.txt', 'mine staged\n')
+      remote.local.git('add', 'mine.txt')
+      remote.local.write('mine.txt', 'mine staged then edited\n')
+      const before = remote.local.git('status', '--porcelain').split('\n').filter(Boolean).sort()
+
+      await pull(contextFor(remote.local), { mode })
+
+      const after = remote.local.git('status', '--porcelain').split('\n').filter(Boolean).sort()
+      expect(after).toEqual(before)
+      expect(remote.local.git('diff', '--cached', '--', 'mine.txt')).toContain('+mine staged')
+      expect(remote.local.git('stash', 'list').trim()).toBe('')
+    })
+  }
+
+  it('reports git/conflict and keeps the stash when a rebase stops on conflicts', async () => {
+    const remote = setup()
+    diverge(remote, true)
+    remote.local.write('README.md', '# unstaged\n')
+    const failure = await failureOf(pull(contextFor(remote.local), { mode: 'rebase' }))
+    expect(failure.code).toBe('git/conflict')
+    expect(failure.details).toMatchObject({ operation: 'rebase', stashed: true })
+    expect(remote.local.git('stash', 'list').trim()).not.toBe('')
+  })
+})

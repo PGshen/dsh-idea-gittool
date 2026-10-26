@@ -41,7 +41,7 @@ import { watchRepo } from './watch.ts'
 import { isAbsolute, resolve as resolvePath } from 'node:path'
 
 import type { GitRunner, WriteOperation } from './git-executor.ts'
-import { GIT_BASE_ARGV, GitCommandFailure, bindWriteContext, messageOf, notImplemented } from './git-executor.ts'
+import { GIT_BASE_ARGV, GitCommandFailure, bindWriteContext, messageOf } from './git-executor.ts'
 import {
   checkoutOperation,
   createBranchOperation,
@@ -49,6 +49,7 @@ import {
   renameBranchOperation,
 } from './git/branch-write.ts'
 import { readMergeFile } from './git/merge-file.ts'
+import { mergeApplyOperation, mergeDraftSaveOperation, unresolveConflictOperation } from './git/merge-write.ts'
 import { conflictCommandFor, resolveConflictOperation } from './git/conflict.ts'
 import { addToVcsOperation, amendMessageOperation, commitFilesOperation } from './git/commit-write.ts'
 import { operationCommitOperation, operationControlOperation, readOperationState } from './git/operation.ts'
@@ -110,21 +111,6 @@ export type WriteValue<E extends WriteEndpoint> = Omit<RpcEndpointTypes[E]['valu
 /** Write endpoints (A2 + A3 + B1) → their operations; tests override single entries. */
 export type WriteOperations = { [E in WriteEndpoint]: WriteOperation<unknown, WriteValue<E>> }
 
-/**
- * Placeholder for a write endpoint registered ahead of its implementation (B1 T1):
- * refuses at parse time (after sessionId/requestId, before the queue and gate), so nothing runs.
- */
-function pendingOperation<E extends WriteEndpoint>(endpoint: E): WriteOperation<unknown, WriteValue<E>> {
-  return {
-    parse() {
-      throw notImplemented(endpoint)
-    },
-    run() {
-      return Promise.reject(notImplemented(endpoint))
-    },
-  }
-}
-
 const DEFAULT_WRITE_OPERATIONS: WriteOperations = {
   commitFiles: commitFilesOperation,
   amendMessage: amendMessageOperation,
@@ -151,10 +137,9 @@ const DEFAULT_WRITE_OPERATIONS: WriteOperations = {
   stashCreate: stashCreateOperation,
   stashApply: stashApplyOperation,
   stashDrop: stashDropOperation,
-  // B1: replaced by T3.
-  mergeDraftSave: pendingOperation('mergeDraftSave'),
-  mergeApply: pendingOperation('mergeApply'),
-  unresolveConflict: pendingOperation('unresolveConflict'),
+  mergeDraftSave: mergeDraftSaveOperation,
+  mergeApply: mergeApplyOperation,
+  unresolveConflict: unresolveConflictOperation,
 }
 
 /** Everything the handler needs; all session services are lazy and optional. */

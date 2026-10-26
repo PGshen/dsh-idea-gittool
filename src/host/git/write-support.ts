@@ -124,6 +124,52 @@ export async function readJsonRef(ctx: WriteContext, ref: string): Promise<unkno
   }
 }
 
+const OBJECT_ID_PATTERN = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/
+
+/** Write `value` as a JSON blob (`hash-object -w --stdin`, confined); returns the blob id. */
+export async function storeJsonBlob(ctx: WriteContext, value: unknown): Promise<string> {
+  const blob = await ctx.git([...GIT_BASE_ARGV, 'hash-object', '-w', '--stdin'], { stdin: JSON.stringify(value) })
+  const sha = blob.stdout.trim()
+  if (blob.exitCode !== 0 || !OBJECT_ID_PATTERN.test(sha)) throw redactedFailure(blob, 'git hash-object')
+  return sha
+}
+
+/**
+ * Point `ref` at a new JSON blob holding `value` (ADR 0008). `alsoUpdate` ref → object pairs
+ * join the same `update-ref --stdin` transaction.
+ */
+export async function writeJsonRef(
+  ctx: WriteContext,
+  ref: string,
+  value: unknown,
+  alsoUpdate: ReadonlyArray<readonly [string, string]> = [],
+): Promise<void> {
+  const sha = await storeJsonBlob(ctx, value)
+  const lines = [[ref, sha] as const, ...alsoUpdate].map(([name, id]) => `update ${name} ${id}\n`)
+  const updated = await ctx.git([...GIT_BASE_ARGV, 'update-ref', '--stdin'], { stdin: lines.join('') })
+  if (updated.exitCode !== 0) throw redactedFailure(updated, 'git update-ref')
+}
+
+/**
+ * Delete every ref under the given prefix(es) in one transaction, except those in `keep`.
+ * Returns how many refs were deleted.
+ */
+export async function deleteRefs(
+  ctx: WriteContext,
+  prefix: string | readonly string[],
+  keep: ReadonlySet<string> = new Set(),
+): Promise<number> {
+  const prefixes = typeof prefix === 'string' ? [prefix] : prefix
+  const listed = await queryOk(ctx, ['for-each-ref', '--format=%(refname)', ...prefixes], 'git for-each-ref')
+  const refs = listed.split('\n').map((line) => line.trim()).filter((ref) => ref !== '' && !keep.has(ref))
+  if (refs.length === 0) return 0
+  const deleted = await ctx.git([...GIT_BASE_ARGV, 'update-ref', '--stdin'], {
+    stdin: refs.map((ref) => `delete ${ref}\n`).join(''),
+  })
+  if (deleted.exitCode !== 0) throw redactedFailure(deleted, 'git update-ref')
+  return refs.length
+}
+
 /** Operations that block an ordinary commit/pull (A3 owns committing inside them). */
 export async function assertNoOperation(ctx: WriteContext): Promise<void> {
   const operation: RepoOperation = await detectOperation(readRunner(ctx), ctx.repoRoot, ctx.signal)

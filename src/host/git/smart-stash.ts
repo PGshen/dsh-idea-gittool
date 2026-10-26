@@ -20,7 +20,7 @@ import type { DirtyWorktreeDetails, RepoOperation, SmartOperationKind, SmartStas
 import { DIRTY_PATHS_LIMIT } from '../../shared/protocol.ts'
 import type { GitRunResult, WriteContext } from '../git-executor.ts'
 import { GIT_BASE_ARGV, GitCommandFailure, messageOf } from '../git-executor.ts'
-import { outputSummary, queryOk, redactedFailure } from './write-support.ts'
+import { deleteRefs, outputSummary, queryOk, redactedFailure, writeJsonRef } from './write-support.ts'
 import { detectOperationIn, readStateFile, rebaseStateDir } from './status.ts'
 
 export interface SmartStashOptions<V = unknown> {
@@ -133,28 +133,18 @@ export async function readHeadPosition(query: GitQuery): Promise<{ branch: strin
 
 /** Write both marker refs in one confined transaction. */
 async function writePendingStash(ctx: WriteContext, pending: PendingStash): Promise<void> {
-  const meta = JSON.stringify({
+  const meta = {
     operation: pending.operation,
     branch: pending.branch,
     headSha: pending.headSha,
     createdAt: pending.createdAt,
-  })
-  const blob = await ctx.git([...GIT_BASE_ARGV, 'hash-object', '-w', '--stdin'], { stdin: meta })
-  const blobSha = blob.stdout.trim()
-  if (blob.exitCode !== 0 || !SHA_PATTERN.test(blobSha)) throw redactedFailure(blob, 'git hash-object')
-  const updated = await ctx.git([...GIT_BASE_ARGV, 'update-ref', '--stdin'], {
-    stdin: `update ${PENDING_STASH_REF} ${pending.stashSha}\nupdate ${PENDING_STASH_META_REF} ${blobSha}\n`,
-  })
-  if (updated.exitCode !== 0) throw redactedFailure(updated, 'git update-ref')
+  }
+  await writeJsonRef(ctx, PENDING_STASH_META_REF, meta, [[PENDING_STASH_REF, pending.stashSha]])
 }
 
 /** Delete both marker refs (confined); a failure leaves a marker that the sha check neutralizes. */
 export async function removePendingStash(ctx: WriteContext): Promise<void> {
-  await ctx
-    .git([...GIT_BASE_ARGV, 'update-ref', '--stdin'], {
-      stdin: `delete ${PENDING_STASH_REF}\ndelete ${PENDING_STASH_META_REF}\n`,
-    })
-    .catch(() => undefined)
+  await deleteRefs(ctx, [PENDING_STASH_REF, PENDING_STASH_META_REF]).catch(() => undefined)
 }
 
 /** Absolute (per-worktree) git directory of the write context's repository. */

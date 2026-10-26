@@ -40,7 +40,7 @@ export function kindFromStages(stages: ReadonlySet<number>): ConflictKind {
   return 'both-deleted'
 }
 
-function staleConflict(path: string): GitCommandFailure {
+export function staleConflict(path: string): GitCommandFailure {
   return new GitCommandFailure('git/stale-target', `"${path}" is not a conflict that can be opened in the merge window`, {
     target: 'conflict',
     expected: path,
@@ -71,18 +71,18 @@ async function readSide(
 }
 
 /** Blob of `path` in the worktree through the clean filter; null when the file is missing. */
-async function hashWorktree(ctx: WriteContext, path: string): Promise<string | null> {
+export async function hashWorktree(ctx: WriteContext, path: string): Promise<string | null> {
   const result = await query(ctx, ['hash-object', `--path=${path}`, '--', path])
   if (result.exitCode === 0) return result.stdout.trim()
   if (/could not open|no such file|cannot open|does not exist|not a regular file/i.test(result.stderr)) return null
   throw redactedFailure(result, 'git hash-object')
 }
 
-function stageShas(entries: StageEntries): MergeStageShas {
+export function stageShas(entries: StageEntries): MergeStageShas {
   return { base: entries.get(1)?.sha ?? null, ours: entries.get(2)?.sha ?? null, theirs: entries.get(3)?.sha ?? null }
 }
 
-function sameStages(a: MergeStageShas, b: MergeStageShas): boolean {
+export function sameStages(a: MergeStageShas, b: MergeStageShas): boolean {
   return a.base === b.base && a.ours === b.ours && a.theirs === b.theirs
 }
 
@@ -103,24 +103,35 @@ function validDraft(raw: unknown, current: MergeStageShas): MergeDraft | null {
   return draft as MergeDraft
 }
 
+/**
+ * Index entries of a path the merge window may work on: an unresolved conflict (`ls-files -u`), or a
+ * path resolved in the current operation whose resolve-undo records both stage 2 and stage 3.
+ * Anything else is `git/stale-target` (target `conflict`).
+ */
+export async function conflictStageEntries(
+  ctx: WriteContext,
+  path: string,
+): Promise<{ entries: StageEntries; resolved: boolean }> {
+  const unmerged = (await unmergedEntries(ctx)).get(path)
+  if (unmerged !== undefined) return { entries: unmerged, resolved: false }
+  const undo = await resolveUndoEntries(ctx, path)
+  // Only text-style resolutions (stages 2 and 3 both recorded) can be restored and re-applied;
+  // resolved delete-kind conflicts cannot (git-behavior.md §1), so they do not open.
+  if (undo?.has(2) === true && undo.has(3)) return { entries: undo, resolved: true }
+  throw staleConflict(path)
+}
+
+/** Resolve-undo records of a path; only trusted while an operation is in progress (else undefined). */
+export async function resolveUndoEntries(ctx: WriteContext, path: string): Promise<StageEntries | undefined> {
+  const operation = await detectOperation(readRunner(ctx), ctx.repoRoot, ctx.signal)
+  if (operation === null || operation === 'bisect') return undefined
+  const undo = await queryOk(ctx, ['ls-files', '--resolve-undo', '-z'], 'git ls-files --resolve-undo')
+  return parseStageRecords(undo).get(path)
+}
+
 /** `mergeFile`: the three sides, the worktree hash and the saved draft of one conflict. */
 export async function readMergeFile(ctx: WriteContext, path: string): Promise<Omit<MergeFileValue, 'version'>> {
-  let entries = (await unmergedEntries(ctx)).get(path)
-  let resolved = false
-  if (entries === undefined) {
-    const operation = await detectOperation(readRunner(ctx), ctx.repoRoot, ctx.signal)
-    if (operation !== null && operation !== 'bisect') {
-      const undo = await queryOk(ctx, ['ls-files', '--resolve-undo', '-z'], 'git ls-files --resolve-undo')
-      const candidate = parseStageRecords(undo).get(path)
-      // Only text-style resolutions (stages 2 and 3 both recorded) can be restored and re-applied;
-      // resolved delete-kind conflicts cannot (git-behavior.md §1), so they do not open.
-      if (candidate?.has(2) === true && candidate.has(3)) {
-        entries = candidate
-        resolved = true
-      }
-    }
-  }
-  if (entries === undefined) throw staleConflict(path)
+  const { entries, resolved } = await conflictStageEntries(ctx, path)
 
   const stages = stageShas(entries)
   const sides: Record<'base' | 'ours' | 'theirs', MergeSide | null> = { base: null, ours: null, theirs: null }

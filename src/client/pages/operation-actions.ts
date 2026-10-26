@@ -16,6 +16,9 @@ import type { ActionOutcome, ActionStore, ActionStatus } from '../store/action-s
 import type { CommitPageMode } from '../store/commit-store.ts'
 import { normalizeMessage } from '../store/commit-store.ts'
 import type { ActionNotice } from './branch-actions.ts'
+import { failedNotice, stashNotice } from './branch-actions.ts'
+
+export { stashNotice }
 
 export interface OperationDeps {
   actions: Pick<ActionStore, 'run'>
@@ -102,22 +105,12 @@ export interface OperationEffect {
 
 const NOTHING: OperationEffect = { notice: null, finished: false, showInLog: null, refreshConflicts: false }
 
-type StashFields = Pick<OperationControlValue, 'stashKept' | 'stashMissing' | 'stashError' | 'stashRestored'>
-
-/** What the user must hear about the pending stash; a successful restore is silent. */
-export function stashNotice(value: StashFields): ActionNotice | null {
-  if (typeof value.stashError === 'string') return { tone: 'warning', message: text('operation.notice.stashError', { message: value.stashError }), action: 'goStash' }
-  if (value.stashKept === true) return { tone: 'warning', message: text('operation.notice.stashKept'), action: 'goStash' }
-  if (value.stashMissing === true) return { tone: 'warning', message: text('operation.notice.stashMissing') }
-  return null
-}
-
 export function operationOutcomeEffect(outcome: ActionOutcome<unknown>, step: OperationStepKind): OperationEffect {
   switch (outcome.kind) {
     case 'cancelled':
       return NOTHING
     case 'failed':
-      return { ...NOTHING, notice: { tone: 'error', message: outcome.message } }
+      return { ...NOTHING, notice: failedNotice(outcome) }
     case 'conflict':
       return { ...NOTHING, refreshConflicts: true }
     case 'done':
@@ -132,6 +125,29 @@ export function operationOutcomeEffect(outcome: ActionOutcome<unknown>, step: Op
   if (!finished) return { ...NOTHING, notice }
   const showInLog = step === 'abort' || typeof value.head !== 'string' ? null : value.head
   return { notice, finished: true, showInLog, refreshConflicts: false }
+}
+
+/**
+ * 「恢复贮藏」 of the pending-stash bar (final review 2b): the operation already ended outside
+ * the UI, so `continue` only restores the pending stash — the Host does that only when the
+ * stash belongs to the current branch, otherwise it answers `stashKept`.
+ */
+export function restorePendingStash(deps: OperationDeps): Promise<ActionOutcome<OperationControlValue>> {
+  return controlOperation(deps, 'continue')
+}
+
+/** Notice after 「恢复贮藏」: a restore is silent (the bar goes away); kept / missing / failures are told. */
+export function pendingRestoreNotice(outcome: ActionOutcome<unknown>): ActionNotice | null {
+  switch (outcome.kind) {
+    case 'cancelled':
+      return null
+    case 'failed':
+      return failedNotice(outcome)
+    case 'conflict':
+      return { tone: 'warning', message: text('operation.notice.stashKept'), action: 'goStash' }
+    case 'done':
+      return stashNotice((outcome.value ?? {}) as Partial<OperationControlValue>)
+  }
 }
 
 /** An operation control or merge commit is in flight (banner and list buttons wait). */

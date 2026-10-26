@@ -256,6 +256,9 @@ export function StashPageView(props: StashPageViewProps): ReactNode {
           <>
             {section('tracked', value.files)}
             {section('untracked', value.untracked)}
+            {value.truncated === true
+              ? <p className={css.hint} data-stash-truncated>{t('stash.files.truncated', { count: value.files.length + value.untracked.length })}</p>
+              : null}
             <p className={css.hint}>{t('stash.files.hint')}</p>
           </>
         )
@@ -352,8 +355,8 @@ export function StashPage(props: StashPageProps): ReactNode {
     onOpenDiff(open.request, open.files, [text('stash.diffSource'), value.sha.slice(0, 7)])
   }
 
-  const finish = (outcome: Parameters<typeof stashOutcomeEffect>[0]): void => {
-    const effect = stashOutcomeEffect(outcome)
+  const finish = (outcome: Parameters<typeof stashOutcomeEffect>[0], pop = false): void => {
+    const effect = stashOutcomeEffect(outcome, pop)
     onNotice(effect.notice)
     if (effect.refresh) void store.refresh()
   }
@@ -386,7 +389,7 @@ export function StashPage(props: StashPageProps): ReactNode {
         const sha = state.selectedSha
         if (sha === null) return
         onNotice(null)
-        void applyStash({ actions, trigger }, sha, pop).then(finish)
+        void applyStash({ actions, trigger }, sha, pop).then((outcome) => { finish(outcome, pop) })
       }}
       onAskDrop={(sha) => { if (canDropStash(props.busy, props.dropBlock)) setConfirmingSha(sha) }}
       onCancelDrop={() => { setConfirmingSha(null) }}
@@ -395,7 +398,7 @@ export function StashPage(props: StashPageProps): ReactNode {
         if (sha === null || !canDropStash(props.busy, props.dropBlock)) return
         setConfirmingSha(null)
         onNotice(null)
-        void dropStash({ actions, trigger }, sha).then(finish)
+        void dropStash({ actions, trigger }, sha).then((outcome) => { finish(outcome) })
       }}
       onSelectFile={setSelectedFile}
       onOpenFile={(kind, path) => {

@@ -90,3 +90,23 @@ describe('stashOutcomeEffect', () => {
     expect(stashOutcomeEffect({ kind: 'cancelled' })).toEqual({ notice: null, refresh: false })
   })
 })
+
+describe('stashOutcomeEffect / partial apply (final review 3)', () => {
+  const SHA_X = 'f'.repeat(40)
+  it('pop whose entry could not be dropped warns not to pop again', () => {
+    expect(stashOutcomeEffect({ kind: 'done', value: { sha: SHA_X, dropped: false, indexRestored: true } }, true))
+      .toEqual({ notice: { tone: 'warning', message: text('stash.notice.notDropped') }, refresh: true })
+  })
+  it('apply never expects a drop', () => {
+    expect(stashOutcomeEffect({ kind: 'done', value: { sha: SHA_X, dropped: false, indexRestored: true } }, false))
+      .toEqual({ notice: null, refresh: true })
+  })
+  it('index not restored says the changes are all in the working tree', () => {
+    expect(stashOutcomeEffect({ kind: 'done', value: { sha: SHA_X, dropped: false, indexRestored: false } }, false))
+      .toEqual({ notice: { tone: 'warning', message: text('stash.notice.indexNotRestored') }, refresh: true })
+  })
+  it('both at once: one notice with the second as detail', () => {
+    expect(stashOutcomeEffect({ kind: 'done', value: { sha: SHA_X, dropped: false, indexRestored: false } }, true))
+      .toEqual({ notice: { tone: 'warning', message: text('stash.notice.notDropped'), detail: text('stash.notice.indexNotRestored') }, refresh: true })
+  })
+})

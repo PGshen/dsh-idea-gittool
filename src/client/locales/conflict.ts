@@ -77,6 +77,8 @@ export const zhConflict = {
   'operation.notice.stashKept': '贮藏仍保留：改动没有自动恢复，请到贮藏列表里手动恢复。',
   'operation.notice.stashMissing': '待恢复的贮藏已不在贮藏列表里，没有可恢复的改动。',
   'operation.notice.stashError': '恢复贮藏时出错（贮藏仍保留）：{message}',
+  'pendingStash.title': '有一份操作前贮藏的改动尚未恢复',
+  'pendingStash.restore': '恢复贮藏',
 }
 
 export const enConflict = {
@@ -156,4 +158,6 @@ export const enConflict = {
   'operation.notice.stashKept': 'The stash is kept: the changes were not restored automatically; restore them from the stash list.',
   'operation.notice.stashMissing': 'The stash to restore is no longer in the stash list; nothing was restored.',
   'operation.notice.stashError': 'Restoring the stash failed (the stash is kept): {message}',
+  'pendingStash.title': 'Changes stashed before an operation have not been restored yet',
+  'pendingStash.restore': 'Restore Stash',
 } satisfies Record<keyof typeof zhConflict, string>

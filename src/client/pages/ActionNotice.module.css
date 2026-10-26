@@ -23,6 +23,10 @@
   min-width: 0;
 }
 
+.detail {
+  margin-left: 6px;
+}
+
 .dismiss {
   flex: none;
   padding: 0 6px;

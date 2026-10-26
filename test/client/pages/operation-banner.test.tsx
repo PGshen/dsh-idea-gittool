@@ -1,7 +1,7 @@
 // T7 操作横幅：merge/rebase/cherry-pick/revert/bisect 的文案与冲突数；A1 只提供「查看控制台」。
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
-import { bannerFromStatus, OPERATION_LABEL, OperationBanner, OperationBannerView, SKIPPABLE } from '../../../src/client/pages/OperationBanner.tsx'
+import { bannerFromStatus, OPERATION_LABEL, OperationBanner, OperationBannerView, PendingStashBarView, SKIPPABLE } from '../../../src/client/pages/OperationBanner.tsx'
 import type { BannerOperation, OperationBannerViewProps } from '../../../src/client/pages/OperationBanner.tsx'
 import { zhT } from '../i18n-helpers.tsx'
 import { statusFixture } from './branch-fixtures.ts'
@@ -137,5 +137,25 @@ describe('fix 2: one skippable-operations set', () => {
     const shared = await import('../../../src/client/operations.ts')
     expect(SKIPPABLE).toBe(shared.SKIPPABLE)
     expect([...shared.SKIPPABLE].sort()).toEqual(['cherry-pick', 'rebase'])
+  })
+})
+
+describe('PendingStashBarView (final review 2b)', () => {
+  const noop = (): void => {}
+  it('tells about the unrestored stash with 「恢复贮藏」 and 「前往贮藏页」', () => {
+    const html = renderToStaticMarkup(<PendingStashBarView t={zhT} onRestore={noop} onGoStash={noop} />)
+    expect(html).toContain('data-pending-stash-bar')
+    expect(html).toContain('有一份操作前贮藏的改动尚未恢复')
+    expect(html).toContain('data-pending-stash-action="restore"')
+    expect(html).toContain('恢复贮藏')
+    expect(html).toContain('data-pending-stash-action="goStash"')
+    expect(html).toContain('前往贮藏页')
+    expect(html).not.toMatch(/data-pending-stash-action="restore"[^>]*disabled/)
+  })
+  it('restore waits while busy or read-only (with the reason as title); the stash page stays reachable', () => {
+    const html = renderToStaticMarkup(<PendingStashBarView t={zhT} blockReason="只读" onRestore={noop} onGoStash={noop} />)
+    expect(html).toMatch(/disabled=""[^>]*title="只读"[^>]*data-pending-stash-action="restore"|data-pending-stash-action="restore"[^>]*disabled/)
+    expect(html).not.toMatch(/data-pending-stash-action="goStash"[^>]*disabled/)
+    expect(renderToStaticMarkup(<PendingStashBarView t={zhT} busy onRestore={noop} onGoStash={noop} />)).toMatch(/disabled/)
   })
 })

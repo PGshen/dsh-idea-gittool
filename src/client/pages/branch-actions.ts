@@ -229,6 +229,8 @@ export type NoticeActionId = 'goStash'
 export interface ActionNotice {
   tone: 'error' | 'warning'
   message: LocalizedText
+  /** Second sentence after the message (a failed write that kept or lost the user's stash). */
+  detail?: LocalizedText
   action?: NoticeActionId
 }
 
@@ -237,14 +239,44 @@ export function pathsLimitNotice(count: number): ActionNotice | null {
   return count > WRITE_PATHS_MAX ? { tone: 'error', message: text('write.tooManyPaths', { max: WRITE_PATHS_MAX, count }) } : null
 }
 
+/** Stash fields a write result or a failure's details may carry (smart stash / pending stash). */
+export interface StashFields {
+  stashRestored?: unknown
+  stashKept?: unknown
+  stashMissing?: unknown
+  stashError?: unknown
+}
+
+/** What the user must hear about the stash of an operation; a successful restore is silent. */
+export function stashNotice(value: StashFields): ActionNotice | null {
+  if (typeof value.stashError === 'string') return { tone: 'warning', message: text('operation.notice.stashError', { message: value.stashError }), action: 'goStash' }
+  if (value.stashKept === true) return { tone: 'warning', message: text('operation.notice.stashKept'), action: 'goStash' }
+  if (value.stashMissing === true) return { tone: 'warning', message: text('operation.notice.stashMissing') }
+  return null
+}
+
+/**
+ * The error notice of a failed write; when the failure also kept (or lost) the user's stash,
+ * that is told in the same notice with 「前往贮藏页」 (final review 2a: "恢复失败一律保留并告知").
+ */
+export function failedNotice(outcome: Extract<ActionOutcome<unknown>, { kind: 'failed' }>): ActionNotice {
+  const stash = stashNotice(outcome.error.details ?? {})
+  if (stash === null) return { tone: 'error', message: outcome.message }
+  return { tone: 'error', message: outcome.message, detail: stash.message, ...(stash.action === undefined ? {} : { action: stash.action }) }
+}
+
 /** What the user should be told about an outcome (null: nothing — the UI already shows the result). */
 export function outcomeNotice(outcome: ActionOutcome<unknown>): ActionNotice | null {
-  if (outcome.kind === 'failed') return { tone: 'error', message: outcome.message }
+  if (outcome.kind === 'failed') return failedNotice(outcome)
   if (outcome.kind === 'done') {
     const value = outcome.value
-    if (typeof value === 'object' && value !== null && (value as { stashKept?: unknown }).stashKept === true) {
+    if (typeof value !== 'object' || value === null) return null
+    const fields = value as StashFields
+    // A conflicting restore keeps its own wording; a git error or a vanished stash is told as such.
+    if (fields.stashKept === true && typeof fields.stashError !== 'string') {
       return { tone: 'warning', message: text('notice.stashKept'), action: 'goStash' }
     }
+    return stashNotice(fields)
   }
   return null
 }

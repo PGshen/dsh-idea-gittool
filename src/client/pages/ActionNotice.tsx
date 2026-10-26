@@ -20,7 +20,12 @@ export function ActionNotice({ notice, onDismiss, onAction }: ActionNoticeProps)
       role={notice.tone === 'error' ? 'alert' : 'status'}
       data-notice={notice.tone}
     >
-      <span className={css.message}>{t(notice.message.key, notice.message.params)}</span>
+      <span className={css.message}>
+        {t(notice.message.key, notice.message.params)}
+        {notice.detail === undefined
+          ? null
+          : <span className={css.detail} data-notice-detail>{t(notice.detail.key, notice.detail.params)}</span>}
+      </span>
       {notice.action === undefined || onAction === undefined
         ? null
         : (

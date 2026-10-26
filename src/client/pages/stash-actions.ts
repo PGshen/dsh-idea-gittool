@@ -1,8 +1,9 @@
 // Stash write actions (design §8.4, plan A3 T10): what is sent — always by sha, never by index —
 // and how an outcome maps to a notice. React-free.
-import type { StashCreateRequest } from '../../shared/protocol.ts'
+import type { StashApplyValue, StashCreateRequest } from '../../shared/protocol.ts'
 import type { FocusTarget } from '../focus.ts'
 import { text } from '../localized-text.ts'
+import type { LocalizedText } from '../localized-text.ts'
 import type { ActionOutcome, ActionStore } from '../store/action-store.ts'
 import type { ActionNotice } from './branch-actions.ts'
 import type { IntegrateResult } from './integrate-actions.ts'
@@ -60,13 +61,31 @@ export interface StashEffect {
   refresh: boolean
 }
 
-/** What the page tells the user and whether it reloads the list after an apply / pop / drop. */
-export function stashOutcomeEffect(outcome: ActionOutcome<unknown>): StashEffect {
+/**
+ * A successful apply / pop that did not do everything (final review 3): the popped entry could
+ * not be dropped (popping again would apply it twice), or the staging area was not rebuilt.
+ */
+function partialApplyNotice(value: unknown, pop: boolean): ActionNotice | null {
+  if (typeof value !== 'object' || value === null) return null
+  const applied = value as Partial<StashApplyValue>
+  const messages: LocalizedText[] = []
+  if (pop && applied.dropped === false) messages.push(text('stash.notice.notDropped'))
+  if (applied.indexRestored === false) messages.push(text('stash.notice.indexNotRestored'))
+  const [message, detail] = messages
+  if (message === undefined) return null
+  return detail === undefined ? { tone: 'warning', message } : { tone: 'warning', message, detail }
+}
+
+/**
+ * What the page tells the user and whether it reloads the list after an apply / pop / drop.
+ * `pop`: the outcome is of a pop (its entry should be gone afterwards).
+ */
+export function stashOutcomeEffect(outcome: ActionOutcome<unknown>, pop = false): StashEffect {
   switch (outcome.kind) {
     case 'cancelled':
       return { notice: null, refresh: false }
     case 'done':
-      return { notice: null, refresh: true }
+      return { notice: partialApplyNotice(outcome.value, pop), refresh: true }
     // The action store has already opened the conflict list; the stash is never dropped on a conflict.
     case 'conflict':
       return { notice: { tone: 'warning', message: text('stash.notice.conflictKept') }, refresh: true }

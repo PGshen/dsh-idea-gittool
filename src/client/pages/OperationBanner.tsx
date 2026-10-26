@@ -153,6 +153,47 @@ export function OperationBannerView(props: OperationBannerViewProps): ReactNode 
   )
 }
 
+export interface PendingStashBarProps {
+  /** An operation control is running: restore waits. */
+  busy?: boolean
+  /** Why writes are disabled (read-only repository); null when allowed. */
+  blockReason?: string | null
+  onRestore: (trigger: FocusTarget | null) => void
+  onGoStash: () => void
+}
+
+/**
+ * Final review 2b: the operation that stashed the user's changes ended outside the UI (terminal,
+ * Agent) and the stash was never restored. Stays until it is restored or gone.
+ */
+export function PendingStashBarView(props: PendingStashBarProps & { t: Translate }): ReactNode {
+  const { t, busy = false, blockReason = null } = props
+  return (
+    <div role="status" aria-live="polite" className={css.banner} data-pending-stash-bar>
+      <div className={css.row}>
+        <span className={css.icon} aria-hidden="true">⚠</span>
+        <span className={css.title}>{t('pendingStash.title')}</span>
+        <span className={css.spacer} />
+        <Button
+          tone="primary"
+          disabled={busy || blockReason !== null}
+          title={blockReason ?? undefined}
+          data-pending-stash-action="restore"
+          onClick={(event) => { props.onRestore(triggerOf(event)) }}
+        >
+          {t('pendingStash.restore')}
+        </Button>
+        <Button data-pending-stash-action="goStash" onClick={props.onGoStash}>{t('notice.goStash')}</Button>
+      </div>
+    </div>
+  )
+}
+
+export function PendingStashBar(props: PendingStashBarProps): ReactNode {
+  const t = useT()
+  return <PendingStashBarView {...props} t={t} />
+}
+
 export function OperationBanner(props: OperationBannerProps): ReactNode {
   const t = useT()
   const [confirmingAbort, setConfirmingAbort] = useState(false)

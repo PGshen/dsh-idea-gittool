@@ -27,7 +27,8 @@ import type { CommitPhase } from '../store/commit-store.ts'
 import { conflictListSync, createAutoOpenTracker, createConflictStore, operationIdentity, useConflictState } from '../store/conflict-store.ts'
 import type { OperationControlAction } from '../../shared/protocol.ts'
 import { ConflictsPage } from './ConflictsPage.tsx'
-import { controlOperation, mergePrefill, operationBusy, operationOutcomeEffect, submitOperationStep } from './operation-actions.ts'
+import { controlOperation, mergePrefill, operationBusy, operationOutcomeEffect, pendingRestoreNotice, restorePendingStash, submitOperationStep } from './operation-actions.ts'
+import { createPendingStashStore, usePendingStashState } from '../store/pending-stash-store.ts'
 import type { OperationStepKind } from './operation-actions.ts'
 import type { RollbackTarget } from '../store/push-store.ts'
 import type { DiffOpenScope } from './ChangesTree.tsx'
@@ -65,7 +66,7 @@ import { DirtyWorktreeSheet } from './DirtyWorktreeSheet.tsx'
 import css from './GitWorkbench.module.css'
 import { LogPage } from './LogPage.tsx'
 import type { LogSelection } from './LogPage.tsx'
-import { OperationBanner, bannerFromStatus } from './OperationBanner.tsx'
+import { OperationBanner, PendingStashBar, bannerFromStatus } from './OperationBanner.tsx'
 import { RepoBar } from './RepoBar.tsx'
 import { StatusBar } from './StatusBar.tsx'
 import {
@@ -73,6 +74,7 @@ import {
   dirtySheetHandlers,
   handleOverlayEscape,
   overlayLeaveEffects,
+  pushConflictWiring,
   useWorkbenchOverlay,
 } from './workbench-overlay.ts'
 import type { FocusTarget, WorkbenchOverlay } from './workbench-overlay.ts'
@@ -492,6 +494,26 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
     })
   }, [actions, applyOperationOutcome, commitStore])
 
+  // Final review 2b: a pending stash whose operation ended outside the UI (terminal / Agent).
+  const pendingStashStore = useMemo(
+    () => createPendingStashStore({ load: () => client.operationState(sessionId) }),
+    [client, sessionId],
+  )
+  const pendingStash = usePendingStashState(pendingStashStore)
+  const stashCount = status?.stashCount ?? 0
+  useEffect(() => {
+    if (!statusKnown) return
+    void pendingStashStore.sync({ operation, version: value.version, stashCount })
+  }, [operation, pendingStashStore, stashCount, statusKnown, value.version])
+  const restorePending = useCallback((trigger: FocusTarget | null) => {
+    setNotice(null)
+    void restorePendingStash({ actions, trigger }).then((outcome) => {
+      setNotice(pendingRestoreNotice(outcome))
+      void onRefresh()
+      void pendingStashStore.recheck()
+    })
+  }, [actions, onRefresh, pendingStashStore])
+
   // Branch actions (A3 T7): the runner is created once per action store and reads the latest
   // callbacks through a ref, so menus and sheets never act on a stale log store or page setter.
   const branchContext = branchActionContext(status, value.writePolicy)
@@ -627,6 +649,19 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
         onAbort={(trigger) => { runOperationControl('abort', trigger) }}
         onOpenConsole={() => { setConsoleOpen(true) }}
       />
+      {operation === null && pendingStash.pending
+        ? (
+            <PendingStashBar
+              busy={operationBusy(actionState.pending)}
+              blockReason={blockText(fetchBlock)}
+              onRestore={restorePending}
+              onGoStash={() => {
+                setNotice(null)
+                setPage('stash')
+              }}
+            />
+          )
+        : null}
       <RepoBar
         repoRoot={value.repoRoot}
         refreshing={refreshing}
@@ -766,10 +801,11 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
             {...(push.autoSubmit === true ? { autoSubmit: true } : {})}
             onClose={() => { overlays.closeIf('push') }}
             onPushed={() => { void onRefresh() }}
-            onConflict={() => {
-              void onRefresh()
-              setConsoleOpen(true)
-            }}
+            onConflict={pushConflictWiring({
+              open: overlays.open,
+              refresh: () => { void onRefresh() },
+              openConsole: () => { setConsoleOpen(true) },
+            })}
             onShowConsole={() => { setConsoleOpen(true) }}
             onCopy={text => { void globalThis.navigator?.clipboard?.writeText(text) }}
           />

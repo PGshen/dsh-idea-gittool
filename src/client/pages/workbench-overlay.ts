@@ -7,6 +7,7 @@ import type {
   CheckoutTarget,
   CommitFileEntry,
   DiffRequest,
+  GitError,
   PushRejectedDetails,
 } from '../../shared/protocol.ts'
 import { activeFocusTarget, restoreFocus } from '../focus.ts'
@@ -217,6 +218,23 @@ export function actionOverlayWiring(deps: {
       deps.open({ kind: 'conflicts' }, trigger)
     },
     onSuccess: () => { deps.refresh() },
+  }
+}
+
+/**
+ * Push page `git/conflict` (final review 8): the pull before the push stopped on conflicts — or,
+ * with no operation left open, restoring the stash conflicted. Open the conflict list (it loads
+ * operationState itself, so it works for operation null too); the console keeps the details.
+ */
+export function pushConflictWiring(deps: {
+  open: (next: WorkbenchOverlay, trigger: FocusTarget | null) => void
+  refresh: () => void
+  openConsole: () => void
+}): (error: GitError) => void {
+  return () => {
+    deps.refresh()
+    deps.openConsole()
+    deps.open({ kind: 'conflicts' }, null)
   }
 }
 

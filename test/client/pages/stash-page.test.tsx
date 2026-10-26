@@ -12,7 +12,7 @@ import { stashNotice } from '../../../src/client/pages/operation-actions.ts'
 import { outcomeNotice } from '../../../src/client/pages/branch-actions.ts'
 import type { StashStoreState } from '../../../src/client/store/stash-store.ts'
 import type { StashEntry, StashFilesValue } from '../../../src/shared/protocol.ts'
-import { zh } from '../../../src/client/locales.ts'
+import { en, zh } from '../../../src/client/locales.ts'
 import { zhT } from '../i18n-helpers.tsx'
 
 const noop = (): void => {}
@@ -79,6 +79,13 @@ describe('StashPageView', () => {
     expect(html).toContain('未跟踪的文件')
     expect(html).toContain('data-path="src/a.ts"')
     expect(html).toContain('data-path="notes/new.txt"')
+  })
+
+  it('says when the file list was truncated by the Host (final review 4)', () => {
+    expect(view()).not.toContain('data-stash-truncated')
+    const html = view({}, state({ files: { status: 'ready', sha: SHA_A, value: { ...FILES, truncated: true }, error: null } }))
+    expect(html).toContain('data-stash-truncated')
+    expect(html).toContain('文件过多，只显示了前 2 个。')
   })
 
   it('has the create / apply / pop / delete actions; the last three need a selection', () => {
@@ -172,6 +179,11 @@ describe('StashCreateSheetView', () => {
     />,
   )
 
+  it('keep-index hint describes the checked state (W2)', () => {
+    expect(sheet()).toContain('勾选后，已暂存的改动在贮藏后仍留在暂存区。')
+    expect(en['stash.create.keepIndex.hint']).toBe('When checked, staged changes stay in the index after stashing.')
+  })
+
   it('has the message field with the Host default as placeholder and the two options', () => {
     const html = sheet()
     expect(html).toContain('WIP on main:')
@@ -217,5 +229,13 @@ describe('stash page wiring', () => {
     expect(html).toContain('data-notice-action="goStash"')
     expect(html).toContain('前往贮藏页')
     expect(renderToStaticMarkup(<ActionNotice notice={{ tone: 'warning', message: text('operation.notice.stashKept') }} onDismiss={noop} onAction={noop} />)).not.toContain('data-notice-action')
+  })
+
+  it('an error notice shows its stash detail next to the message (final review 2a)', () => {
+    const notice = { tone: 'error' as const, message: text('action.error.git/stale-target'), detail: text('operation.notice.stashKept'), action: 'goStash' as const }
+    const html = renderToStaticMarkup(<ActionNotice notice={notice} onDismiss={noop} onAction={noop} />)
+    expect(html).toContain('data-notice-detail')
+    expect(html).toContain(zh['operation.notice.stashKept'])
+    expect(html).toContain('data-notice-action="goStash"')
   })
 })

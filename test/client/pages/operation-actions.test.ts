@@ -8,6 +8,8 @@ import {
   mergePrefill,
   operationBusy,
   operationOutcomeEffect,
+  pendingRestoreNotice,
+  restorePendingStash,
   resolveConflictFile,
   submitOperationStep,
 } from '../../../src/client/pages/operation-actions.ts'
@@ -137,6 +139,16 @@ describe('operationOutcomeEffect', () => {
     expect(operationOutcomeEffect(outcome, 'continue')).toMatchObject({ finished: false, notice: { tone: 'error' } })
     expect(operationOutcomeEffect({ kind: 'cancelled' }, 'continue')).toEqual({ notice: null, finished: false, showInLog: null, refreshConflicts: false })
   })
+
+  it('failure that kept the stash also tells the stash (final review 2a)', () => {
+    const outcome = failed('git/locked', { stashKept: true })
+    if (outcome.kind !== 'failed') throw new Error('fixture')
+    expect(operationOutcomeEffect(outcome, 'abort').notice)
+      .toEqual({ tone: 'error', message: outcome.message, detail: text('operation.notice.stashKept'), action: 'goStash' })
+    const withError = failed('git/locked', { stashKept: true, stashError: 'bad' })
+    expect(operationOutcomeEffect(withError, 'continue').notice)
+      .toMatchObject({ detail: text('operation.notice.stashError', { message: 'bad' }), action: 'goStash' })
+  })
 })
 
 describe('operationBusy', () => {
@@ -158,5 +170,23 @@ describe('carry 10: commit page merge prefill', () => {
     expect(mergePrefill(mergeState({ theirs: { label: 'topic' }, ours: { label: 'dev' }, message: '  ' }))).toBe("Merge branch 'topic' into dev")
     expect(mergePrefill(rebaseState())).toBeUndefined()
     expect(mergePrefill(null)).toBeUndefined()
+  })
+})
+
+describe('restorePendingStash (final review 2b)', () => {
+  it('sends operationControl continue with the clicked control', async () => {
+    const { actions, run } = fakeActions([{ kind: 'done', value: { operation: null, head: 'h', stashRestored: true } }])
+    await restorePendingStash({ actions, trigger })
+    expect(run).toHaveBeenCalledWith('operationControl', { action: 'continue' }, { trigger })
+  })
+  it('restored is silent; kept / missing / failures are told', () => {
+    expect(pendingRestoreNotice({ kind: 'done', value: { operation: null, head: 'h', stashRestored: true } })).toBeNull()
+    expect(pendingRestoreNotice({ kind: 'done', value: { operation: null, head: 'h', stashKept: true } }))
+      .toEqual({ tone: 'warning', message: text('operation.notice.stashKept'), action: 'goStash' })
+    expect(pendingRestoreNotice({ kind: 'done', value: { operation: null, head: 'h', stashMissing: true } }))
+      .toEqual({ tone: 'warning', message: text('operation.notice.stashMissing') })
+    const outcome = failed('git/invalid-payload')
+    expect(pendingRestoreNotice(outcome)).toMatchObject({ tone: 'error' })
+    expect(pendingRestoreNotice({ kind: 'cancelled' })).toBeNull()
   })
 })

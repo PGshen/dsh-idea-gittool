@@ -12,6 +12,7 @@ import {
   handleOverlayEscape,
   openOverlay,
   overlayLeaveEffects,
+  pushConflictWiring,
 } from '../../../src/client/pages/workbench-overlay.ts'
 import type { FocusTarget, OverlayController, WorkbenchOverlay } from '../../../src/client/pages/workbench-overlay.ts'
 import { createActionStore } from '../../../src/client/store/action-store.ts'
@@ -306,5 +307,17 @@ describe('action store ↔ overlay wiring', () => {
     expect(outcome.kind).toBe('conflict')
     expect(overlays.route().overlay).toBeNull()
     expect(refresh).not.toHaveBeenCalled()
+  })
+})
+
+describe('pushConflictWiring (final review 8)', () => {
+  it('a pull-before-push that conflicted refreshes and opens the conflict list (console still opens)', () => {
+    const open = vi.fn()
+    const refresh = vi.fn()
+    const openConsole = vi.fn()
+    pushConflictWiring({ open, refresh, openConsole })({ code: 'git/conflict', message: 'c', details: { stashKept: true } })
+    expect(refresh).toHaveBeenCalledTimes(1)
+    expect(open).toHaveBeenCalledWith({ kind: 'conflicts' }, null)
+    expect(openConsole).toHaveBeenCalledTimes(1)
   })
 })

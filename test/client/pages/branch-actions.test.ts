@@ -192,6 +192,27 @@ describe('outcomeNotice', () => {
     const error: GitError = { code: 'git/conflict', message: 'c' }
     expect(outcomeNotice({ kind: 'conflict', error, details: { operation: 'merge' } as never })).toBeNull()
   })
+  it('failed with a kept stash → error plus the stash detail and 「前往贮藏页」 (final review 2a)', () => {
+    const message = text('action.error.fallback', { code: 'git/locked', message: 'x' })
+    const failedWith = (details: Record<string, unknown>): ActionOutcome<unknown> =>
+      ({ kind: 'failed', error: { code: 'git/locked', message: 'x', details }, message })
+    expect(outcomeNotice(failedWith({ stashKept: true, stashError: 'boom' }))).toEqual({
+      tone: 'error', message, detail: text('operation.notice.stashError', { message: 'boom' }), action: 'goStash',
+    })
+    expect(outcomeNotice(failedWith({ stashKept: true }))).toEqual({
+      tone: 'error', message, detail: text('operation.notice.stashKept'), action: 'goStash',
+    })
+    expect(outcomeNotice(failedWith({ stashMissing: true }))).toEqual({
+      tone: 'error', message, detail: text('operation.notice.stashMissing'),
+    })
+    expect(outcomeNotice(failedWith({ stashRestored: true }))).toEqual({ tone: 'error', message })
+  })
+  it('done with a missing stash or a restore error is told (final review 2a)', () => {
+    expect(outcomeNotice({ kind: 'done', value: { stashMissing: true } }))
+      .toEqual({ tone: 'warning', message: text('operation.notice.stashMissing') })
+    expect(outcomeNotice({ kind: 'done', value: { stashKept: true, stashError: 'boom' } }))
+      .toEqual({ tone: 'warning', message: text('operation.notice.stashError', { message: 'boom' }), action: 'goStash' })
+  })
 })
 
 function makeRunner(runImpl: (endpoint: string, payload: unknown, options: unknown) => Promise<ActionOutcome<unknown>>) {

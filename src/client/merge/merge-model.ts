@@ -26,7 +26,15 @@
 //   acceptFile / revert (whole-file) and undo (store history) change them.
 //
 // A chunk is resolved when it is `edited` or both sides are done. `counts` reports conflict chunks only.
-import { MERGE_CHUNK_STATES, MERGE_DRAFT_VERSION, type MergeChunkState, type MergeDraft, type MergeStageShas } from '../../shared/protocol.ts'
+import {
+  MERGE_CHUNK_STATES,
+  MERGE_DRAFT_VERSION,
+  validDraftChunkRange,
+  type MergeChunkState,
+  type MergeDraft,
+  type MergeDraftChunk,
+  type MergeStageShas,
+} from '../../shared/protocol.ts'
 import { diff3, simpleMerge, type MergeChunk, type Range } from './diff3.ts'
 import { diffLines, splitLines, type DiffOp } from './line-diff.ts'
 
@@ -339,8 +347,9 @@ export function autoMerge(texts: MergeTexts): MergeModel {
  *
  * Touch rules (line level): an edit replacing lines `[es, ee)` touches a non-empty chunk it overlaps;
  * a pure line insertion (`es === ee`) touches a non-empty chunk only strictly inside it, so pressing
- * Enter at a chunk boundary just shifts the chunk; an empty chunk is touched by an edit that strictly
- * contains its position or a pure insertion at it. A touched chunk grows to cover the edited lines;
+ * Enter at a chunk boundary just shifts the chunk; an empty chunk (pending insertion) is touched only
+ * by an edit whose replaced lines strictly contain its position — a pure line insertion at its
+ * position shifts it like any other chunk. A touched chunk grows to cover the edited lines;
  * when one edit spans several chunks, the first keeps the shared lines (ranges stay ordered).
  */
 export function applyEdit(model: MergeModel, from: number, to: number, insert: string): MergeModel {
@@ -374,7 +383,7 @@ export function applyEdit(model: MergeModel, from: number, to: number, insert: s
   const d = ne - ee
 
   const touches = (r: Range): boolean => {
-    if (r.start === r.end) return es === ee ? es === r.start : es < r.start && r.start < ee
+    if (r.start === r.end) return es < r.start && r.start < ee
     if (es === ee) return r.start < es && es < r.end
     return es < r.end && ee > r.start
   }
@@ -390,7 +399,8 @@ export function applyEdit(model: MergeModel, from: number, to: number, insert: s
         rightDone: false,
         resultRange: { start: Math.min(r.start, es), end: r.end > ee ? r.end + d : ne },
       }
-    } else if (r.end <= es) {
+    } else if (r.end < es || (r.end === es && !(r.start === r.end && es === ee))) {
+      // Before the edit. An empty chunk sitting exactly where whole lines are inserted moves below them.
       next = chunk
     } else {
       next = { ...chunk, resultRange: { start: r.start + d, end: r.end + d } }
@@ -445,7 +455,13 @@ export function toDraft(model: MergeModel, stages: MergeStageShas, savedAt: stri
     version: MERGE_DRAFT_VERSION,
     stages,
     result: model.result,
-    chunks: model.chunks.map((c) => ({ state: c.state, leftDone: c.leftDone, rightDone: c.rightDone })),
+    chunks: model.chunks.map((c) => ({
+      state: c.state,
+      leftDone: c.leftDone,
+      rightDone: c.rightDone,
+      resultStart: c.resultRange.start,
+      resultEnd: c.resultRange.end,
+    })),
     savedAt,
   }
 }
@@ -470,20 +486,78 @@ function mapPoint(ops: readonly DiffOp[], p: number, isStart: boolean, include: 
 }
 
 /**
- * Restores chunk states and Result from a draft. Chunk ranges are not stored, so they are recovered
- * by aligning the Result with a template (base gaps + each chunk's state text) using the line diff;
- * this is exact whenever text outside edited chunks was not changed by hand.
+ * Whether a saved chunk decision is reachable for this chunk (state machine above): one-sided chunks
+ * keep their unchanged side done; `pending` has decided nothing; `ignored` decided something without
+ * applying; a side state needs that side changed and done; `both-*` and auto-resolved `edited` exist
+ * only for conflicts and need both sides done; manual `edited` has both flags cleared.
+ */
+function consistent(chunk: MergeChunk, saved: MergeDraftChunk): boolean {
+  const { state, leftDone, rightDone } = saved
+  const leftChanged = sideChanged(chunk, 'left')
+  const rightChanged = sideChanged(chunk, 'right')
+  if (state === 'edited') return (!leftDone && !rightDone) || (leftDone && rightDone && chunk.kind === 'conflict')
+  if ((!leftChanged && !leftDone) || (!rightChanged && !rightDone)) return false
+  const both = leftDone && rightDone
+  switch (state) {
+    case 'pending': return leftDone === !leftChanged && rightDone === !rightChanged
+    case 'ignored': return chunk.kind === 'same-change' ? both : (leftChanged && leftDone) || (rightChanged && rightDone)
+    case 'left': return leftChanged && leftDone && (chunk.kind !== 'same-change' || both)
+    case 'right': return rightChanged && rightDone && (chunk.kind !== 'same-change' || both)
+    default: return chunk.kind === 'conflict' && both
+  }
+}
+
+/** Saved text matches the state text (allowing the terminator `rebuild` adds to a side's last line). */
+function holdsStateText(actual: string, expected: string, eol: string): boolean {
+  return actual === expected || (expected !== '' && !expected.endsWith('\n') && actual === expected + eol)
+}
+
+/**
+ * Restores chunk states and Result from a draft (null when it does not fit this merge).
+ *
+ * Drafts written by {@link toDraft} carry each chunk's Result line range; they are used as is after
+ * validation (ordered, non-overlapping, inside the Result, and every non-edited chunk's lines hold
+ * its state text). Older drafts without ranges fall back to aligning the Result with a template
+ * (base gaps + each chunk's state text) using the line diff, which is exact whenever text outside
+ * edited chunks was not changed by hand.
  */
 function restore(fresh: MergeModel, draft: MergeDraft): MergeModel | null {
   if (draft.version !== MERGE_DRAFT_VERSION || draft.chunks.length !== fresh.chunks.length) return null
   const valid = new Set<string>(MERGE_CHUNK_STATES)
-  if (!draft.chunks.every((c) => valid.has(c.state) && typeof c.leftDone === 'boolean' && typeof c.rightDone === 'boolean')) return null
+  const savedChunks = draft.chunks
+  if (!savedChunks.every((c, i) =>
+    valid.has(c.state) && typeof c.leftDone === 'boolean' && typeof c.rightDone === 'boolean'
+    && validDraftChunkRange(c) && consistent(fresh.chunks[i]!, c))) return null
+
+  const resultLines = splitLines(draft.result)
+  const withState = (chunk: ModelChunk, saved: MergeDraftChunk, resultRange: Range): ModelChunk =>
+    ({ ...chunk, state: saved.state, leftDone: saved.leftDone, rightDone: saved.rightDone, resultRange })
+
+  const ranged = savedChunks.filter((c) => c.resultStart !== undefined).length
+  if (ranged > 0) {
+    if (ranged !== savedChunks.length) return null
+    let floor = 0
+    const chunks: ModelChunk[] = []
+    for (let i = 0; i < fresh.chunks.length; i++) {
+      const saved = savedChunks[i]!
+      const range = { start: saved.resultStart!, end: saved.resultEnd! }
+      if (range.start < floor || range.end > resultLines.length) return null
+      floor = range.end
+      const chunk = withState(fresh.chunks[i]!, saved, range)
+      if (chunk.state !== 'edited') {
+        const text = resultLines.slice(range.start, range.end).join('')
+        if (!holdsStateText(text, stateText(fresh, chunk, chunk.state, chunk.leftDone, chunk.rightDone), fresh.eol)) return null
+      }
+      chunks.push(chunk)
+    }
+    return { ...fresh, chunks, resultLines, result: draft.result }
+  }
 
   const template: string[] = []
   const templateRanges: Range[] = []
   let pos = 0
   fresh.chunks.forEach((chunk, i) => {
-    const saved = draft.chunks[i]!
+    const saved = savedChunks[i]!
     for (let k = pos; k < chunk.base.start; k++) template.push(fresh.baseLines[k]!)
     const start = template.length
     template.push(...splitLines(stateText(fresh, chunk, saved.state, saved.leftDone, saved.rightDone)))
@@ -492,17 +566,16 @@ function restore(fresh: MergeModel, draft: MergeDraft): MergeModel | null {
   })
   for (let k = pos; k < fresh.baseLines.length; k++) template.push(fresh.baseLines[k]!)
 
-  const resultLines = splitLines(draft.result)
   const ops = diffLines(template, resultLines)
   let floor = 0
   const chunks = fresh.chunks.map((chunk, i): ModelChunk => {
-    const saved = draft.chunks[i]!
+    const saved = savedChunks[i]!
     const tr = templateRanges[i]!
     const include = saved.state === 'edited'
     const start = Math.max(mapPoint(ops, tr.start, true, include), floor)
     const end = Math.max(mapPoint(ops, tr.end, false, include), start)
     floor = end
-    return { ...chunk, state: saved.state, leftDone: saved.leftDone, rightDone: saved.rightDone, resultRange: { start, end } }
+    return withState(chunk, saved, { start, end })
   })
   return { ...fresh, chunks, resultLines, result: draft.result }
 }

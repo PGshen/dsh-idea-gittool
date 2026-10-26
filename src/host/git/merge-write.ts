@@ -14,12 +14,13 @@ import type {
   MergeApplyRequest,
   MergeChunkState,
   MergeDraft,
+  MergeDraftChunk,
   MergeDraftSaveValue,
   MergeStageShas,
   ResolveConflictValue,
   UnresolveConflictValue,
 } from '../../shared/protocol.ts'
-import { MERGE_CHUNK_STATES, MERGE_DRAFT_VERSION } from '../../shared/protocol.ts'
+import { MERGE_CHUNK_STATES, MERGE_DRAFT_VERSION, validDraftChunkRange } from '../../shared/protocol.ts'
 import type { WriteContext, WriteOperation } from '../git-executor.ts'
 import { GIT_BASE_ARGV, GitCommandFailure } from '../git-executor.ts'
 import { unmergedEntries } from './conflict.ts'
@@ -83,7 +84,15 @@ function parseDraft(value: unknown): MergeDraft {
       if (typeof entry.leftDone !== 'boolean' || typeof entry.rightDone !== 'boolean') {
         throw invalidPayload('draft.chunks[].leftDone/rightDone must be booleans')
       }
-      return { state: entry.state as MergeChunkState, leftDone: entry.leftDone, rightDone: entry.rightDone }
+      if (!validDraftChunkRange(entry)) {
+        throw invalidPayload('draft.chunks[].resultStart/resultEnd must both be absent or non-negative integers with start <= end')
+      }
+      const parsed: MergeDraftChunk = { state: entry.state as MergeChunkState, leftDone: entry.leftDone, rightDone: entry.rightDone }
+      if (entry.resultStart !== undefined) {
+        parsed.resultStart = entry.resultStart as number
+        parsed.resultEnd = entry.resultEnd as number
+      }
+      return parsed
     }),
     savedAt: record.savedAt,
   }

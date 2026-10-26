@@ -10,7 +10,7 @@
 import { createHash } from 'node:crypto'
 
 import type { ConflictKind, MergeDraft, MergeFileValue, MergeSide, MergeStageShas } from '../../shared/protocol.ts'
-import { MERGE_DRAFT_VERSION } from '../../shared/protocol.ts'
+import { MERGE_DRAFT_VERSION, validDraftChunkRange } from '../../shared/protocol.ts'
 import type { WriteContext } from '../git-executor.ts'
 import { GitCommandFailure } from '../git-executor.ts'
 import type { StageEntries } from './conflict.ts'
@@ -100,6 +100,8 @@ function validDraft(raw: unknown, current: MergeStageShas): MergeDraft | null {
   if (!nullableSha(stages.base) || !nullableSha(stages.ours) || !nullableSha(stages.theirs)) return null
   if (!sameStages(stages, current)) return null
   if (typeof draft.result !== 'string' || !Array.isArray(draft.chunks) || typeof draft.savedAt !== 'string') return null
+  const chunks: unknown[] = draft.chunks
+  if (!chunks.every((c) => typeof c === 'object' && c !== null && validDraftChunkRange(c))) return null
   return draft as MergeDraft
 }
 

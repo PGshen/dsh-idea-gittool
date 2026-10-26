@@ -289,11 +289,29 @@ describe('applyEdit', () => {
     expect(ranges(m)).toEqual([[1, 2], [3, 3], [5, 5]])
   })
 
-  it('marks an empty chunk edited when typing at its position', () => {
+  it('shifts an empty chunk when a whole line is inserted at its position', () => {
     const start = createModel(SIDES)
     const m = applyEdit(start, start.result.length, start.result.length, 'h')
-    expect(states(m)[2]).toBe('edited:--')
-    expect(ranges(m)[2]).toEqual([7, 8])
+    expect(states(m)[2]).toBe('pending:L-')
+    expect(ranges(m)[2]).toEqual([8, 8])
+  })
+
+  it('does not resolve an empty insertion chunk when Enter is pressed at its position', () => {
+    const start = createModel({ base: 'a\nb\n', ours: 'a\nX\nb\n', theirs: 'a\nb\n' })
+    expect(ranges(start)).toEqual([[1, 1]])
+    const m = applyEdit(start, 2, 2, '\n')
+    expect(states(m)).toEqual(['pending:-R'])
+    expect(ranges(m)).toEqual([[2, 2]])
+    expect(allResolved(m)).toBe(false)
+    expect(acceptLeft(m, 0).result).toBe('a\n\nX\nb\n')
+  })
+
+  it('marks an empty chunk edited when an edit strictly contains its position', () => {
+    const start = createModel({ base: 'a\nb\nc\n', ours: 'a\nb\nX\nc\n', theirs: 'a\nb\nc\n' })
+    expect(ranges(start)).toEqual([[2, 2]])
+    const m = applyEdit(start, 2, 6, 'B\n')
+    expect(states(m)).toEqual(['edited:--'])
+    expect(ranges(m)).toEqual([[1, 2]])
   })
 
   it('keeps edited chunks out of chunk and batch actions', () => {
@@ -347,9 +365,9 @@ describe('draft round trip', () => {
       stages: STAGES,
       result: m.result,
       chunks: [
-        { state: 'left', leftDone: true, rightDone: true },
-        { state: 'edited', leftDone: false, rightDone: false },
-        { state: 'pending', leftDone: true, rightDone: false },
+        { state: 'left', leftDone: true, rightDone: true, resultStart: 1, resultEnd: 2 },
+        { state: 'edited', leftDone: false, rightDone: false, resultStart: 3, resultEnd: 5 },
+        { state: 'pending', leftDone: true, rightDone: false, resultStart: 7, resultEnd: 7 },
       ],
       savedAt: SAVED_AT,
     } satisfies MergeDraft)
@@ -367,6 +385,62 @@ describe('draft round trip', () => {
     expect(restored.result).toBe(m.result)
     expect(ranges(restored)).toEqual(ranges(m))
     expect(states(restored)).toEqual(states(m))
+  })
+
+  it('restores the saved ranges where alignment alone would misplace a chunk (review probe)', () => {
+    const texts = { base: 'A\nA\nz\n', ours: 'A\nB\nz\n', theirs: 'A\nA\nz\n' }
+    const m = applyEdit(createModel(texts), 0, 2, '')
+    expect(ranges(m)).toEqual([[0, 1]])
+    const restored = createModel(texts, toDraft(m, STAGES, SAVED_AT))!
+    expect(ranges(restored)).toEqual([[0, 1]])
+    expect(acceptLeft(restored, 0).result).toBe('B\nz\n')
+  })
+
+  it('falls back to alignment for drafts without saved ranges', () => {
+    const m = worked()
+    const draft = toDraft(m, STAGES, SAVED_AT)
+    const legacy = { ...draft, chunks: draft.chunks.map(({ state, leftDone, rightDone }) => ({ state, leftDone, rightDone })) }
+    const restored = createModel(SIDES, legacy)!
+    expect(restored.result).toBe(m.result)
+    expect(ranges(restored)).toEqual(ranges(m))
+  })
+
+  it('rejects saved ranges that are out of order, out of bounds, partial or do not hold the state text', () => {
+    const draft = toDraft(worked(), STAGES, SAVED_AT)
+    const withChunk = (i: number, patch: Record<string, unknown>): MergeDraft => ({
+      ...draft,
+      chunks: draft.chunks.map((c, k) => (k === i ? { ...c, ...patch } : c)),
+    })
+    // Overlaps the next chunk.
+    expect(createModel(SIDES, withChunk(0, { resultEnd: 4 }))).toBeNull()
+    // Past the end of the Result.
+    expect(createModel(SIDES, withChunk(2, { resultStart: 9, resultEnd: 9 }))).toBeNull()
+    // End before start.
+    expect(createModel(SIDES, withChunk(0, { resultStart: 2, resultEnd: 1 }))).toBeNull()
+    // Only some chunks carry ranges.
+    expect(createModel(SIDES, withChunk(1, { resultStart: undefined, resultEnd: undefined }))).toBeNull()
+    // Non-edited chunk whose slice is not its state text (left chunk moved onto the unchanged line 0).
+    expect(createModel(SIDES, withChunk(0, { resultStart: 0, resultEnd: 1 }))).toBeNull()
+  })
+
+  it('rejects states that contradict the flags or the chunk kind', () => {
+    const fresh = toDraft(createModel(SIDES), STAGES, SAVED_AT)
+    const withChunk = (i: number, patch: Record<string, unknown>): MergeDraft => ({
+      ...fresh,
+      chunks: fresh.chunks.map((c, k) => (k === i ? { ...c, ...patch } : c)),
+    })
+    // Conflict chunk appended but left not done.
+    expect(createModel(SIDES, withChunk(1, { state: 'both-left-first', leftDone: false, rightDone: true }))).toBeNull()
+    // 'left' on a right-only chunk.
+    expect(createModel(SIDES, withChunk(2, { state: 'left', leftDone: true, rightDone: true }))).toBeNull()
+    // The unchanged side of a one-sided chunk must stay done.
+    expect(createModel(SIDES, withChunk(0, { leftDone: false, rightDone: false }))).toBeNull()
+    // Pending with a decided side.
+    expect(createModel(SIDES, withChunk(1, { leftDone: true }))).toBeNull()
+    // Ignored with nothing decided.
+    expect(createModel(SIDES, withChunk(1, { state: 'ignored' }))).toBeNull()
+    // Auto-resolved (edited + both done) only exists for conflicts.
+    expect(createModel(SIDES, withChunk(0, { state: 'edited', leftDone: true, rightDone: true }))).toBeNull()
   })
 
   it('rejects a draft whose chunk count does not match', () => {

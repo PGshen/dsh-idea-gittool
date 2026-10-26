@@ -167,6 +167,23 @@ describe('mergeDraftSave', () => {
       'git/invalid-payload',
     )
   })
+
+  it('keeps optional chunk result ranges and rejects malformed ones', async () => {
+    const repo = makeRepo()
+    mergeStopped(repo)
+    const ctx = contextFor(repo)
+    const draft = draftOf(await readMergeFile(ctx, 'uu.txt'))
+    const chunk = draft.chunks[0]!
+    const ranged: MergeDraft = { ...draft, chunks: [{ ...chunk, resultStart: 0, resultEnd: 3 }] }
+    const parsed = mergeDraftSaveOperation.parse({ sessionId: 's', requestId: 'r', path: 'uu.txt', draft: ranged })
+    expect(parsed.draft.chunks).toEqual([{ ...chunk, resultStart: 0, resultEnd: 3 }])
+    const plain = mergeDraftSaveOperation.parse({ sessionId: 's', requestId: 'r', path: 'uu.txt', draft })
+    expect(plain.draft.chunks).toEqual([chunk])
+    for (const bad of [{ resultStart: -1, resultEnd: 2 }, { resultStart: 0.5, resultEnd: 2 }, { resultStart: 0, resultEnd: 'x' }, { resultEnd: 2 }, { resultStart: 3, resultEnd: 1 }]) {
+      const payload = { sessionId: 's', requestId: 'r', path: 'uu.txt', draft: { ...draft, chunks: [{ ...chunk, ...bad }] } }
+      expect(codeOf(() => mergeDraftSaveOperation.parse(payload))).toBe('git/invalid-payload')
+    }
+  })
 })
 
 describe('mergeApply', () => {

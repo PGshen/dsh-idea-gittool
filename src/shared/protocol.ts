@@ -1139,6 +1139,25 @@ export type MergeChunkState = (typeof MERGE_CHUNK_STATES)[number]
 export const MERGE_DRAFT_VERSION = 1
 
 /**
+ * 草稿中的一个块（与 diff3 分块按序号一一对应）。`resultStart`/`resultEnd` 是该块在 `result`
+ * 中的行区间（半开，行按保留行尾的方式切分）；两者同时出现或同时缺省，缺省时客户端按文本对齐恢复。
+ */
+export interface MergeDraftChunk {
+  state: MergeChunkState
+  leftDone: boolean
+  rightDone: boolean
+  resultStart?: number
+  resultEnd?: number
+}
+
+/** `MergeDraftChunk` 的可选行区间：同时缺省，或同时为非负整数且 `resultStart <= resultEnd`。 */
+export function validDraftChunkRange(chunk: { resultStart?: unknown; resultEnd?: unknown }): boolean {
+  const { resultStart: start, resultEnd: end } = chunk
+  if (start === undefined && end === undefined) return true
+  return Number.isSafeInteger(start) && Number.isSafeInteger(end) && (start as number) >= 0 && (start as number) <= (end as number)
+}
+
+/**
  * 「保存并关闭」的半成品（Host 存为 `refs/worktree/dsh-git/merge-draft/<sha1(path)>` → JSON blob，ADR 0008）。
  * `stages` 与当前索引三方不符时作废（`MergeFileValue.draftStale`）。
  */
@@ -1147,7 +1166,7 @@ export interface MergeDraft {
   stages: MergeStageShas
   result: string
   /** 与 diff3 分块一一对应（按块序号），加载时块数不一致即作废。 */
-  chunks: Array<{ state: MergeChunkState; leftDone: boolean; rightDone: boolean }>
+  chunks: MergeDraftChunk[]
   /** ISO 8601 时间。 */
   savedAt: string
 }

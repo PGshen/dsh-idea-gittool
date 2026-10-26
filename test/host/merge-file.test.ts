@@ -301,6 +301,26 @@ describe('mergeFile drafts', () => {
     expect(await readMergeFile(ctx, 'uu.txt')).toMatchObject({ draft: null, draftStale: true })
   })
 
+  it('loads a draft whose chunks carry result line ranges', async () => {
+    const { repo, ctx, ref } = await setup()
+    const base = draftFor(await readMergeFile(ctx, 'uu.txt'))
+    const draft: MergeDraft = { ...base, chunks: [{ state: 'edited', leftDone: false, rightDone: false, resultStart: 1, resultEnd: 2 }] }
+    storeRef(repo, ref, JSON.stringify(draft))
+    const value = await readMergeFile(ctx, 'uu.txt')
+    expect(value.draft).toEqual(draft)
+    expect(value.draftStale).toBe(false)
+  })
+
+  it('voids a draft whose result line ranges are malformed', async () => {
+    const { repo, ctx, ref } = await setup()
+    const base = draftFor(await readMergeFile(ctx, 'uu.txt'))
+    const chunk = base.chunks[0]!
+    for (const bad of [{ resultStart: -1, resultEnd: 2 }, { resultStart: 1.5, resultEnd: 2 }, { resultStart: '1', resultEnd: 2 }, { resultStart: 1 }, { resultStart: 2, resultEnd: 1 }]) {
+      storeRef(repo, ref, JSON.stringify({ ...base, chunks: [{ ...chunk, ...bad }] }))
+      expect(await readMergeFile(ctx, 'uu.txt')).toMatchObject({ draft: null, draftStale: true })
+    }
+  })
+
   it('voids a draft whose JSON is corrupt', async () => {
     const { repo, ctx, ref } = await setup()
     storeRef(repo, ref, '{ not json')

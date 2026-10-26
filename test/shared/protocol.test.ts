@@ -14,6 +14,7 @@ import {
   WRITE_ENDPOINTS,
   isRpcResult,
   isWriteEndpoint,
+  validDraftChunkRange,
 } from '../../src/shared/protocol.ts'
 
 describe('RPC 协议常量', () => {
@@ -69,5 +70,14 @@ describe('B1 合并端点（T1 契约冻结）', () => {
     expect([...MERGE_CHUNK_STATES]).toEqual([
       'pending', 'left', 'right', 'both-left-first', 'both-right-first', 'ignored', 'edited',
     ])
+  })
+
+  it('草稿块的行区间要么同时缺省，要么是有序的非负整数', () => {
+    expect(validDraftChunkRange({})).toBe(true)
+    expect(validDraftChunkRange({ resultStart: 0, resultEnd: 0 })).toBe(true)
+    expect(validDraftChunkRange({ resultStart: 2, resultEnd: 5 })).toBe(true)
+    for (const bad of [{ resultStart: 1 }, { resultEnd: 1 }, { resultStart: -1, resultEnd: 1 }, { resultStart: 0.5, resultEnd: 1 }, { resultStart: '0', resultEnd: 1 }, { resultStart: 3, resultEnd: 2 }]) {
+      expect(validDraftChunkRange(bad)).toBe(false)
+    }
   })
 })

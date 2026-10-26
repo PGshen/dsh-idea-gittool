@@ -41,6 +41,8 @@ export interface ConflictsPageViewProps {
   onFinish: (trigger: FocusTarget | null) => void
   onCopyCommand: (trigger: FocusTarget | null) => void
   onRetry: () => void
+  /** B1 (mergeWindow flag): clicking an unresolved file name opens the merge window. */
+  onOpenFile?: ((path: string, trigger: FocusTarget | null) => void) | undefined
   /** Footer 「中止…」 (carry 8): first click asks with the banner sentence. */
   abortConfirming?: boolean
   onAbortRequest?: (() => void) | undefined
@@ -106,7 +108,19 @@ export function ConflictsPageView(props: ConflictsPageViewProps): ReactNode {
                   return (
                     <li key={entry.path} className={css.row} data-conflict-row={entry.path} data-conflict-kind={entry.conflict ?? 'both-modified'}>
                       <span className={css.mark} aria-hidden="true">⚠</span>
-                      <span className={css.path} title={entry.path}>{entry.path}</span>
+                      {props.onOpenFile === undefined
+                        ? <span className={css.path} title={entry.path}>{entry.path}</span>
+                        : (
+                            <button
+                              type="button"
+                              className={`${css.path ?? ''} ${css.pathButton ?? ''}`}
+                              title={entry.path}
+                              data-merge-open={entry.path}
+                              onClick={(event) => { props.onOpenFile?.(entry.path, triggerOf(event)) }}
+                            >
+                              {entry.path}
+                            </button>
+                          )}
                       <span className={css.kind}>{t(kind.key, kind.params)}</span>
                       <span className={css.buttons}>
                         {conflictRowActions(entry, shown).map(action => (
@@ -246,10 +260,12 @@ export interface ConflictsPageProps {
   onFinished: (outcome: ActionOutcome<unknown>, step: 'commit' | 'continue') => void
   /** Confirmed 「中止…」 of the footer (the workbench runs `operationControl abort`). */
   onAbort?: (trigger: FocusTarget | null) => void
+  /** B1: open the merge window for an unresolved file (only passed when the mergeWindow flag is on). */
+  onOpenFile?: (path: string, trigger: FocusTarget | null) => void
   onClose: () => void
 }
 
-export function ConflictsPage({ store, actions, mergeMessage, blockReason, loadCommand, copy, onFinished, onAbort, onClose }: ConflictsPageProps): ReactNode {
+export function ConflictsPage({ store, actions, mergeMessage, blockReason, loadCommand, copy, onFinished, onAbort, onOpenFile, onClose }: ConflictsPageProps): ReactNode {
   const t = useT()
   const state = useConflictState(store)
   const rootRef = useRef<HTMLDivElement | null>(null)
@@ -339,6 +355,7 @@ export function ConflictsPage({ store, actions, mergeMessage, blockReason, loadC
       onFinish={finish}
       onCopyCommand={copyCommand}
       onRetry={() => { void store.refresh() }}
+      onOpenFile={onOpenFile}
       abortConfirming={abortConfirming}
       onAbortRequest={onAbort === undefined ? undefined : () => { setAbortConfirming(true) }}
       onAbortCancel={() => { setAbortConfirming(false) }}

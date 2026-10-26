@@ -159,3 +159,18 @@ describe('carry 8: 中止… in the footer (confirmed, same wording as the banne
     expect(html).toContain('data-conflict-abort-confirm')
   })
 })
+
+describe('B1 T6 entry to the merge window', () => {
+  it('flag on: an unresolved file name opens the merge window; resolved rows do not', () => {
+    const html = view(mergeState(), { onOpenFile: noop })
+    expect(html).toMatch(/<button[^>]*data-merge-open="src\/a.ts"[^>]*>src\/a.ts<\/button>/)
+    expect(html).toContain('data-merge-open="src/b.ts"')
+    expect(html).not.toContain('data-merge-open="src/c.ts"')
+  })
+
+  it('flag off (no onOpenFile): the A3 row markup is unchanged', () => {
+    const html = view(mergeState())
+    expect(html).not.toContain('data-merge-open')
+    expect(html).toMatch(/<span class="[^"]*" title="src\/a.ts">src\/a.ts<\/span>/)
+  })
+})

@@ -27,6 +27,11 @@ import type { CommitPhase } from '../store/commit-store.ts'
 import { conflictListSync, createAutoOpenTracker, createConflictStore, operationIdentity, useConflictState } from '../store/conflict-store.ts'
 import type { OperationControlAction } from '../../shared/protocol.ts'
 import { ConflictsPage } from './ConflictsPage.tsx'
+import { isFeatureEnabled } from '../features.ts'
+import { createMergeStore } from '../store/merge-store.ts'
+import { MergeWindow } from './MergeWindow.tsx'
+import type { SidebarFullscreen } from './merge-fullscreen.ts'
+import { nextFileAfterApply } from './merge-window-controller.ts'
 import { controlOperation, mergePrefill, operationBusy, operationOutcomeEffect, pendingRestoreNotice, restorePendingStash, submitOperationStep } from './operation-actions.ts'
 import { createPendingStashStore, usePendingStashState } from '../store/pending-stash-store.ts'
 import type { OperationStepKind } from './operation-actions.ts'
@@ -40,6 +45,7 @@ import { StashCreateSheet } from './StashCreateSheet.tsx'
 import { StashPage } from './StashPage.tsx'
 import { RollbackSheet } from './RollbackSheet.tsx'
 import { text, useT } from '../i18n.tsx'
+import type { LocalizedText } from '../i18n.tsx'
 import { readOnlyMessage } from '../localized-text.ts'
 import { ReadOnlyBanner } from '../read-only-banner.tsx'
 import { createDetailStore, useDetailState } from '../store/detail-store.ts'
@@ -90,6 +96,8 @@ export interface GitWorkbenchProps {
   onToggleAutoRefresh: () => void
   /** 最近一次成功刷新的时间（ms）。 */
   lastRefreshAt: number | null
+  /** B1: the panel's fullscreen state and toggle (the merge window enters host fullscreen). */
+  sidebar?: SidebarFullscreen | undefined
 }
 
 /** Push 覆盖页的打开方式：普通打开，或打开后立即推送（提交并推送）。 */
@@ -442,7 +450,10 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
     // keep the list loaded; it closes once nothing is left (finished or aborted elsewhere too).
     const sync = conflictListSync(listActive.current, operation, unmerged)
     listActive.current = sync.active
-    if (sync.close) closeOverlayIf('conflicts')
+    if (sync.close) {
+      closeOverlayIf('conflicts')
+      closeOverlayIf('mergeWindow')
+    }
     if (sync.load === 'clear') conflictStore.clear()
     else void conflictStore.refresh()
   }, [autoOpen, closeOverlayIf, conflictStore, operation, statusKnown, unmerged, value.version])
@@ -570,10 +581,35 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
 
   const readOnlyReason = readOnlyMessage(t, value.writePolicy, 'readOnly.title')
 
+  // B1 three-pane merge window (feature flag `mergeWindow`; off = A3 conflict list unchanged).
+  const mergeEnabled = useMemo(() => isFeatureEnabled('mergeWindow'), [])
+  const mergeBlock = useRef<LocalizedText | null>(null)
+  const mergeApplied = useRef<(path: string, remaining: number | null) => void>(() => {})
+  const mergeStore = useMemo(() => createMergeStore({
+    loadFile: (path, signal) => client.mergeFile({ sessionId, path }, signal),
+    actions,
+    readOnlyReason: () => mergeBlock.current,
+    onApplied: (path, remaining) => { mergeApplied.current(path, remaining) },
+  }), [actions, client, sessionId])
+  // Controller ruling 12: after a successful apply the window always leaves the file — the next
+  // unresolved file, else back to the conflict list (T7 replaces this with the Review queue).
+  mergeApplied.current = (path, remaining) => {
+    void conflictStore.refresh()
+    void onRefresh()
+    const paths = conflictStore.getState().value?.conflicts.map(entry => entry.path) ?? []
+    const next = nextFileAfterApply(paths, path, remaining ?? paths.filter(entry => entry !== path).length)
+    overlays.open(next === null ? { kind: 'conflicts' } : { kind: 'mergeWindow', path: next }, null)
+  }
+  const openMergeWindow = useCallback((path: string, trigger: FocusTarget | null) => {
+    setNotice(null)
+    overlays.open({ kind: 'mergeWindow', path }, trigger)
+  }, [overlays.open])
+
   // Integrate pages (A3 T8): writes are blocked while read-only or an operation is in progress;
   // fetch only needs a writable repository.
   const integrateBlock = writeBlock(branchContext)
   const fetchBlock = writeBlock({ writable: branchContext.writable, operation: null })
+  mergeBlock.current = fetchBlock ?? null
   const stashBusy = Object.keys(actionState.pending).some(key => key.startsWith('stash'))
   const blockText = (reason: typeof integrateBlock): string | null => (reason === undefined ? null : t(reason.key, reason.params))
   const runCommitAction = useCallback((id: CommitActionId, commit: CommitSummary, trigger: FocusTarget | null, childSha: string | null) => {
@@ -932,7 +968,26 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
             copy={(command) => { void globalThis.navigator?.clipboard?.writeText(command) }}
             onFinished={applyOperationOutcome}
             onAbort={(trigger) => { runOperationControl('abort', trigger) }}
+            {...(mergeEnabled ? { onOpenFile: openMergeWindow } : {})}
             onClose={() => { overlays.closeIf('conflicts') }}
+          />
+        )}
+        {overlay?.kind !== 'mergeWindow' || !mergeEnabled ? null : (
+          <MergeWindow
+            path={overlay.path}
+            store={mergeStore}
+            actions={actions}
+            operation={operationValue}
+            blockReason={blockText(fetchBlock)}
+            sidebar={props.sidebar}
+            loadCommand={() => client.conflictCommand(sessionId)}
+            copy={(command) => { void globalThis.navigator?.clipboard?.writeText(command) }}
+            onClose={() => {
+              void conflictStore.refresh()
+              overlays.open({ kind: 'conflicts' }, null)
+            }}
+            onOpenFile={(path) => { overlays.open({ kind: 'mergeWindow', path }, null) }}
+            onResolved={(path) => { mergeApplied.current(path, null) }}
           />
         )}
         {overlay?.kind !== 'dirtyWorktree' || actionState.ask === null ? null : (

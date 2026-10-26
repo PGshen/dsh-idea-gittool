@@ -67,6 +67,24 @@
   white-space: nowrap;
 }
 
+.pathButton {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.pathButton:hover {
+  color: var(--dsw-alias-link);
+  text-decoration: underline;
+}
+
+.pathButton:focus-visible {
+  outline: 1px solid var(--dsw-alias-brand-primary);
+  outline-offset: 1px;
+}
+
 .kind {
   color: var(--dsw-alias-label-tertiary);
   font-size: 12px;

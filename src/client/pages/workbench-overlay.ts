@@ -29,6 +29,8 @@ export type WorkbenchOverlay =
   | { kind: 'pushRejected'; remote: string; branch: string; details: PushRejectedDetails }
   | { kind: 'rollback'; targets: RollbackTarget[] }
   | { kind: 'conflicts' }
+  /** B1 three-pane merge window for one conflicted file (puts the panel in host fullscreen). */
+  | { kind: 'mergeWindow'; path: string }
   | { kind: 'merge'; ref?: string }
   | { kind: 'rebase'; onto?: string }
   /** Pull page; `remote`/`branch` prefill it when opened from a branch row. */
@@ -54,6 +56,7 @@ export const OVERLAY_LEVEL: Record<WorkbenchOverlayKind, 1 | 2> = {
   push: 1,
   pushRejected: 1,
   conflicts: 1,
+  mergeWindow: 1,
   merge: 1,
   rebase: 1,
   pull: 1,

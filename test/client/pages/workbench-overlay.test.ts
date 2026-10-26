@@ -93,9 +93,11 @@ describe('handleOverlayEscape', () => {
 describe('WorkbenchOverlay kinds', () => {
   it('every kind has a navigation level (1 = overlay page, 2 = sheet)', () => {
     expect(Object.keys(OVERLAY_LEVEL).sort()).toEqual([
-      'branchSheet', 'commitOp', 'conflicts', 'diff', 'dirtyWorktree', 'fetch', 'merge', 'pull', 'push', 'pushRejected',
+      'branchSheet', 'commitOp', 'conflicts', 'diff', 'dirtyWorktree', 'fetch', 'merge', 'mergeWindow', 'pull', 'push', 'pushRejected',
       'rebase', 'reset', 'rollback', 'smartCheckout', 'stashCreate', 'updateProject',
     ])
+    // B1 T6: the three-pane merge window is an overlay page (it also enters host fullscreen).
+    expect(OVERLAY_LEVEL.mergeWindow).toBe(1)
     expect(OVERLAY_LEVEL.diff).toBe(1)
     expect(OVERLAY_LEVEL.rollback).toBe(2)
     expect(OVERLAY_LEVEL.dirtyWorktree).toBe(2)

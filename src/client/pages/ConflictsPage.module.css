@@ -124,3 +124,36 @@
   color: var(--dsw-alias-label-secondary);
   font-size: 12px;
 }
+
+/* B1 T7 (mergeWindow flag): chunk counts, selection, unreviewed mark, resolved row menu. */
+.chunks {
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.selected,
+.selected:hover {
+  background: var(--dsw-alias-interactive-bg-selected, var(--dsw-alias-interactive-bg-hover));
+}
+
+.row[tabindex]:focus-visible {
+  outline: 1px solid var(--dsw-alias-brand-primary);
+  outline-offset: -1px;
+}
+
+.unreviewed {
+  padding: 0 4px;
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: 3px;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.rowError {
+  flex: 1 1 100%;
+  color: var(--dsw-alias-state-error-primary);
+  font-size: 12px;
+}

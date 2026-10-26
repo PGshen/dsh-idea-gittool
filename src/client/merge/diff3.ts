@@ -1,5 +1,5 @@
 // Three-way chunking (diff3) over lines, plus token-level "simple conflict" merging. Pure, no DOM, no React.
-import { diffLines, diffSequences, type DiffOp } from './line-diff.ts'
+import { diffLines, diffSequences, type DiffOp, type DiffStats } from './line-diff.ts'
 
 /** Half-open line range `[start, end)`. */
 export interface Range {
@@ -95,9 +95,12 @@ function sameItems<T>(a: readonly T[], aRange: Range, b: readonly T[], bRange: R
   return true
 }
 
-/** Three-way line chunking. `base` is empty for add/add conflicts. Chunks are in file order. */
-export function diff3(base: readonly string[], ours: readonly string[], theirs: readonly string[]): MergeChunk[] {
-  return groupHunks(diffLines(base, ours), diffLines(base, theirs)).map((g, id) => ({
+/**
+ * Three-way line chunking. `base` is empty for add/add conflicts. Chunks are in file order.
+ * `stats.coarse` turns true when the line diff's cost cap merged a region into one replacement.
+ */
+export function diff3(base: readonly string[], ours: readonly string[], theirs: readonly string[], stats?: DiffStats): MergeChunk[] {
+  return groupHunks(diffLines(base, ours, stats), diffLines(base, theirs, stats)).map((g, id) => ({
     id,
     kind: !g.hasRight ? 'left-only'
       : !g.hasLeft ? 'right-only'

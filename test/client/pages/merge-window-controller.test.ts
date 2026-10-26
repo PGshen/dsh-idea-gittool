@@ -2,7 +2,7 @@
 // next file), Esc / back with the save / discard / cancel question, Cmd/Ctrl+S, apply with the
 // "still N unresolved" confirmation and never twice, resolveSimple notice, file after apply.
 import { describe, expect, it, vi } from 'vitest'
-import { adjacentPath, createMergeWindowController, mergeKeyCommand, nextFileAfterApply } from '../../../src/client/pages/merge-window-controller.ts'
+import { adjacentPath, createMergeWindowController, createReviewRunner, mergeKeyCommand, nextFileAfterApply } from '../../../src/client/pages/merge-window-controller.ts'
 import type { MergeWindowControllerDeps } from '../../../src/client/pages/merge-window-controller.ts'
 import { createMergeStore } from '../../../src/client/store/merge-store.ts'
 import type { MergeStoreDeps } from '../../../src/client/store/merge-store.ts'
@@ -282,5 +282,65 @@ describe('adjacentPath', () => {
     expect(adjacentPath(['a', 'b'], 'z', 'next')).toBe('a')
     expect(adjacentPath(['a', 'b'], 'z', 'prev')).toBe('b')
     expect(adjacentPath([], 'z', 'next')).toBeNull()
+  })
+})
+
+describe('T7: another entry point replacing a dirty window', () => {
+  it('asks first; save / discard then run the outside navigation, cancel keeps the window', async () => {
+    const { controller, store, run } = await setup()
+    const go = vi.fn()
+    expect(controller.guardLeave(go)).toBe(false)
+    controller.run({ type: 'accept', id: 0, side: 'left' })
+    expect(controller.guardLeave(go)).toBe(true)
+    expect(controller.getState().confirm).toEqual({ kind: 'leave', target: { kind: 'external', go } })
+    controller.answerLeave('cancel')
+    expect(go).not.toHaveBeenCalled()
+
+    controller.guardLeave(go)
+    controller.answerLeave('discard')
+    expect(go).toHaveBeenCalledTimes(1)
+    // Leaving drops the window state, so the outside navigation is not asked about again.
+    expect(store.getState().dirty).toBe(false)
+    expect(run).not.toHaveBeenCalled()
+  })
+
+  it('leaving for another file drops the state before the next file opens', async () => {
+    const { controller, store, onOpenFile } = await setup()
+    controller.run({ type: 'accept', id: 0, side: 'left' })
+    controller.requestLeave({ kind: 'file', path: 'b.txt' })
+    controller.answerLeave('discard')
+    expect(onOpenFile).toHaveBeenCalledWith('b.txt')
+    expect(store.getState().dirty).toBe(false)
+  })
+})
+
+describe('T7 Review Changes runner (ruling 12)', () => {
+  it('opens the queue one by one after each apply and ends back at the list', () => {
+    const runner = createReviewRunner()
+    expect(runner.next('x')).toBeUndefined()
+    expect(runner.start(['a', 'b', 'c'])).toBe('a')
+    expect(runner.active()).toBe(true)
+    expect(runner.next('a')).toBe('b')
+    expect(runner.next('b')).toBe('c')
+    expect(runner.next('c')).toBeNull()
+    expect(runner.active()).toBe(false)
+    expect(runner.next('c')).toBeUndefined()
+  })
+
+  it('cancel (back without applying) stops opening further files', () => {
+    const runner = createReviewRunner()
+    runner.start(['a', 'b'])
+    runner.cancel()
+    expect(runner.active()).toBe(false)
+    expect(runner.next('a')).toBeUndefined()
+  })
+
+  it('a file that cannot be opened is skipped: the current one is reported and the next is returned', () => {
+    const runner = createReviewRunner()
+    runner.start(['a', 'b'])
+    expect(runner.current()).toBe('a')
+    expect(runner.next('a')).toBe('b')
+    expect(runner.current()).toBe('b')
+    expect(runner.start([])).toBeNull()
   })
 })

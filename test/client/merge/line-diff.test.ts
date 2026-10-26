@@ -117,3 +117,15 @@ describe('diffLines', () => {
     }
   })
 })
+
+describe('diff stats', () => {
+  it('reports coarse only when the cost cap stopped the search', () => {
+    const stats = { coarse: false }
+    diffLines(['a\n', 'b\n', 'c\n'], ['a\n', 'B\n', 'c\n'], stats)
+    expect(stats.coarse).toBe(false)
+    const a = Array.from({ length: 12_000 }, (_, i) => `line ${i}\n`)
+    const b = a.map((line, i) => (i % 2 === 0 ? `x ${i}\n` : line))
+    diffLines(a, b, stats)
+    expect(stats.coarse).toBe(true)
+  })
+})

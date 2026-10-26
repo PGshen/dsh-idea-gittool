@@ -161,6 +161,14 @@ describe('MergeWindowView: questions and notices', () => {
     expect(html).toContain('之前保存的草稿已作废')
   })
 
+  it('T7 (ruling 15): a coarse model says that regions were merged into big chunks', async () => {
+    const state = await loaded()
+    expect(view(state)).not.toContain('data-merge-coarse')
+    const html = view({ ...state, model: { ...state.model!, coarse: true } })
+    expect(html).toContain('data-merge-coarse')
+    expect(html).toContain('部分区域合成了一个大块')
+  })
+
   it('read-only: save and apply are disabled with the reason', async () => {
     const html = view(await loaded(), mergeState(), { blockReason: 'RO' })
     expect(html).toMatch(/<button[^>]*disabled=""[^>]*title="RO"[^>]*data-merge-save/)
@@ -190,6 +198,14 @@ describe('MergeWindowView: two-choice fallback (AC8)', () => {
     expect(html).toContain('在终端解决')
     expect(html).not.toContain('data-merge-pane')
     expect(html).not.toContain('data-merge-apply')
+  })
+
+  it('T7: an already resolved binary file offers no A3 choices (they only apply to unresolved files)', async () => {
+    const binary = { ours: side(null, '2'.repeat(40), true), theirs: side(null, '3'.repeat(40), true), base: side(null, '1'.repeat(40), true) }
+    const state = await loaded(file({ ...binary, resolved: true }))
+    const html = view(state)
+    expect(html).not.toContain('采用 main')
+    expect(html).toContain('在终端解决')
   })
 
   it('delete kinds offer keep / delete', async () => {

@@ -2,9 +2,12 @@
 // per-file "采用 <name>" for both sides (ours/theirs only in the tooltip), keep/delete for files one
 // side deleted, mark resolved (second confirmation when markers remain), accept and finish
 // (= merge commit / continue), resolve in terminal (copy a command) and close.
+// B1 T7 (mergeWindow flag, `merge` props; absent = A3 markup): chunk counts per file, row selection,
+// 「全部简单冲突」, the 「逐个解决 / 审查更改」 button (Review Changes queue) and the resolved row menu
+// 「还原冲突解决」.
 import { useEffect, useRef, useState } from 'react'
 import type { KeyboardEvent, MouseEvent, ReactNode, Ref } from 'react'
-import type { ConflictCommandValue, ConflictResolution, RpcResult } from '../../shared/protocol.ts'
+import type { ConflictCommandValue, ConflictResolution, MergeFileValue, RpcResult } from '../../shared/protocol.ts'
 import type { FocusTarget } from '../focus.ts'
 import { useT } from '../i18n.tsx'
 import type { Translate } from '../i18n.tsx'
@@ -12,14 +15,103 @@ import { OPERATION_KEY } from '../locales.ts'
 import { text } from '../localized-text.ts'
 import type { LocalizedText } from '../localized-text.ts'
 import type { ActionOutcome, ActionStore } from '../store/action-store.ts'
-import { conflictGroups, conflictKindText, conflictRowActions, conflictSides, useConflictState, withStashLabel } from '../store/conflict-store.ts'
-import type { ConflictStore, ConflictStoreState } from '../store/conflict-store.ts'
+import {
+  conflictGroups,
+  conflictKindText,
+  conflictRowActions,
+  conflictSides,
+  manualButton,
+  nextSelection,
+  reviewInputs,
+  reviewQueue,
+  useConflictReview,
+  useConflictState,
+  withStashLabel,
+} from '../store/conflict-store.ts'
+import type { ChunkCount, ConflictStore, ConflictStoreState, ReviewGroups, RowSelection } from '../store/conflict-store.ts'
 import { Button } from '../ui/Button.tsx'
-import { finishOperation, mergeMessageOf, resolveConflictFile } from './operation-actions.ts'
+import { isContextMenuKey } from './commit-actions.ts'
+import menuCss from './CommitContextMenu.module.css'
+import { finishRowMenu, rowMenuAnchor } from './menu-focus.ts'
+import { useFloatingMenu } from './menu-position.ts'
+import type { MenuAnchor } from './menu-position.ts'
+import { finishOperation, mergeMessageOf, resolveAllSimple, resolveConflictFile, simpleAllSummary, unresolveConflictFile } from './operation-actions.ts'
 import { useInitialFocus } from './integrate-parts.tsx'
 import integrateCss from './Integrate.module.css'
 import css from './ConflictsPage.module.css'
 import { PushOverlayFrame } from './PushRejectedPage.tsx'
+
+/** Modifier keys of a row click: Cmd/Ctrl toggles, Shift selects a range. */
+export interface SelectMods {
+  toggle: boolean
+  range: boolean
+}
+
+/** B1 T7 additions of the list (only passed when the mergeWindow flag is on). */
+export interface ConflictMergeViewProps {
+  /** Groups and effective reviewed set from `reviewInputs`. */
+  groups: ReviewGroups
+  reviewed: ReadonlySet<string>
+  counts: ReadonlyMap<string, ChunkCount | null>
+  selected: ReadonlySet<string>
+  /** 「全部简单冲突」 is running. */
+  simpleBusy: boolean
+  /** Result of the last 「全部简单冲突」. */
+  summary: LocalizedText | null
+  /** Resolved row whose menu is open, where it opens, and the failure of its last restore. */
+  menuPath: string | null
+  menuAnchor?: MenuAnchor | undefined
+  menuError: LocalizedText | null
+  onSelect: (path: string, mods: SelectMods) => void
+  onManual: (trigger: FocusTarget | null) => void
+  onSimpleAll: (trigger: FocusTarget | null) => void
+  onOpenMenu: (path: string, anchor: MenuAnchor, row: FocusTarget | null) => void
+  onCloseMenu: () => void
+  onUnresolve: (path: string) => void
+}
+
+/** Row clicks select, except on the row's own buttons. */
+function rowClick(merge: ConflictMergeViewProps | undefined, path: string) {
+  if (merge === undefined) return undefined
+  return (event: MouseEvent<HTMLElement>): void => {
+    if (event.target instanceof Element && event.target.closest('button') !== null) return
+    merge.onSelect(path, { toggle: event.metaKey || event.ctrlKey, range: event.shiftKey })
+  }
+}
+
+function selectionMark(merge: ConflictMergeViewProps | undefined, path: string): { 'data-selected'?: 'true'; className: string } {
+  const selected = merge?.selected.has(path) === true
+  return selected ? { 'data-selected': 'true', className: `${css.row ?? ''} ${css.selected ?? ''}` } : { className: css.row ?? '' }
+}
+
+/** 「还原冲突解决」 menu of a resolved row (ADR 0006 menu material, menu-focus keyboard behaviour). */
+function ResolvedRowMenu(props: { t: Translate; path: string; anchor?: MenuAnchor | undefined; disabledReason: string | null; onUnresolve: () => void; onClose: () => void }): ReactNode {
+  const ref = useRef<HTMLDivElement>(null)
+  const { style, onKeyDown } = useFloatingMenu(ref, props.anchor, props.onClose)
+  const reason = props.disabledReason
+  return (
+    <div
+      ref={ref}
+      role="menu"
+      aria-label={props.t('conflict.rowMenu', { path: props.path })}
+      className={`${menuCss.menu ?? ''} ${props.anchor === undefined ? '' : (menuCss.floating ?? '')}`}
+      style={style}
+      onKeyDown={onKeyDown}
+    >
+      <button
+        type="button"
+        role="menuitem"
+        className={`${menuCss.item ?? ''} ${reason === null ? '' : (menuCss.itemDisabled ?? '')}`}
+        data-unresolve={props.path}
+        {...(reason === null ? {} : { 'aria-disabled': true, title: reason })}
+        onClick={() => { if (reason === null) props.onUnresolve() }}
+      >
+        <span>{props.t('conflict.unresolve')}</span>
+        {reason === null ? null : <span className={menuCss.reason}>{reason}</span>}
+      </button>
+    </div>
+  )
+}
 
 export interface ConflictsPageViewProps {
   t: Translate
@@ -48,15 +140,28 @@ export interface ConflictsPageViewProps {
   onAbortRequest?: (() => void) | undefined
   onAbortCancel?: (() => void) | undefined
   onAbort?: ((trigger: FocusTarget | null) => void) | undefined
+  /** B1 T7: chunk counts, selection, 全部简单冲突, 逐个解决 / 审查更改 and the resolved row menu. */
+  merge?: ConflictMergeViewProps | undefined
 }
 
 const triggerOf = (event: MouseEvent<HTMLElement>): FocusTarget => event.currentTarget
 
+/** `已解决块/总块` of a counted file (nothing while loading, beyond the limit, or for binary files). */
+function chunkCount(t: Translate, merge: ConflictMergeViewProps | undefined, path: string): ReactNode {
+  const count = merge?.counts.get(path)
+  if (count === undefined || count === null) return null
+  return (
+    <span className={css.chunks} title={t('conflict.chunks.title', { ...count })} data-chunk-count>
+      {t('conflict.chunks', { ...count })}
+    </span>
+  )
+}
+
 export function ConflictsPageView(props: ConflictsPageViewProps): ReactNode {
-  const { t, state, busyPath, markersPath, finishBusy } = props
+  const { t, state, busyPath, markersPath, finishBusy, merge } = props
   const value = state.value
   const blockReason = props.blockReason ?? null
-  const busy = finishBusy || busyPath !== null
+  const busy = finishBusy || busyPath !== null || merge?.simpleBusy === true
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
     if (event.key !== 'Escape' || event.defaultPrevented) return
     event.preventDefault()
@@ -85,6 +190,7 @@ export function ConflictsPageView(props: ConflictsPageViewProps): ReactNode {
     const sides = conflictSides(shown)
     const groups = conflictGroups(value)
     const unresolved = groups.unresolved.length
+    const manual = merge === undefined ? null : manualButton(merge.groups, merge.selected, merge.reviewed)
     const finishTitle = unresolved > 0
       ? t('conflict.finish.blocked', { count: unresolved })
       : value.operation === 'merge'
@@ -106,7 +212,13 @@ export function ConflictsPageView(props: ConflictsPageViewProps): ReactNode {
                   const rowBusy = busyPath === entry.path
                   const kind = conflictKindText(entry, shown)
                   return (
-                    <li key={entry.path} className={css.row} data-conflict-row={entry.path} data-conflict-kind={entry.conflict ?? 'both-modified'}>
+                    <li
+                      key={entry.path}
+                      {...selectionMark(merge, entry.path)}
+                      data-conflict-row={entry.path}
+                      data-conflict-kind={entry.conflict ?? 'both-modified'}
+                      onClick={rowClick(merge, entry.path)}
+                    >
                       <span className={css.mark} aria-hidden="true">⚠</span>
                       {props.onOpenFile === undefined
                         ? <span className={css.path} title={entry.path}>{entry.path}</span>
@@ -122,12 +234,13 @@ export function ConflictsPageView(props: ConflictsPageViewProps): ReactNode {
                             </button>
                           )}
                       <span className={css.kind}>{t(kind.key, kind.params)}</span>
+                      {chunkCount(t, merge, entry.path)}
                       <span className={css.buttons}>
                         {conflictRowActions(entry, shown).map(action => (
                           <Button
                             key={action.id}
                             tone={action.id === 'delete' ? 'danger' : 'ghost'}
-                            disabled={rowBusy || finishBusy || blockReason !== null}
+                            disabled={rowBusy || finishBusy || merge?.simpleBusy === true || blockReason !== null}
                             title={blockReason ?? t(action.title.key, action.title.params)}
                             data-resolution={action.resolution}
                             onClick={(event) => { props.onResolve(entry.path, action.resolution, triggerOf(event)) }}
@@ -147,12 +260,57 @@ export function ConflictsPageView(props: ConflictsPageViewProps): ReactNode {
               <>
                 <h3 className={css.groupTitle}>{t('conflict.resolved', { count: groups.resolved.length })}</h3>
                 <ul className={css.group} aria-label={t('conflict.resolved', { count: groups.resolved.length })}>
-                  {groups.resolved.map(path => (
-                    <li key={path} className={css.row} data-resolved-row={path}>
-                      <span className={css.resolvedMark} aria-hidden="true">✓</span>
-                      <span className={css.path} title={path}>{path}</span>
-                    </li>
-                  ))}
+                  {groups.resolved.map(path => merge === undefined
+                    ? (
+                        <li key={path} className={css.row} data-resolved-row={path}>
+                          <span className={css.resolvedMark} aria-hidden="true">✓</span>
+                          <span className={css.path} title={path}>{path}</span>
+                        </li>
+                      )
+                    : (
+                        <li
+                          key={path}
+                          {...selectionMark(merge, path)}
+                          data-resolved-row={path}
+                          tabIndex={0}
+                          onClick={rowClick(merge, path)}
+                          onContextMenu={(event) => {
+                            event.preventDefault()
+                            merge.onOpenMenu(path, { kind: 'point', x: event.clientX, y: event.clientY }, event.currentTarget)
+                          }}
+                          onKeyDown={(event) => {
+                            if (event.target !== event.currentTarget) return
+                            if (isContextMenuKey(event)) {
+                              event.preventDefault()
+                              merge.onOpenMenu(path, rowMenuAnchor(event.currentTarget), event.currentTarget)
+                            } else if (event.key === ' ' || event.key === 'Enter') {
+                              event.preventDefault()
+                              merge.onSelect(path, { toggle: event.metaKey || event.ctrlKey, range: event.shiftKey })
+                            }
+                          }}
+                        >
+                          <span className={css.resolvedMark} aria-hidden="true">✓</span>
+                          <span className={css.path} title={path}>{path}</span>
+                          {merge.groups.resolved.includes(path) && !merge.reviewed.has(path)
+                            ? <span className={css.unreviewed} title={t('conflict.unreviewed.title')} data-unreviewed>{t('conflict.unreviewed')}</span>
+                            : null}
+                          {merge.menuPath === path
+                            ? (
+                                <ResolvedRowMenu
+                                  t={t}
+                                  path={path}
+                                  anchor={merge.menuAnchor}
+                                  disabledReason={blockReason}
+                                  onUnresolve={() => { merge.onUnresolve(path) }}
+                                  onClose={merge.onCloseMenu}
+                                />
+                              )
+                            : null}
+                          {merge.menuPath === path && merge.menuError !== null
+                            ? <span className={css.rowError} role="alert">{t(merge.menuError.key, merge.menuError.params)}</span>
+                            : null}
+                        </li>
+                      ))}
                 </ul>
               </>
             )}
@@ -213,11 +371,40 @@ export function ConflictsPageView(props: ConflictsPageViewProps): ReactNode {
                   {t('banner.abort')}
                 </Button>
               )}
+          {merge === undefined || merge.summary === null
+            ? null
+            : <span className={css.copied} role="status" data-simple-summary>{t(merge.summary.key, merge.summary.params)}</span>}
+          {merge === undefined
+            ? null
+            : (
+                <Button
+                  disabled={unresolved === 0 || busy || blockReason !== null}
+                  title={blockReason ?? t('conflict.simpleAll.title')}
+                  aria-busy={merge.simpleBusy}
+                  data-simple-all
+                  onClick={(event) => { merge.onSimpleAll(triggerOf(event)) }}
+                >
+                  {t('conflict.simpleAll')}
+                </Button>
+              )}
+          {manual === null
+            ? (merge === undefined || stashPop ? null : <span className={css.copied} role="status" data-all-resolved>{t('conflict.allResolved')}</span>)
+            : (
+                <Button
+                  tone="primary"
+                  disabled={busy}
+                  title={t('conflict.manual.title')}
+                  data-manual={manual.label}
+                  onClick={(event) => { merge?.onManual(triggerOf(event)) }}
+                >
+                  {t(manual.label === 'resolveManually' ? 'conflict.manual.resolveManually' : 'conflict.manual.reviewChanges')}
+                </Button>
+              )}
           {stashPop
             ? null
             : (
                 <Button
-                  tone="primary"
+                  tone={manual === null ? 'primary' : 'ghost'}
                   disabled={unresolved > 0 || busy || blockReason !== null}
                   title={blockReason ?? finishTitle}
                   aria-busy={finishBusy}
@@ -262,12 +449,35 @@ export interface ConflictsPageProps {
   onAbort?: (trigger: FocusTarget | null) => void
   /** B1: open the merge window for an unresolved file (only passed when the mergeWindow flag is on). */
   onOpenFile?: (path: string, trigger: FocusTarget | null) => void
+  /** B1 T7 (mergeWindow flag): chunk counts, 全部简单冲突, Review Changes and 还原冲突解决. */
+  merge?: ConflictsMergeDeps
   onClose: () => void
 }
 
-export function ConflictsPage({ store, actions, mergeMessage, blockReason, loadCommand, copy, onFinished, onAbort, onOpenFile, onClose }: ConflictsPageProps): ReactNode {
+export interface ConflictsMergeDeps {
+  loadFile: (path: string) => Promise<RpcResult<MergeFileValue>>
+  /** 「逐个解决 / 审查更改」: open these files in the merge window one after another. */
+  onReview: (queue: string[], trigger: FocusTarget | null) => void
+}
+
+interface RowMenu {
+  path: string
+  anchor: MenuAnchor
+  row: FocusTarget | null
+}
+
+export function ConflictsPage({ store, actions, mergeMessage, blockReason, loadCommand, copy, onFinished, onAbort, onOpenFile, merge, onClose }: ConflictsPageProps): ReactNode {
   const t = useT()
   const state = useConflictState(store)
+  const review = useConflictReview(store)
+  const [selection, setSelection] = useState<RowSelection>({ selected: new Set(), anchor: null })
+  const [simpleBusy, setSimpleBusy] = useState(false)
+  const [summary, setSummary] = useState<LocalizedText | null>(null)
+  const [menu, setMenu] = useState<RowMenu | null>(null)
+  const [menuError, setMenuError] = useState<LocalizedText | null>(null)
+  const mergeOn = merge !== undefined
+  // Chunk counts load lazily (one file at a time) whenever the list changes.
+  useEffect(() => { if (mergeOn && state.value !== null) void store.loadCounts() }, [mergeOn, state.value, store])
   const rootRef = useRef<HTMLDivElement | null>(null)
   const [markersPath, setMarkersPath] = useState<string | null>(null)
   const [abortConfirming, setAbortConfirming] = useState(false)
@@ -292,6 +502,8 @@ export function ConflictsPage({ store, actions, mergeMessage, blockReason, loadC
       switch (result.kind) {
         case 'done':
           setMarkersPath(null)
+          // Taking a whole side counts as reviewed (confirmation 2).
+          if (mergeOn && (resolution === 'ours' || resolution === 'theirs')) store.markReviewed(path)
           void store.refresh()
           return
         case 'markers':
@@ -321,6 +533,47 @@ export function ConflictsPage({ store, actions, mergeMessage, blockReason, loadC
         return
       }
       onFinished(outcome, step)
+    })
+  }
+
+  const inputs = reviewInputs(state.value, review)
+  const order = [...inputs.groups.unresolved, ...conflictGroups(state.value).resolved]
+  const selected = new Set([...selection.selected].filter(path => order.includes(path)))
+
+  const simpleAll = (trigger: FocusTarget | null): void => {
+    const value = state.value
+    if (merge === undefined || value === null || simpleBusy) return
+    setSimpleBusy(true)
+    setSummary(null)
+    setError(null)
+    void resolveAllSimple({ actions, trigger, loadFile: merge.loadFile }, value.conflicts).then((outcome) => {
+      // Resolved without anyone looking: not reviewed (confirmation 2).
+      store.unmarkReviewed(outcome.resolved)
+      for (const path of outcome.resolved) store.invalidateCount(path)
+      void store.refresh()
+      if (!mounted.current) return
+      setSimpleBusy(false)
+      setSummary(simpleAllSummary(outcome))
+    })
+  }
+
+  const closeMenu = (): void => {
+    const row = menu?.row ?? null
+    setMenu(null)
+    setMenuError(null)
+    finishRowMenu(row)
+  }
+
+  const unresolve = (path: string): void => {
+    setMenuError(null)
+    void unresolveConflictFile({ actions, trigger: menu?.row ?? null }, path).then((result) => {
+      if (result.kind === 'done' || (result.kind === 'error' && result.stale === true)) {
+        store.invalidateCount(path)
+        void store.refresh()
+      }
+      if (!mounted.current) return
+      if (result.kind === 'done') closeMenu()
+      else if (result.kind === 'error') setMenuError(result.message)
     })
   }
 
@@ -364,6 +617,31 @@ export function ConflictsPage({ store, actions, mergeMessage, blockReason, loadC
         : (trigger) => {
             setAbortConfirming(false)
             onAbort(trigger)
+          }}
+      merge={merge === undefined
+        ? undefined
+        : {
+            groups: inputs.groups,
+            reviewed: inputs.reviewed,
+            counts: review.counts,
+            selected,
+            simpleBusy,
+            summary,
+            menuPath: menu?.path ?? null,
+            menuAnchor: menu?.anchor,
+            menuError,
+            onSelect: (path, mods) => { setSelection(current => nextSelection(order, current, path, mods)) },
+            onManual: (trigger) => {
+              const queue = reviewQueue(inputs.groups, selected, inputs.reviewed)
+              if (queue.length > 0) merge.onReview(queue, trigger)
+            },
+            onSimpleAll: simpleAll,
+            onOpenMenu: (path, anchor, row) => {
+              setMenuError(null)
+              setMenu({ path, anchor, row })
+            },
+            onCloseMenu: closeMenu,
+            onUnresolve: unresolve,
           }}
     />
   )

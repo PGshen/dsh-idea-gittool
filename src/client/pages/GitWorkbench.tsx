@@ -25,13 +25,13 @@ import { createChangesStore, uncommittedCount, useChangesState } from '../store/
 import { commitPageModeOf, createCommitStore, useCommitState, visibleMessage } from '../store/commit-store.ts'
 import type { CommitPhase } from '../store/commit-store.ts'
 import { conflictListSync, createAutoOpenTracker, createConflictStore, operationIdentity, useConflictState } from '../store/conflict-store.ts'
-import type { OperationControlAction } from '../../shared/protocol.ts'
+import type { GitError, OperationControlAction } from '../../shared/protocol.ts'
 import { ConflictsPage } from './ConflictsPage.tsx'
 import { isFeatureEnabled } from '../features.ts'
 import { createMergeStore } from '../store/merge-store.ts'
 import { MergeWindow } from './MergeWindow.tsx'
 import type { SidebarFullscreen } from './merge-fullscreen.ts'
-import { nextFileAfterApply } from './merge-window-controller.ts'
+import { createReviewRunner, nextFileAfterApply } from './merge-window-controller.ts'
 import { controlOperation, mergePrefill, operationBusy, operationOutcomeEffect, pendingRestoreNotice, restorePendingStash, submitOperationStep } from './operation-actions.ts'
 import { createPendingStashStore, usePendingStashState } from '../store/pending-stash-store.ts'
 import type { OperationStepKind } from './operation-actions.ts'
@@ -256,7 +256,18 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
   }), [client, sessionId])
   const actionState = useActionState(actions)
   // 覆盖层同一时刻只有一个（设计 §5.3）：打开新的替换旧的；离开智能操作询问即视为取消。
-  const overlays = useWorkbenchOverlay(overlayLeaveEffects(actions))
+  // B1 T7: a dirty merge window is asked before another entry point replaces it (mergeLeaveGuard is
+  // filled by the open window); leaving it updates the conflict list / Review queue (mergeLeft).
+  const mergeLeaveGuard = useRef<((go: () => void) => boolean) | null>(null)
+  const mergeLeft = useRef<(path: string, next: WorkbenchOverlay | null) => void>(() => {})
+  const leaveEffects = overlayLeaveEffects(actions)
+  const overlays = useWorkbenchOverlay(
+    (left, next) => {
+      leaveEffects(left, next)
+      if (left.kind === 'mergeWindow') mergeLeft.current(left.path, next)
+    },
+    (current, _next, proceed) => current.kind === 'mergeWindow' && mergeLeaveGuard.current?.(proceed) === true,
+  )
   actionCallbacks.current.openOverlay = overlays.open
   const dirtyHandlers = dirtySheetHandlers(actions, overlays)
   const overlay = overlays.overlay
@@ -433,7 +444,10 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
 
   // Operation state, conflict list and operation-state commit (A3 T9).
   const conflictStore = useMemo(
-    () => createConflictStore({ load: signal => client.operationState(sessionId, signal) }),
+    () => createConflictStore({
+      load: signal => client.operationState(sessionId, signal),
+      loadFile: (path, signal) => client.mergeFile({ sessionId, path }, signal),
+    }),
     [client, sessionId],
   )
   const conflictState = useConflictState(conflictStore)
@@ -585,25 +599,58 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
   const mergeEnabled = useMemo(() => isFeatureEnabled('mergeWindow'), [])
   const mergeBlock = useRef<LocalizedText | null>(null)
   const mergeApplied = useRef<(path: string, remaining: number | null) => void>(() => {})
+  const mergeLoadFailed = useRef<(path: string, error: GitError | null) => void>(() => {})
+  const reviewRunner = useMemo(() => createReviewRunner(), [sessionId])
   const mergeStore = useMemo(() => createMergeStore({
     loadFile: (path, signal) => client.mergeFile({ sessionId, path }, signal),
+    loadDiff: (path, scope) => client.diff({ sessionId, path, scope }),
     actions,
     readOnlyReason: () => mergeBlock.current,
+    // Opening a file in the window counts as reviewing it (confirmation 2; whole-file takes happen there too).
+    onOpened: (path) => { conflictStore.markReviewed(path) },
+    onLoadFailed: (path, error) => { mergeLoadFailed.current(path, error) },
     onApplied: (path, remaining) => { mergeApplied.current(path, remaining) },
-  }), [actions, client, sessionId])
-  // Controller ruling 12: after a successful apply the window always leaves the file — the next
-  // unresolved file, else back to the conflict list (T7 replaces this with the Review queue).
+  }), [actions, client, conflictStore, sessionId])
+  const openMergeOverlay = (path: string | null): void => {
+    overlays.open(path === null ? { kind: 'conflicts' } : { kind: 'mergeWindow', path }, null)
+  }
+  // Controller ruling 12: after a successful apply the window always leaves the file — the next file
+  // of a running Review queue, else the next unresolved file, else back to the conflict list.
   mergeApplied.current = (path, remaining) => {
+    conflictStore.invalidateCount(path)
     void conflictStore.refresh()
     void onRefresh()
+    const queued = reviewRunner.next(path)
+    if (queued !== undefined) {
+      openMergeOverlay(queued)
+      return
+    }
     const paths = conflictStore.getState().value?.conflicts.map(entry => entry.path) ?? []
-    const next = nextFileAfterApply(paths, path, remaining ?? paths.filter(entry => entry !== path).length)
-    overlays.open(next === null ? { kind: 'conflicts' } : { kind: 'mergeWindow', path: next }, null)
+    openMergeOverlay(nextFileAfterApply(paths, path, remaining ?? paths.filter(entry => entry !== path).length))
+  }
+  // Rulings 6/7: a queued resolved file `mergeFile` cannot open (no resolve-undo, worktree unreadable)
+  // is not reviewable and is skipped silently; unresolved files keep their error in the window.
+  mergeLoadFailed.current = (path, error) => {
+    if (reviewRunner.current() !== path || (error !== null && error.code !== 'git/stale-target')) return
+    if (conflictStore.getState().value?.conflicts.some(entry => entry.path === path) === true) return
+    conflictStore.markNotReviewable(path)
+    openMergeOverlay(reviewRunner.next(path) ?? null)
+  }
+  mergeLeft.current = (path, next) => {
+    conflictStore.invalidateCount(path)
+    // Back, another entry point or the list: a Review queue stops (ruling 12).
+    if (next?.kind !== 'mergeWindow') reviewRunner.cancel()
   }
   const openMergeWindow = useCallback((path: string, trigger: FocusTarget | null) => {
     setNotice(null)
     overlays.open({ kind: 'mergeWindow', path }, trigger)
   }, [overlays.open])
+  const startReview = useCallback((queue: string[], trigger: FocusTarget | null) => {
+    const first = reviewRunner.start(queue)
+    if (first === null) return
+    setNotice(null)
+    overlays.open({ kind: 'mergeWindow', path: first }, trigger)
+  }, [overlays.open, reviewRunner])
 
   // Integrate pages (A3 T8): writes are blocked while read-only or an operation is in progress;
   // fetch only needs a writable repository.
@@ -968,7 +1015,12 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
             copy={(command) => { void globalThis.navigator?.clipboard?.writeText(command) }}
             onFinished={applyOperationOutcome}
             onAbort={(trigger) => { runOperationControl('abort', trigger) }}
-            {...(mergeEnabled ? { onOpenFile: openMergeWindow } : {})}
+            {...(mergeEnabled
+              ? {
+                  onOpenFile: openMergeWindow,
+                  merge: { loadFile: path => client.mergeFile({ sessionId, path }), onReview: startReview },
+                }
+              : {})}
             onClose={() => { overlays.closeIf('conflicts') }}
           />
         )}
@@ -986,8 +1038,13 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
               void conflictStore.refresh()
               overlays.open({ kind: 'conflicts' }, null)
             }}
-            onOpenFile={(path) => { overlays.open({ kind: 'mergeWindow', path }, null) }}
+            onOpenFile={(path) => {
+              // Moving to another file by hand ends a Review queue.
+              reviewRunner.cancel()
+              overlays.open({ kind: 'mergeWindow', path }, null)
+            }}
             onResolved={(path) => { mergeApplied.current(path, null) }}
+            leaveGuard={mergeLeaveGuard}
           />
         )}
         {overlay?.kind !== 'dirtyWorktree' || actionState.ask === null ? null : (

@@ -174,3 +174,91 @@ describe('B1 T6 entry to the merge window', () => {
     expect(html).toMatch(/<span class="[^"]*" title="src\/a.ts">src\/a.ts<\/span>/)
   })
 })
+
+describe('B1 T7 conflict list enhancements (mergeWindow flag)', () => {
+  type Merge = NonNullable<ConflictsPageViewProps['merge']>
+  const merge = (over: Partial<Merge> = {}): Merge => ({
+    groups: { unresolved: ['src/a.ts', 'src/b.ts'], resolved: ['src/c.ts'] },
+    reviewed: new Set(['src/c.ts']),
+    counts: new Map([['src/a.ts', { resolved: 1, total: 3 }], ['src/b.ts', null]]),
+    selected: new Set(),
+    simpleBusy: false,
+    summary: null,
+    menuPath: null,
+    menuError: null,
+    onSelect: noop,
+    onManual: noop,
+    onSimpleAll: noop,
+    onOpenMenu: noop,
+    onCloseMenu: noop,
+    onUnresolve: noop,
+    ...over,
+  })
+
+  it('shows 已解决块/总块 for counted files only', () => {
+    const html = view(mergeState(), { onOpenFile: noop, merge: merge() })
+    expect(html).toContain('1/3 已解决')
+    expect(html.match(/data-chunk-count/g)).toHaveLength(1)
+  })
+
+  it('footer: 全部简单冲突 and 逐个解决 as the primary button; 接受并完成 is not primary', () => {
+    const html = view(mergeState(), { onOpenFile: noop, merge: merge() })
+    expect(html).toMatch(/<button[^>]*data-simple-all[^>]*>全部简单冲突<\/button>/)
+    expect(html).toMatch(/<button[^>]*class="[^"]*primary[^"]*"[^>]*data-manual="resolveManually"[^>]*>逐个解决<\/button>/)
+    expect(html).not.toMatch(/<button[^>]*class="[^"]*primary[^"]*"[^>]*data-conflict-finish/)
+  })
+
+  it('审查更改 when only unreviewed resolved files are left; the row is marked 未审查', () => {
+    const value = mergeState({ conflicts: [], resolved: ['src/c.ts'] })
+    const html = view(value, { merge: merge({ groups: { unresolved: [], resolved: ['src/c.ts'] }, reviewed: new Set() }) })
+    expect(html).toMatch(/data-manual="reviewChanges"[^>]*>审查更改<\/button>/)
+    expect(html).toContain('data-unreviewed')
+    expect(html).toContain('未审查')
+    // Review is optional: 接受并完成 stays enabled.
+    expect(html).not.toMatch(/<button[^>]*disabled=""[^>]*data-conflict-finish/)
+  })
+
+  it('everything resolved and reviewed: no manual button, 所有冲突都已解决, 接受并完成 is primary', () => {
+    const value = mergeState({ conflicts: [], resolved: ['src/c.ts'] })
+    const html = view(value, { merge: merge({ groups: { unresolved: [], resolved: ['src/c.ts'] } }) })
+    expect(html).not.toContain('data-manual')
+    expect(html).toContain('所有冲突都已解决')
+    expect(html).toMatch(/<button[^>]*class="[^"]*primary[^"]*"[^>]*data-conflict-finish/)
+    expect(html).toMatch(/<button[^>]*disabled=""[^>]*data-simple-all/)
+  })
+
+  it('selected rows are marked; the summary of 全部简单冲突 is shown', () => {
+    const html = view(mergeState(), {
+      onOpenFile: noop,
+      merge: merge({ selected: new Set(['src/a.ts', 'src/c.ts']), summary: text('conflict.simpleAll.done', { resolved: 2, manual: 1 }) }),
+    })
+    const tag = (attr: string): string => html.match(new RegExp(`<li[^>]*${attr}[^>]*>`))?.[0] ?? ''
+    expect(tag('data-conflict-row="src/a.ts"')).toContain('data-selected="true"')
+    expect(tag('data-resolved-row="src/c.ts"')).toContain('data-selected="true"')
+    expect(tag('data-conflict-row="src/b.ts"')).not.toContain('data-selected')
+    expect(html).toContain('已解决 2 个文件，1 个文件需要手动处理')
+  })
+
+  it('a resolved row opens a menu with 还原冲突解决 (and shows its failure)', () => {
+    const html = view(mergeState(), { merge: merge({ menuPath: 'src/c.ts', menuError: text('conflict.unresolve.terminal') }) })
+    expect(html).toMatch(/role="menu"[^>]*aria-label="src\/c.ts 的操作"/)
+    expect(html).toMatch(/role="menuitem"[^>]*data-unresolve="src\/c.ts"[^>]*>.*还原冲突解决/)
+    expect(html).toContain('请在终端处理')
+  })
+
+  it('English rendering', () => {
+    const html = view(mergeState(), { t: enT, onOpenFile: noop, merge: merge() })
+    expect(html).toContain('1/3 resolved')
+    expect(html).toContain('All Simple Conflicts')
+    expect(html).toContain('Resolve Manually')
+    expect(html).not.toMatch(/[一-鿿]/)
+  })
+
+  it('flag off (no merge props): none of it is rendered', () => {
+    const html = view(mergeState())
+    for (const marker of ['data-chunk-count', 'data-simple-all', 'data-manual', 'data-selected', 'data-unreviewed', 'role="menu"', '所有冲突都已解决']) {
+      expect(html).not.toContain(marker)
+    }
+    expect(html).toMatch(/<button[^>]*class="[^"]*primary[^"]*"[^>]*data-conflict-finish/)
+  })
+})

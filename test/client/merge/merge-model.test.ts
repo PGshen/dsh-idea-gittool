@@ -554,3 +554,20 @@ describe('large inputs', () => {
     expect(Date.now() - started).toBeLessThan(4000)
   })
 })
+
+describe('coarse flag (controller ruling 15)', () => {
+  it('is false for ordinary inputs, including wholesale rewrites the diff can still align', () => {
+    expect(createModel(SIDES).coarse).toBe(false)
+    const base = Array.from({ length: 20_000 }, (_, i) => `line ${i}\n`).join('')
+    const ours = base.replace('line 100\n', 'ours 100\n')
+    expect(createModel({ base, ours, theirs: base }).coarse).toBe(false)
+  })
+
+  it('is true when the line diff cost cap merged a region into one replacement, and survives actions', () => {
+    const base = Array.from({ length: 12_000 }, (_, i) => `line ${i}\n`).join('')
+    const ours = Array.from({ length: 12_000 }, (_, i) => (i % 2 === 0 ? `ours ${i}\n` : `line ${i}\n`)).join('')
+    const m = createModel({ base, ours, theirs: base })
+    expect(m.coarse).toBe(true)
+    expect(applyNonConflicting(m, 'all').coarse).toBe(true)
+  })
+})

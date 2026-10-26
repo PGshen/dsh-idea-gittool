@@ -120,7 +120,7 @@ export function MergeWindowView(props: MergeWindowViewProps): ReactNode {
       <MergeFallback
         t={t}
         reason={fallbackReason(file)}
-        actions={props.operation === null ? [] : conflictRowActions(entry, withStashLabel(props.operation, t('conflict.stashLabel')))}
+        actions={props.operation === null || file.resolved ? [] : conflictRowActions(entry, withStashLabel(props.operation, t('conflict.stashLabel')))}
         busy={props.fallback.busy}
         blockReason={blockReason}
         error={props.fallback.error}
@@ -149,6 +149,7 @@ export function MergeWindowView(props: MergeWindowViewProps): ReactNode {
   }
 
   const notices: Array<{ key: string; text: LocalizedText; role: 'status' | 'alert' }> = []
+  if (model?.coarse === true) notices.push({ key: 'coarse', text: text('merge.coarse'), role: 'status' })
   if (state.draftDiscarded) notices.push({ key: 'draft', text: text('merge.draftDiscarded'), role: 'status' })
   if (ui.notice !== null) notices.push({ key: 'notice', text: ui.notice, role: 'status' })
   if (state.error !== null && file !== null) notices.push({ key: 'error', text: state.error, role: 'alert' })
@@ -184,7 +185,12 @@ export function MergeWindowView(props: MergeWindowViewProps): ReactNode {
         : (
             <div className={css.notices}>
               {notices.map(notice => (
-                <p key={notice.key} className={notice.role === 'alert' ? css.error : css.notice} role={notice.role}>
+                <p
+                  key={notice.key}
+                  className={notice.role === 'alert' ? css.error : css.notice}
+                  role={notice.role}
+                  {...(notice.key === 'coarse' ? { 'data-merge-coarse': true } : {})}
+                >
                   {t(notice.text.key, notice.text.params)}
                 </p>
               ))}
@@ -244,6 +250,11 @@ export interface MergeWindowProps {
   onOpenFile: (path: string) => void
   /** A fallback choice resolved the file (the same follow-up as a successful apply). */
   onResolved: (path: string) => void
+  /**
+   * T7: filled while a file is open. The workbench asks it before another entry point replaces the
+   * window; true = the window holds that navigation to ask save / discard / cancel first.
+   */
+  leaveGuard?: { current: ((go: () => void) => boolean) | null } | undefined
 }
 
 const PANES: readonly MergePane[] = ['left', 'result', 'right']
@@ -294,6 +305,13 @@ function MergeFileSession(props: MergeWindowProps): ReactNode {
     onOpenFile: (next) => { latest.current.onOpenFile(next) },
   }), [store])
   const ui = useSyncExternalStore(controller.subscribe, controller.getState, controller.getState)
+  const leaveGuard = props.leaveGuard
+  useEffect(() => {
+    if (leaveGuard === undefined) return undefined
+    const guard = controller.guardLeave
+    leaveGuard.current = guard
+    return () => { if (leaveGuard.current === guard) leaveGuard.current = null }
+  }, [controller, leaveGuard])
   const [menuOpen, setMenuOpen] = useState(false)
   const [fallbackBusy, setFallbackBusy] = useState(false)
   const [fallbackError, setFallbackError] = useState<LocalizedText | null>(null)

@@ -73,6 +73,11 @@ export interface MergeModel {
   readonly eol: string
   /** Memo shared by all versions of the model (the three sides never change). */
   readonly memo: { simple: Map<number, string | null> }
+  /**
+   * The line diff hit its cost cap (very large, very different files): some region became one coarse
+   * replacement chunk. The window says so (controller ruling 15).
+   */
+  readonly coarse: boolean
 }
 
 interface ChunkUpdate {
@@ -172,7 +177,8 @@ function baseModel(texts: MergeTexts): MergeModel {
   const baseLines = splitLines(base)
   const leftLines = splitLines(ours)
   const rightLines = splitLines(theirs)
-  const chunks = diff3(baseLines, leftLines, rightLines).map((c) => initialChunk(c, { ...c.base }))
+  const stats = { coarse: false }
+  const chunks = diff3(baseLines, leftLines, rightLines, stats).map((c) => initialChunk(c, { ...c.base }))
   return {
     baseLines,
     leftLines,
@@ -182,6 +188,7 @@ function baseModel(texts: MergeTexts): MergeModel {
     result: base,
     eol: detectEol(ours, theirs, base),
     memo: { simple: new Map() },
+    coarse: stats.coarse,
   }
 }
 
@@ -333,6 +340,27 @@ export function acceptFile(model: MergeModel, side: MergeSideName): MergeModel {
     })),
     resultLines: lines,
     result: lines.join(''),
+  }
+}
+
+/**
+ * The Result is `text` (a resolved file whose worktree content no replay explains) and every chunk is
+ * manually `edited`: the first chunk covers the whole Result, the others sit empty at its end.
+ */
+export function editedModel(model: MergeModel, text: string): MergeModel {
+  const lines = splitLines(text)
+  const end = lines.length
+  return {
+    ...model,
+    chunks: model.chunks.map((c, i) => ({
+      ...c,
+      state: 'edited',
+      leftDone: false,
+      rightDone: false,
+      resultRange: i === 0 ? { start: 0, end } : { start: end, end },
+    })),
+    resultLines: lines,
+    result: text,
   }
 }
 

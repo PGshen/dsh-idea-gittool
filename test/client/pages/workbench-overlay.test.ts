@@ -323,3 +323,32 @@ describe('pushConflictWiring (final review 8)', () => {
     expect(openConsole).toHaveBeenCalledTimes(1)
   })
 })
+
+describe('T7: leave guard (a dirty merge window asks before another entry replaces it)', () => {
+  it('open / close consult the guard for the current overlay; closeIf does not', () => {
+    const onChange = vi.fn()
+    let held: (() => void) | null = null
+    const guard = vi.fn((current: { kind: string }, _next: unknown, proceed: () => void) => {
+      if (current.kind !== 'push') return false
+      held = proceed
+      return true
+    })
+    const overlays = createOverlayController({ onChange, guard })
+    overlays.open(PUSH, null)
+    overlays.open(ROLLBACK, null)
+    expect(overlays.route().overlay).toBe(PUSH)
+    expect(guard).toHaveBeenLastCalledWith(PUSH, ROLLBACK, expect.any(Function))
+    held!()
+    expect(overlays.route().overlay).toBe(ROLLBACK)
+
+    overlays.open(PUSH, null)
+    overlays.close()
+    expect(overlays.route().overlay).toBe(PUSH)
+    held!()
+    expect(overlays.route().overlay).toBeNull()
+
+    overlays.open(PUSH, null)
+    overlays.closeIf('push')
+    expect(overlays.route().overlay).toBeNull()
+  })
+})

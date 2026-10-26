@@ -29,8 +29,13 @@ export function splitLines(text: string): string[] {
   return lines
 }
 
+/** Filled by the diff functions: `coarse` turns true when the cost cap reported a region as one replacement. */
+export interface DiffStats {
+  coarse: boolean
+}
+
 /** Line diff `a → b`; lines compare by exact text including the terminator. Returns changed regions only, sorted. */
-export function diffLines(a: readonly string[], b: readonly string[]): DiffOp[] {
+export function diffLines(a: readonly string[], b: readonly string[], stats?: DiffStats): DiffOp[] {
   const ids = new Map<string, number>()
   const intern = (line: string): number => {
     let id = ids.get(line)
@@ -40,13 +45,13 @@ export function diffLines(a: readonly string[], b: readonly string[]): DiffOp[] 
     }
     return id
   }
-  return diffSequences(a.map(intern), b.map(intern))
+  return diffSequences(a.map(intern), b.map(intern), stats)
 }
 
 /** Myers diff over integer sequences (callers intern their items). Adjacent regions are coalesced. */
-export function diffSequences(a: ArrayLike<number>, b: ArrayLike<number>): DiffOp[] {
+export function diffSequences(a: ArrayLike<number>, b: ArrayLike<number>, stats?: DiffStats): DiffOp[] {
   const out: DiffOp[] = []
-  diffRange(a, 0, a.length, b, 0, b.length, out)
+  diffRange(a, 0, a.length, b, 0, b.length, out, stats)
   const merged: DiffOp[] = []
   for (const op of out) {
     const last = merged[merged.length - 1]
@@ -64,6 +69,7 @@ function diffRange(
   a: ArrayLike<number>, aLo: number, aHi: number,
   b: ArrayLike<number>, bLo: number, bHi: number,
   out: DiffOp[],
+  stats?: DiffStats,
 ): void {
   while (aLo < aHi && bLo < bHi && a[aLo] === b[bLo]) { aLo++; bLo++ }
   while (aLo < aHi && bLo < bHi && a[aHi - 1] === b[bHi - 1]) { aHi--; bHi-- }
@@ -73,23 +79,32 @@ function diffRange(
     return
   }
   const split = bisect(a, aLo, aHi, b, bLo, bHi)
+  if (split === CAPPED) {
+    if (stats) stats.coarse = true
+    out.push({ aStart: aLo, aEnd: aHi, bStart: bLo, bEnd: bHi })
+    return
+  }
   // A split on a corner would not make progress; report the whole region instead.
   if (!split || (split.x === aLo && split.y === bLo) || (split.x === aHi && split.y === bHi)) {
     out.push({ aStart: aLo, aEnd: aHi, bStart: bLo, bEnd: bHi })
     return
   }
-  diffRange(a, aLo, split.x, b, bLo, split.y, out)
-  diffRange(a, split.x, aHi, b, split.y, bHi, out)
+  diffRange(a, aLo, split.x, b, bLo, split.y, out, stats)
+  diffRange(a, split.x, aHi, b, split.y, bHi, out, stats)
 }
+
+/** {@link bisect} gave up at the cost cap (the region is reported as one coarse replacement). */
+const CAPPED = 'capped'
 
 /**
  * Finds the middle snake of `a[aLo,aHi)` vs `b[bLo,bHi)` (Myers 1986, as in diff-match-patch's bisect)
- * and returns the absolute split point, or null when there is no common item or the cost cap is hit.
+ * and returns the absolute split point, null when there is no common item, or {@link CAPPED} when the
+ * cost cap stopped the search first.
  */
 function bisect(
   a: ArrayLike<number>, aLo: number, aHi: number,
   b: ArrayLike<number>, bLo: number, bHi: number,
-): { x: number; y: number } | null {
+): { x: number; y: number } | typeof CAPPED | null {
   const n = aHi - aLo
   const m = bHi - bLo
   const maxD = Math.ceil((n + m) / 2)
@@ -141,5 +156,5 @@ function bisect(
       }
     }
   }
-  return null
+  return limit < maxD ? CAPPED : null
 }

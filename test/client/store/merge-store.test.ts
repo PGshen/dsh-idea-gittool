@@ -6,7 +6,8 @@ import { createMergeStore } from '../../../src/client/store/merge-store.ts'
 import type { MergeStoreDeps } from '../../../src/client/store/merge-store.ts'
 import type { ActionOutcome } from '../../../src/client/store/action-store.ts'
 import { text } from '../../../src/client/localized-text.ts'
-import type { MergeFileValue, MergeSide, RpcResult } from '../../../src/shared/protocol.ts'
+import type { DiffFileValue, MergeFileValue, MergeSide, RpcResult } from '../../../src/shared/protocol.ts'
+import { gitBlobSha } from '../../../src/client/merge/resolved-replay.ts'
 
 const side = (body: string | null, blob = 'b'.repeat(40)): MergeSide => ({ blob, text: body, binary: body === null, size: body?.length ?? 0 })
 
@@ -303,5 +304,78 @@ describe('discard / unresolve', () => {
     const outcome = await store.unresolve('a.txt')
     expect(outcome).toEqual({ remaining: 3 })
     expect(run).toHaveBeenCalledWith('unresolveConflict', { path: 'a.txt' }, expect.anything())
+  })
+})
+
+describe('resolved files (T7 Review Changes)', () => {
+  const sidesText = { base: 'one\ntwo\nthree\n', ours: 'one\nOURS\nthree\n', theirs: 'one\nTHEIRS\nthree\n' }
+  const resolvedFile = (worktree: string, over: Partial<MergeFileValue> = {}): MergeFileValue =>
+    file({ resolved: true, worktreeSha: gitBlobSha(worktree), ...over })
+  const noDiff = (over: Partial<DiffFileValue> = {}): DiffFileValue => ({ oldPath: 'a.txt', newPath: 'a.txt', status: 'M', binary: false, hunks: [], truncated: false, ...over })
+
+  function setupResolved(value: MergeFileValue, diffs?: { staged: DiffFileValue; worktree: DiffFileValue }) {
+    const loadDiff = vi.fn(async (_path: string, scope: 'staged' | 'worktree') => (
+      diffs === undefined ? { ok: false, error: { code: 'git/exec-failed', message: 'x' } } : { ok: true, value: diffs[scope] }
+    ) as RpcResult<DiffFileValue>)
+    const onLoadFailed = vi.fn()
+    const store = createMergeStore({
+      loadFile: async () => ({ ok: true, value }),
+      loadDiff,
+      actions: { run: vi.fn() } as unknown as MergeStoreDeps['actions'],
+      onLoadFailed,
+    })
+    return { store, loadDiff, onLoadFailed }
+  }
+
+  it('a worktree equal to one side opens with that side taken (no diff needed)', async () => {
+    const { store, loadDiff } = setupResolved(resolvedFile(sidesText.ours))
+    await store.open('a.txt')
+    expect(store.getState()).toMatchObject({ status: 'ready', dirty: false })
+    expect(store.getState().model?.result).toBe(sidesText.ours)
+    expect(store.getState().model?.chunks.every(c => c.state !== 'edited')).toBe(true)
+    expect(loadDiff).not.toHaveBeenCalled()
+  })
+
+  it('a worktree the replay cannot explain is rebuilt from the diffs, every chunk edited', async () => {
+    const worktree = 'one\nMINE\nthree\n'
+    const hunk = {
+      header: '@@ -2 +2 @@', oldStart: 2, oldLines: 1, newStart: 2, newLines: 1,
+      lines: [{ type: 'del' as const, text: 'OURS' }, { type: 'add' as const, text: 'MINE' }],
+    }
+    const { store, loadDiff } = setupResolved(resolvedFile(worktree), { staged: noDiff({ hunks: [hunk] }), worktree: noDiff() })
+    await store.open('a.txt')
+    expect(loadDiff).toHaveBeenCalledWith('a.txt', 'staged')
+    expect(store.getState().model?.result).toBe(worktree)
+    expect(store.getState().model?.chunks.every(c => c.state === 'edited')).toBe(true)
+    expect(store.getState().dirty).toBe(false)
+  })
+
+  it('a worktree that cannot be rebuilt is a load error reported to onLoadFailed', async () => {
+    const { store, onLoadFailed } = setupResolved(resolvedFile('?\n'), { staged: noDiff({ truncated: true }), worktree: noDiff() })
+    await store.open('a.txt')
+    expect(store.getState()).toMatchObject({ status: 'error', model: null, error: text('merge.error.worktreeUnreadable') })
+    expect(onLoadFailed).toHaveBeenCalledWith('a.txt', null)
+  })
+
+  it('a draft of a resolved file is used only when its Result is the worktree', async () => {
+    const fresh = setup()
+    await fresh.store.open('a.txt')
+    const draft = toDraft(fresh.store.getState().model!, STAGES)
+    // The draft Result (base) is not the worktree (ours): the replay wins and the draft is not reported discarded.
+    const stale = setupResolved(resolvedFile(sidesText.ours, { draft }))
+    await stale.store.open('a.txt')
+    expect(stale.store.getState().model?.result).toBe(sidesText.ours)
+    expect(stale.store.getState().draftDiscarded).toBe(false)
+    const current = setupResolved(resolvedFile(sidesText.base, { draft }))
+    await current.store.open('a.txt')
+    expect(current.store.getState().model?.chunks.map(c => c.state)).toEqual(draft.chunks.map(c => c.state))
+  })
+
+  it('a failed mergeFile is reported with its error', async () => {
+    const error = { code: 'git/stale-target' as const, message: 'gone' }
+    const onLoadFailed = vi.fn()
+    const store = createMergeStore({ loadFile: async () => ({ ok: false, error }), actions: { run: vi.fn() } as unknown as MergeStoreDeps['actions'], onLoadFailed })
+    await store.open('a.txt')
+    expect(onLoadFailed).toHaveBeenCalledWith('a.txt', error)
   })
 })

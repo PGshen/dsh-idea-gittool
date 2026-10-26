@@ -3,6 +3,8 @@
 export const zhMerge = {
   'merge.error.stale': '文件已变化，请重新加载',
   'merge.error.loadFailed': '读取合并内容失败：{code}',
+  'merge.error.worktreeUnreadable': '无法读取这个已解决文件的当前内容，请在编辑器或终端中查看',
+  'merge.coarse': '文件很大且差异很多，部分区域合成了一个大块，请仔细核对',
   'merge.draftDiscarded': '这个文件的三方版本已变化，之前保存的草稿已作废，已从头开始。',
 
   'merge.window.label': '合并窗口：{path}',
@@ -57,6 +59,8 @@ export const zhMerge = {
 export const enMerge = {
   'merge.error.stale': 'The file has changed; reload it',
   'merge.error.loadFailed': 'Failed to read the merge content: {code}',
+  'merge.error.worktreeUnreadable': 'Could not read the current content of this resolved file; check it in the editor or a terminal',
+  'merge.coarse': 'This file is large and very different; some regions were merged into one big chunk. Check them carefully',
   'merge.draftDiscarded': 'The three versions of this file have changed, so the saved draft was discarded and you are starting over.',
 
   'merge.window.label': 'Merge window: {path}',

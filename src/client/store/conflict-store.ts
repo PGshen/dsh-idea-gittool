@@ -1,12 +1,15 @@
 // Conflict list state (design §10.1–10.2, plan A3 T9): the Host's operationState, its two groups,
 // the side labels by concrete names (ours/theirs only in tooltips) and the once-per-operation
 // auto-open rule. React-free; the workbench creates one store per session.
+// B1 T7 (mergeWindow flag): the in-memory reviewed state of Review Changes (decision D5), lazy chunk
+// counts per file, the bottom button / review queue rules and row selection.
 import { useSyncExternalStore } from 'react'
 import type {
   ConflictKind,
   ConflictResolution,
   FileEntry,
   GitError,
+  MergeFileValue,
   OperationStateValue,
   RepoOperation,
   RpcResult,
@@ -14,6 +17,8 @@ import type {
 import { text } from '../localized-text.ts'
 import type { LocalizedText } from '../localized-text.ts'
 import type { GitWorkbenchKey } from '../locales.ts'
+import { counts as chunkCounts, createModel } from '../merge/merge-model.ts'
+import { mergeTexts } from './merge-store.ts'
 
 export interface ConflictStoreState {
   status: 'idle' | 'loading' | 'ready' | 'error'
@@ -24,6 +29,27 @@ export interface ConflictStoreState {
 
 export interface ConflictStoreDeps {
   load: (signal?: AbortSignal) => Promise<RpcResult<OperationStateValue>>
+  /** B1 T7: `mergeFile`, for the chunk counts of the list (without it {@link ConflictStore.loadCounts} does nothing). */
+  loadFile?: (path: string, signal?: AbortSignal) => Promise<RpcResult<MergeFileValue>>
+}
+
+/** Resolved / total conflict chunks of one file (as the merge window counts them). */
+export interface ChunkCount {
+  resolved: number
+  total: number
+}
+
+/** B1 T7 state kept next to the operation state (in memory only, decision D5). */
+export interface ConflictReview {
+  /** {@link reviewKey} of the operation (and rebase step) the sets belong to. */
+  key: string | null
+  /** Text conflicts seen unresolved in this round: once resolved, they are reviewable. */
+  seen: ReadonlySet<string>
+  reviewed: ReadonlySet<string>
+  /** Resolved paths `mergeFile` could not open (controller rulings 6/7). */
+  notReviewable: ReadonlySet<string>
+  /** Chunk counts by path; null = not countable (binary / too large). Missing = not loaded. */
+  counts: ReadonlyMap<string, ChunkCount | null>
 }
 
 export interface ConflictStore {
@@ -33,6 +59,49 @@ export interface ConflictStore {
   refresh(): Promise<void>
   /** No operation any more: drop the value. */
   clear(): void
+  getReview(): ConflictReview
+  markReviewed(path: string): void
+  /** 「全部简单冲突」 resolved these files without anyone looking: not reviewed. */
+  unmarkReviewed(paths: readonly string[]): void
+  markNotReviewable(path: string): void
+  /** Loads the missing chunk counts (first {@link CHUNK_COUNT_LIMIT} unresolved text conflicts), one file at a time. */
+  loadCounts(): Promise<void>
+  /** The file changed (window left, resolved, restored): its count is loaded again. */
+  invalidateCount(path: string): void
+}
+
+/** At most this many unresolved files get a chunk count (design §10.2 P1, decision D4). */
+export const CHUNK_COUNT_LIMIT = 50
+
+/** Conflict kinds with both sides' text: they open in the three panes and have chunk counts. */
+const TEXT_KINDS: ReadonlySet<ConflictKind> = new Set<ConflictKind>(['both-modified', 'both-added'])
+
+export function isTextConflict(entry: FileEntry): boolean {
+  return TEXT_KINDS.has(entry.conflict ?? 'both-modified')
+}
+
+/**
+ * Key of one review round: the operation identity plus the rebase step (each step has its own
+ * conflicts and resolve-undo); 'none' for the stash pop without an operation.
+ */
+export function reviewKey(value: OperationStateValue | null): string | null {
+  if (value === null) return null
+  const step = value.step === undefined ? '' : `#${value.step.current}`
+  return `${operationIdentity(value) ?? 'none'}${step}`
+}
+
+const EMPTY_REVIEW: ConflictReview = { key: null, seen: new Set(), reviewed: new Set(), notReviewable: new Set(), counts: new Map() }
+
+function countOf(file: MergeFileValue): ChunkCount | null {
+  const texts = mergeTexts(file)
+  if (texts === null) return null
+  const model = (file.draft === null ? null : createModel(texts, file.draft)) ?? createModel(texts)
+  return chunkCounts(model)
+}
+
+/** Cache key of a count: the three stage blobs and the draft (a draft changes the count). */
+function countKey(file: MergeFileValue): string {
+  return [file.base?.blob, file.ours?.blob, file.theirs?.blob, file.draft?.savedAt ?? '', file.tooLarge].join('|')
 }
 
 const IDLE: ConflictStoreState = { status: 'idle', value: null, error: null }
@@ -41,10 +110,61 @@ export function createConflictStore(deps: ConflictStoreDeps): ConflictStore {
   const listeners = new Set<() => void>()
   let state = IDLE
   let seq = 0
+  let review = EMPTY_REVIEW
+  /** Counts by stages (decision D4: the same diff3 as the window); survives invalidation of the path. */
+  const countCache = new Map<string, { key: string; count: ChunkCount | null }>()
+  let counting: Promise<void> | null = null
+  let countAgain = false
 
+  const notify = (): void => {
+    for (const listener of [...listeners]) listener()
+  }
   const emit = (next: ConflictStoreState): void => {
     state = next
-    for (const listener of [...listeners]) listener()
+    notify()
+  }
+  const setReview = (patch: Partial<ConflictReview>): void => {
+    review = { ...review, ...patch }
+    notify()
+  }
+
+  /** A new review round clears everything; then the unresolved text conflicts are remembered as seen. */
+  const syncReview = (value: OperationStateValue): void => {
+    const key = reviewKey(value)
+    let next = review
+    if (key !== review.key) {
+      next = { ...EMPTY_REVIEW, key }
+      countCache.clear()
+    }
+    const fresh = value.conflicts.filter(entry => isTextConflict(entry) && !next.seen.has(entry.path))
+    if (fresh.length > 0) next = { ...next, seen: new Set([...next.seen, ...fresh.map(entry => entry.path)]) }
+    if (next !== review) {
+      review = next
+    }
+  }
+
+  const countPass = async (): Promise<void> => {
+    const load = deps.loadFile
+    if (load === undefined) return
+    const key = review.key
+    const targets = (state.value?.conflicts ?? []).filter(isTextConflict).slice(0, CHUNK_COUNT_LIMIT)
+    for (const entry of targets) {
+      if (review.key !== key) return
+      if (review.counts.has(entry.path)) continue
+      let result: RpcResult<MergeFileValue>
+      try {
+        result = await load(entry.path)
+      } catch {
+        continue
+      }
+      if (review.key !== key || !result.ok) continue
+      const file = result.value
+      const cacheKey = countKey(file)
+      const cached = countCache.get(entry.path)
+      const count = cached !== undefined && cached.key === cacheKey ? cached.count : countOf(file)
+      countCache.set(entry.path, { key: cacheKey, count })
+      setReview({ counts: new Map([...review.counts, [entry.path, count]]) })
+    }
   }
 
   return {
@@ -63,19 +183,135 @@ export function createConflictStore(deps: ConflictStoreDeps): ConflictStore {
         result = { ok: false, error: { code: 'git/exec-failed', message: error instanceof Error ? error.message : String(error) } }
       }
       if (mine !== seq) return
+      if (result.ok) syncReview(result.value)
       emit(result.ok
         ? { status: 'ready', value: result.value, error: null }
         : { status: 'error', value: state.value, error: result.error })
     },
     clear: () => {
       seq += 1
+      review = EMPTY_REVIEW
+      countCache.clear()
       if (state !== IDLE) emit(IDLE)
+    },
+    getReview: () => review,
+    markReviewed: (path) => {
+      if (!review.reviewed.has(path)) setReview({ reviewed: new Set([...review.reviewed, path]) })
+    },
+    unmarkReviewed: (paths) => {
+      if (!paths.some(path => review.reviewed.has(path))) return
+      const reviewed = new Set(review.reviewed)
+      for (const path of paths) reviewed.delete(path)
+      setReview({ reviewed })
+    },
+    markNotReviewable: (path) => {
+      if (!review.notReviewable.has(path)) setReview({ notReviewable: new Set([...review.notReviewable, path]) })
+    },
+    loadCounts: async () => {
+      if (counting !== null) {
+        countAgain = true
+        return await counting
+      }
+      counting = (async () => {
+        do {
+          countAgain = false
+          await countPass()
+        } while (countAgain)
+      })()
+      try {
+        await counting
+      } finally {
+        counting = null
+      }
+    },
+    invalidateCount: (path) => {
+      if (!review.counts.has(path)) return
+      const next = new Map(review.counts)
+      next.delete(path)
+      setReview({ counts: next })
     },
   }
 }
 
 export function useConflictState(store: ConflictStore): ConflictStoreState {
   return useSyncExternalStore(store.subscribe, store.getState, store.getState)
+}
+
+export function useConflictReview(store: ConflictStore): ConflictReview {
+  return useSyncExternalStore(store.subscribe, store.getReview, store.getReview)
+}
+
+// ---------------------------------------------------------------------------
+// Review Changes (confirmation 2): bottom button, queue and row selection
+// ---------------------------------------------------------------------------
+
+/** Paths the bottom button works on: unresolved files, and resolved files that may be reviewed. */
+export interface ReviewGroups {
+  unresolved: readonly string[]
+  /** Resolved paths except those `mergeFile` could not open. */
+  resolved: readonly string[]
+}
+
+/**
+ * Groups and the effective reviewed set: resolved files never seen unresolved in this round (opened
+ * before a page reload, or auto-merged and never conflicting) count as reviewed (decision D5).
+ */
+export function reviewInputs(value: OperationStateValue | null, review: ConflictReview): { groups: ReviewGroups; reviewed: ReadonlySet<string> } {
+  const groups = conflictGroups(value)
+  const resolved = groups.resolved.filter(path => !review.notReviewable.has(path))
+  const reviewed = new Set(review.reviewed)
+  for (const path of resolved) if (!review.seen.has(path)) reviewed.add(path)
+  return { groups: { unresolved: groups.unresolved.map(entry => entry.path), resolved }, reviewed }
+}
+
+export type ManualButtonLabel = 'resolveManually' | 'reviewChanges'
+
+/**
+ * The bottom button (confirmation 2): 「逐个解决」 while a selected file — or, without a selection,
+ * any file — is unresolved; 「审查更改」 when what is left is resolved but not reviewed; hidden (null)
+ * when everything is resolved and reviewed (「接受并完成」 is then the primary button).
+ */
+export function manualButton(groups: ReviewGroups, selected: ReadonlySet<string>, reviewed: ReadonlySet<string>): { label: ManualButtonLabel } | null {
+  const selectedUnresolved = groups.unresolved.some(path => selected.has(path))
+  const selectedAny = selectedUnresolved || groups.resolved.some(path => selected.has(path))
+  if (selectedUnresolved || (!selectedAny && groups.unresolved.length > 0)) return { label: 'resolveManually' }
+  if (groups.resolved.some(path => !reviewed.has(path))) return { label: 'reviewChanges' }
+  if (groups.unresolved.length > 0) return { label: 'resolveManually' }
+  return null
+}
+
+/** Files the button opens one after another: selected (list order) → other unresolved → resolved unreviewed. */
+export function reviewQueue(groups: ReviewGroups, selected: ReadonlySet<string>, reviewed: ReadonlySet<string>): string[] {
+  const order = [...groups.unresolved, ...groups.resolved]
+  const queue = new Set<string>(order.filter(path => selected.has(path)))
+  for (const path of groups.unresolved) queue.add(path)
+  for (const path of groups.resolved) if (!reviewed.has(path)) queue.add(path)
+  return [...queue]
+}
+
+export interface RowSelection {
+  selected: ReadonlySet<string>
+  /** Where a Shift range starts (the last plain or toggling click). */
+  anchor: string | null
+}
+
+/** Row click: plain = only this row; Cmd/Ctrl (`toggle`) = add / remove; Shift (`range`) = anchor … row in list order. */
+export function nextSelection(order: readonly string[], current: RowSelection, path: string, mods: { toggle: boolean; range: boolean }): RowSelection {
+  if (mods.range && current.anchor !== null && order.includes(current.anchor)) {
+    const from = order.indexOf(current.anchor)
+    const to = order.indexOf(path)
+    if (to !== -1) {
+      const [lo, hi] = from <= to ? [from, to] : [to, from]
+      return { selected: new Set(order.slice(lo, hi + 1)), anchor: current.anchor }
+    }
+  }
+  if (mods.toggle) {
+    const selected = new Set(current.selected)
+    if (selected.has(path)) selected.delete(path)
+    else selected.add(path)
+    return { selected, anchor: path }
+  }
+  return { selected: new Set([path]), anchor: path }
 }
 
 // ---------------------------------------------------------------------------

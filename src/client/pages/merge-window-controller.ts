@@ -32,7 +32,8 @@ export function mergeKeyCommand(event: MergeKeyEvent): MergeCommand | null {
   return null
 }
 
-export type LeaveTarget = { kind: 'close' } | { kind: 'file'; path: string }
+/** Where the window goes: back to the list, another file, or (T7) somewhere another entry point chose. */
+export type LeaveTarget = { kind: 'close' } | { kind: 'file'; path: string } | { kind: 'external'; go: () => void }
 export type LeaveAnswer = 'save' | 'discard' | 'cancel'
 export type NavigationDirection = 'next' | 'prev'
 
@@ -71,6 +72,11 @@ export interface MergeWindowController {
   /** Runs a model action through the store (notices for resolveSimple). */
   run(action: MergeAction): void
   requestLeave(target: LeaveTarget): void
+  /**
+   * T7: another entry point is about to replace the window. True when the window holds it to ask
+   * save / discard / cancel first (`go` runs after save or discard); false when it may go right away.
+   */
+  guardLeave(go: () => void): boolean
   answerLeave(answer: LeaveAnswer): void
   requestApply(): void
   confirmApply(): void
@@ -93,12 +99,11 @@ export function createMergeWindowController(deps: MergeWindowControllerDeps): Me
 
   const leave = (target: LeaveTarget): void => {
     set({ confirm: null })
-    if (target.kind === 'close') {
-      store.discard()
-      deps.onClose()
-    } else {
-      deps.onOpenFile(target.path)
-    }
+    // Drop the window state first: whatever opens next must not see unsaved changes to ask about.
+    store.discard()
+    if (target.kind === 'close') deps.onClose()
+    else if (target.kind === 'file') deps.onOpenFile(target.path)
+    else target.go()
   }
 
   const requestLeave = (target: LeaveTarget): void => {
@@ -172,6 +177,11 @@ export function createMergeWindowController(deps: MergeWindowControllerDeps): Me
       }
     },
     requestLeave,
+    guardLeave: (go) => {
+      if (!store.getState().dirty) return false
+      set({ confirm: { kind: 'leave', target: { kind: 'external', go } } })
+      return true
+    },
     answerLeave: (answer) => {
       const confirm = ui.confirm
       if (confirm?.kind !== 'leave') return
@@ -227,4 +237,45 @@ export function adjacentPath(paths: readonly string[], current: string, dir: Nav
   const index = paths.indexOf(current)
   if (index === -1) return (dir === 'next' ? paths[0] : paths[paths.length - 1]) ?? null
   return paths[dir === 'next' ? index + 1 : index - 1] ?? null
+}
+
+/** B1 T7 Review Changes queue (confirmation 2, controller ruling 12): files opened one after another. */
+export interface ReviewRunner {
+  /** Starts a queue; returns the first file (null for an empty queue). */
+  start(queue: readonly string[]): string | null
+  /**
+   * The current file was applied (or could not be opened): the next queued file, null when the queue
+   * is done (back to the list), undefined when no queue is running (the default follow-up applies).
+   */
+  next(path: string): string | null | undefined
+  /** Back / another file / another entry point without applying: no further files open. */
+  cancel(): void
+  active(): boolean
+  /** The queued file the window is on (null without a queue). */
+  current(): string | null
+}
+
+export function createReviewRunner(): ReviewRunner {
+  let queue: string[] = []
+  let running = false
+  return {
+    start: (next) => {
+      queue = [...next]
+      running = queue.length > 0
+      return queue[0] ?? null
+    },
+    next: () => {
+      if (!running) return undefined
+      queue.shift()
+      const next = queue[0] ?? null
+      if (next === null) running = false
+      return next
+    },
+    cancel: () => {
+      running = false
+      queue = []
+    },
+    active: () => running,
+    current: () => (running ? (queue[0] ?? null) : null),
+  }
 }

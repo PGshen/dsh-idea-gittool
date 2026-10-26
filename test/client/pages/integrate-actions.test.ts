@@ -117,6 +117,32 @@ describe('update project', () => {
     expect(result).toEqual({ kind: 'error', message: text('integrate.update.resetDirty', { count: 1 }) })
   })
 
+  it('fix 1: Host reason untracked-in-the-way → move-or-delete wording without needing the status', async () => {
+    const blocked = failed('git/dirty-worktree', { paths: ['out.js'], count: 1, reason: 'untracked-in-the-way' })
+    expect(await submitResetToRemote(deps(blocked).deps, true, null)).toEqual({
+      kind: 'error', message: text('integrate.update.resetInTheWay', { count: 1, paths: 'out.js' }),
+    })
+  })
+
+  it('fix 1: no reason and no status snapshot → tracked-changes wording (commit or stash), never move-or-delete', async () => {
+    const blocked = failed('git/dirty-worktree', { paths: ['out.js'], count: 1 })
+    expect(await submitResetToRemote(deps(blocked).deps, true, null)).toEqual({
+      kind: 'error', message: text('integrate.update.resetDirty', { count: 1 }),
+    })
+    expect(await submitResetToRemote(deps(blocked).deps, true)).toEqual({
+      kind: 'error', message: text('integrate.update.resetDirty', { count: 1 }),
+    })
+  })
+
+  it('fix 1: an empty path list is not rendered as an empty list', async () => {
+    const blocked = failed('git/dirty-worktree', { paths: [], count: 3, reason: 'untracked-in-the-way' })
+    expect(await submitResetToRemote(deps(blocked).deps, true, null)).toEqual({
+      kind: 'error', message: text('integrate.update.resetInTheWayCount', { count: 3 }),
+    })
+    expect(zh['integrate.update.resetInTheWayCount']).toContain('移走或删除')
+    expect(en['integrate.update.resetInTheWayCount']).toContain('Move or delete')
+  })
+
   it('the backup branch name becomes a notice', () => {
     expect(backupNotice(done({ backupBranch: 'backup/main-1' }))).toEqual({
       tone: 'warning', message: text('integrate.notice.backup', { branch: 'backup/main-1' }),

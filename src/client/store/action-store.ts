@@ -24,6 +24,7 @@ import { newRequestId as defaultRequestId } from '../git-client.ts'
 import { text } from '../localized-text.ts'
 import type { LocalizedText } from '../localized-text.ts'
 import type { GitWorkbenchKey } from '../locales.ts'
+import { SKIPPABLE } from '../operations.ts'
 
 /** The write methods of GitClient (fakes in tests implement only what they use). */
 export type ActionClient = WriteMethods
@@ -190,7 +191,7 @@ export function actionErrorText(error: GitError): LocalizedText {
       // Carry 3: an empty cherry-pick / revert stops in the operation; the banner skips or aborts.
       const operation = details['operation']
       if (details['reason'] === 'empty' && typeof operation === 'string') {
-        return text(operation === 'rebase' || operation === 'cherry-pick' ? 'action.error.empty' : 'action.error.empty.abortOnly')
+        return text((SKIPPABLE as ReadonlySet<string>).has(operation) ? 'action.error.empty' : 'action.error.empty.abortOnly')
       }
       break
     }

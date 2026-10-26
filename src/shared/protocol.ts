@@ -656,6 +656,11 @@ export interface DirtyWorktreeDetails {
   paths: string[]
   /** 改动总数（可能大于 `paths.length`）。 */
   count: number
+  /**
+   * T11 修复轮追加：`resetToRemote` 被未跟踪/忽略文件挡住时为 `'untracked-in-the-way'`
+   * （此时 `paths` 是这些文件）；因已跟踪改动拒绝时省略。
+   */
+  reason?: 'untracked-in-the-way'
 }
 
 /** `git/would-overwrite`。 */

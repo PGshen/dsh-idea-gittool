@@ -85,9 +85,10 @@ const IN_THE_WAY_LISTED = 5
 
 /**
  * Hard reset to the upstream after a force push; no stash is ever offered here.
- * `git/dirty-worktree` (no `operation`) comes either from tracked changes or from untracked /
- * ignored files the reset would overwrite; `status` tells them apart (carry 2): untracked files
- * must be moved or deleted, a stash cannot help.
+ * `git/dirty-worktree` (no `operation`): `reason: 'untracked-in-the-way'` means untracked /
+ * ignored files would be overwritten — move or delete them. Without a reason it is tracked
+ * changes (commit or stash), except that an older Host sends no reason for either case: then the
+ * status snapshot is the fallback (no tracked path among them → move or delete).
  */
 export async function submitResetToRemote(deps: IntegrateDeps, backup: boolean, status?: StatusValue | null): Promise<IntegrateResult> {
   const outcome = await deps.actions.run('resetToRemote', { backup }, { trigger: deps.trigger })
@@ -96,12 +97,19 @@ export async function submitResetToRemote(deps: IntegrateDeps, backup: boolean, 
     const raw = details['paths']
     const paths = Array.isArray(raw) ? raw.filter((path): path is string => typeof path === 'string') : []
     const count = typeof details['count'] === 'number' ? details['count'] : paths.length
-    const tracked = new Set([...(status?.staged ?? []), ...(status?.unstaged ?? []), ...(status?.conflicts ?? [])].map(entry => entry.path))
-    if (paths.some(path => tracked.has(path))) return { kind: 'error', message: text('integrate.update.resetDirty', { count }) }
+    const inTheWay = details['reason'] === 'untracked-in-the-way' || (
+      status !== undefined && status !== null && !paths.some(path => trackedPaths(status).has(path))
+    )
+    if (!inTheWay) return { kind: 'error', message: text('integrate.update.resetDirty', { count }) }
+    if (paths.length === 0) return { kind: 'error', message: text('integrate.update.resetInTheWayCount', { count }) }
     const listed = paths.slice(0, IN_THE_WAY_LISTED).join(', ') + (paths.length > IN_THE_WAY_LISTED ? ', …' : '')
     return { kind: 'error', message: text('integrate.update.resetInTheWay', { count, paths: listed }) }
   }
   return settle(outcome)
+}
+
+function trackedPaths(status: StatusValue): Set<string> {
+  return new Set([...status.staged, ...status.unstaged, ...status.conflicts].map(entry => entry.path))
 }
 
 /** Notice naming the backup branch a reset-to-remote created. */

@@ -1,7 +1,7 @@
 // T7 操作横幅：merge/rebase/cherry-pick/revert/bisect 的文案与冲突数；A1 只提供「查看控制台」。
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
-import { bannerFromStatus, OPERATION_LABEL, OperationBanner, OperationBannerView } from '../../../src/client/pages/OperationBanner.tsx'
+import { bannerFromStatus, OPERATION_LABEL, OperationBanner, OperationBannerView, SKIPPABLE } from '../../../src/client/pages/OperationBanner.tsx'
 import type { BannerOperation, OperationBannerViewProps } from '../../../src/client/pages/OperationBanner.tsx'
 import { zhT } from '../i18n-helpers.tsx'
 import { statusFixture } from './branch-fixtures.ts'
@@ -129,5 +129,13 @@ describe('bannerFromStatus (A3 T9)', () => {
   it('carries the rebase step', () => {
     expect(bannerFromStatus(statusFixture({ operation: 'rebase', operationStep: { current: 2, total: 5 } })))
       .toMatchObject({ operation: 'rebase', step: { current: 2, total: 5 } })
+  })
+})
+
+describe('fix 2: one skippable-operations set', () => {
+  it('the banner and the empty-commit text share SKIPPABLE', async () => {
+    const shared = await import('../../../src/client/operations.ts')
+    expect(SKIPPABLE).toBe(shared.SKIPPABLE)
+    expect([...shared.SKIPPABLE].sort()).toEqual(['cherry-pick', 'rebase'])
   })
 })

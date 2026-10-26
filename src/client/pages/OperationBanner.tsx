@@ -6,6 +6,7 @@ import type { MouseEvent, ReactNode } from 'react'
 import type { OperationStep, RepoOperation, StatusValue } from '../../shared/protocol.ts'
 import type { FocusTarget } from '../focus.ts'
 import { useT } from '../i18n.tsx'
+import { SKIPPABLE } from '../operations.ts'
 import type { Translate } from '../i18n.tsx'
 import { OPERATION_KEY } from '../locales.ts'
 import type { GitWorkbenchKey } from '../locales.ts'
@@ -18,8 +19,8 @@ export type BannerOperation = Exclude<RepoOperation, null>
 /** Display-name keys of the in-progress operations (shared with the status bar). */
 export const OPERATION_LABEL: Record<BannerOperation, GitWorkbenchKey> = OPERATION_KEY
 
-/** Operations the Host can skip a commit of (`operationControl skip`). */
-export const SKIPPABLE: ReadonlySet<BannerOperation> = new Set(['rebase', 'cherry-pick'])
+/** Operations the Host can skip a commit of; shared with the action store's error texts. */
+export { SKIPPABLE }
 
 /** Write handlers of the banner; each gets the clicked button (async overlays return focus to it). */
 export interface OperationBannerActions {

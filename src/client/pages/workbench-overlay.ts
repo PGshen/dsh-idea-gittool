@@ -1,0 +1,244 @@
+// Overlay routing for the Git tab (design §5.3, plan A3 T6): one overlay slot. Opening an overlay
+// replaces the current one (never stacked), Esc goes back one level (overlay → page), and closing
+// returns focus to the control that opened the first overlay of the chain.
+// Pure transitions plus a small hook; GitWorkbench renders the component for each kind.
+import { useEffect, useMemo, useRef, useState } from 'react'
+import type {
+  CheckoutTarget,
+  CommitFileEntry,
+  DiffRequest,
+  PushRejectedDetails,
+} from '../../shared/protocol.ts'
+import { activeFocusTarget, restoreFocus } from '../focus.ts'
+import type { FocusTarget } from '../focus.ts'
+import type { ActionStore, ActionStoreDeps } from '../store/action-store.ts'
+import type { RollbackTarget } from '../store/push-store.ts'
+import type { DiffSourcePart } from './DiffViewer.tsx'
+
+export type BranchSheetMode = 'new' | 'rename' | 'delete' | 'checkoutRevision'
+
+/**
+ * Every overlay of the workbench. A2 kinds (diff/push/rollback) carry what their components need;
+ * A3 kinds carry the minimum their later tasks (T7–T10) start from and may grow additively.
+ */
+export type WorkbenchOverlay =
+  | { kind: 'diff'; request: DiffRequest; files: CommitFileEntry[]; source: DiffSourcePart[] }
+  /** Push page; it shows the A2 rejected view itself, so `pushRejected` is only for a direct entry. */
+  | { kind: 'push'; autoSubmit?: boolean }
+  | { kind: 'pushRejected'; remote: string; branch: string; details: PushRejectedDetails }
+  | { kind: 'rollback'; targets: RollbackTarget[] }
+  | { kind: 'conflicts' }
+  | { kind: 'merge'; ref?: string }
+  | { kind: 'rebase'; onto?: string }
+  /** Pull page; `remote`/`branch` prefill it when opened from a branch row. */
+  | { kind: 'pull'; remote?: string; branch?: string }
+  | { kind: 'updateProject' }
+  | { kind: 'reset'; sha: string }
+  | { kind: 'stashCreate' }
+  /** Fetch sheet (repo bar and Branches page). */
+  | { kind: 'fetch' }
+  /** Confirmation of a cherry-pick / revert chosen in the commit context menu. */
+  | { kind: 'commitOp'; op: 'cherryPick' | 'revert'; sha: string; shortSha: string; subject: string }
+  /** `sha` is the branch tip the user saw (delete sends it as `expectedSha`). */
+  | { kind: 'branchSheet'; mode: BranchSheetMode; branch?: string; startPoint?: string; sha?: string; revision?: string }
+  | { kind: 'smartCheckout'; target: CheckoutTarget; paths: string[]; untracked?: string[] }
+  /** "Uncommitted changes" question of the action store (DirtyWorktreeSheet reads the ask). */
+  | { kind: 'dirtyWorktree' }
+
+export type WorkbenchOverlayKind = WorkbenchOverlay['kind']
+
+/** Navigation level (design §5.3): 1 = overlay page with "← back", 2 = sheet / popover. */
+export const OVERLAY_LEVEL: Record<WorkbenchOverlayKind, 1 | 2> = {
+  diff: 1,
+  push: 1,
+  pushRejected: 1,
+  conflicts: 1,
+  merge: 1,
+  rebase: 1,
+  pull: 1,
+  updateProject: 1,
+  rollback: 2,
+  reset: 2,
+  stashCreate: 2,
+  fetch: 2,
+  commitOp: 2,
+  branchSheet: 2,
+  smartCheckout: 2,
+  dirtyWorktree: 2,
+}
+
+export interface OverlayRoute {
+  overlay: WorkbenchOverlay | null
+  /** The control that opened the first overlay; focused again on close. */
+  returnFocus: FocusTarget | null
+}
+
+export const CLOSED_ROUTE: OverlayRoute = { overlay: null, returnFocus: null }
+
+export interface OverlayTransition {
+  route: OverlayRoute
+  /** The overlay that was closed or replaced (null when none was open). */
+  left: WorkbenchOverlay | null
+}
+
+/**
+ * Open `next`, replacing any current overlay. The trigger is recorded only when coming from a page:
+ * a trigger inside the replaced overlay disappears with it.
+ */
+export function openOverlay(route: OverlayRoute, next: WorkbenchOverlay, trigger: FocusTarget | null): OverlayTransition {
+  const returnFocus = route.overlay === null ? trigger : route.returnFocus
+  return { route: { overlay: next, returnFocus }, left: route.overlay }
+}
+
+/** Close the overlay; `focus` is the still-attached trigger to focus again. */
+export function closeOverlay(route: OverlayRoute): OverlayTransition & { focus: FocusTarget | null } {
+  if (route.overlay === null) return { route: CLOSED_ROUTE, left: null, focus: null }
+  const focus = route.returnFocus !== null && route.returnFocus.isConnected ? route.returnFocus : null
+  return { route: CLOSED_ROUTE, left: route.overlay, focus }
+}
+
+/**
+ * Workbench-level Esc: closes the open overlay when the overlay itself did not handle the key
+ * (A2 overlays handle Esc and prevent default, e.g. to cancel an in-flight push first).
+ * @returns true when the event was consumed.
+ */
+export function handleOverlayEscape(
+  event: { key: string; defaultPrevented: boolean; preventDefault(): void },
+  route: OverlayRoute,
+  close: () => void,
+): boolean {
+  if (event.key !== 'Escape' || event.defaultPrevented || route.overlay === null) return false
+  event.preventDefault()
+  close()
+  return true
+}
+
+export type { FocusTarget }
+export { activeFocusTarget }
+
+export type OverlayLeave = (left: WorkbenchOverlay, next: WorkbenchOverlay | null) => void
+
+export interface OverlayControllerOptions {
+  /** New route to render. */
+  onChange: (route: OverlayRoute) => void
+  /** Every overlay that closes (`next` null) or is replaced (`next` is the new overlay). */
+  onLeave?: OverlayLeave
+  /** Trigger used when `open` gets none: the focused element at call time. */
+  currentTrigger?: () => FocusTarget | null
+}
+
+export interface OverlayController {
+  /**
+   * Open (replacing the current overlay). Without `trigger` the focused element at call time is
+   * used, which is only right for synchronous opens from a click. **Async opens** (after an RPC,
+   * e.g. the dirty-worktree question or the conflict list) must pass the trigger captured at click
+   * time (`actions.run(..., { trigger })` carries it), or null.
+   */
+  open(next: WorkbenchOverlay, trigger?: FocusTarget | null): void
+  /** Close the current overlay; focus returns to its trigger on the next {@link flushFocus}. */
+  close(): void
+  /** Close only if `kind` is still the open overlay (late callbacks of a replaced overlay). */
+  closeIf(kind: WorkbenchOverlayKind): void
+  route(): OverlayRoute
+  /** After the closed overlay unmounted: focus the remembered trigger (once). */
+  flushFocus(): boolean
+}
+
+/** React-free overlay slot: transitions, leave notifications and pending focus return. */
+export function createOverlayController(options: OverlayControllerOptions): OverlayController {
+  let route = CLOSED_ROUTE
+  let pendingFocus: FocusTarget | null = null
+
+  function apply(transition: OverlayTransition): void {
+    route = transition.route
+    options.onChange(route)
+    if (transition.left !== null) options.onLeave?.(transition.left, route.overlay)
+  }
+
+  const controller: OverlayController = {
+    open: (next, trigger) => {
+      pendingFocus = null
+      const captured = trigger === undefined ? (options.currentTrigger?.() ?? null) : trigger
+      apply(openOverlay(route, next, captured))
+    },
+    close: () => {
+      const transition = closeOverlay(route)
+      pendingFocus = transition.focus
+      apply(transition)
+    },
+    closeIf: (kind) => {
+      if (route.overlay?.kind === kind) controller.close()
+    },
+    route: () => route,
+    flushFocus: () => {
+      if (route.overlay !== null || pendingFocus === null) return false
+      const target = pendingFocus
+      pendingFocus = null
+      return restoreFocus(target)
+    },
+  }
+  return controller
+}
+
+export interface WorkbenchOverlayController extends Omit<OverlayController, 'flushFocus'> {
+  overlay: WorkbenchOverlay | null
+}
+
+/** Thin React wrapper over {@link createOverlayController} for GitWorkbench. */
+export function useWorkbenchOverlay(onLeave?: OverlayLeave): WorkbenchOverlayController {
+  const [route, setRoute] = useState<OverlayRoute>(CLOSED_ROUTE)
+  const onLeaveRef = useRef(onLeave)
+  onLeaveRef.current = onLeave
+  const controller = useMemo(() => createOverlayController({
+    onChange: setRoute,
+    onLeave: (left, next) => onLeaveRef.current?.(left, next),
+    currentTrigger: activeFocusTarget,
+  }), [])
+  // Runs after the closed overlay unmounted (and after its own focus cleanup).
+  useEffect(() => { controller.flushFocus() }, [controller, route])
+  return { overlay: route.overlay, open: controller.open, close: controller.close, closeIf: controller.closeIf, route: controller.route }
+}
+
+// ---------------------------------------------------------------------------
+// Wiring between the action store and the overlay slot (GitWorkbench)
+// ---------------------------------------------------------------------------
+
+/** Action store callbacks that open overlays, using the trigger captured when the action started. */
+export function actionOverlayWiring(deps: {
+  open: (next: WorkbenchOverlay, trigger: FocusTarget | null) => void
+  refresh: () => void
+}): Pick<ActionStoreDeps, 'onAskStash' | 'onConflict' | 'onSuccess'> {
+  return {
+    onAskStash: (ask) => { deps.open({ kind: 'dirtyWorktree' }, ask.trigger) },
+    onConflict: (_endpoint, details, trigger) => {
+      // Conflict markers on "mark resolved" are asked inside the already open list (A3 T9).
+      if (details.markers === true) return
+      deps.refresh()
+      deps.open({ kind: 'conflicts' }, trigger)
+    },
+    onSuccess: () => { deps.refresh() },
+  }
+}
+
+/** Leaving the dirty-worktree question any way (Esc, scrim, replaced) counts as "cancel". */
+export function overlayLeaveEffects(actions: Pick<ActionStore, 'cancelStash'>): OverlayLeave {
+  return (left, next) => {
+    // A newer question replacing this one is handled by the store (it cancels the old ask).
+    if (left.kind === 'dirtyWorktree' && next?.kind !== 'dirtyWorktree') actions.cancelStash()
+  }
+}
+
+/** Buttons of DirtyWorktreeSheet: answer the store first, then close the overlay. */
+export function dirtySheetHandlers(
+  actions: Pick<ActionStore, 'confirmStash'>,
+  overlays: Pick<OverlayController, 'closeIf'>,
+): { onStash: () => void; onCancel: () => void } {
+  return {
+    onStash: () => {
+      actions.confirmStash()
+      overlays.closeIf('dirtyWorktree')
+    },
+    // Closing runs the leave effect, which cancels the ask.
+    onCancel: () => { overlays.closeIf('dirtyWorktree') },
+  }
+}

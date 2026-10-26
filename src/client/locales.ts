@@ -2,14 +2,19 @@
 // zh 是键的真源，en 用 satisfies 保证键一致（每个分区也各自校验）。
 import type {} from '@deepseek-ai/dsh-client-ui-slots'
 import type { RepoOperation, WritePolicyReasonCode } from '../shared/protocol.ts'
+import { enActions, zhActions } from './locales/actions.ts'
+import { enBranch, zhBranch } from './locales/branch.ts'
 import { enCommit, zhCommit } from './locales/commit.ts'
 import { enCommon, zhCommon } from './locales/common.ts'
+import { enConflict, zhConflict } from './locales/conflict.ts'
 import { enCore, zhCore } from './locales/core.ts'
 import { enDetail, zhDetail } from './locales/detail.ts'
 import { enDocument, zhDocument } from './locales/document.ts'
+import { enIntegrate, zhIntegrate } from './locales/integrate.ts'
 import { enLog, zhLog } from './locales/log.ts'
 import { enPush, zhPush } from './locales/push.ts'
 import { enShell, zhShell } from './locales/shell.ts'
+import { enStash, zhStash } from './locales/stash.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
@@ -28,6 +33,11 @@ export const zh = {
   ...zhCommit,
   ...zhPush,
   ...zhDocument,
+  ...zhActions,
+  ...zhBranch,
+  ...zhIntegrate,
+  ...zhConflict,
+  ...zhStash,
 }
 
 export type GitWorkbenchKey = keyof typeof zh
@@ -42,6 +52,11 @@ export const en = {
   ...enCommit,
   ...enPush,
   ...enDocument,
+  ...enActions,
+  ...enBranch,
+  ...enIntegrate,
+  ...enConflict,
+  ...enStash,
 } satisfies Record<GitWorkbenchKey, string>
 
 /** In-progress repository operation → its display name. */

@@ -3,6 +3,7 @@
 export const zhPush = {
   'write.readOnly': '只读模式：{reason}',
   'write.showConsole': '查看 Git 控制台',
+  'write.tooManyPaths': '一次最多 {max} 个文件，当前 {count} 个',
   'write.error.git/auth-required': '需要认证。Git 不能在面板内输入凭据，请在终端运行下面的命令完成认证后重试。',
   'write.error.git/locked': '仓库被锁定：另一个 Git 进程正在运行。稍后重试。',
   'write.error.git/hook-failed': '被 Git hook 阻止。查看 Git 控制台了解原因。',
@@ -80,12 +81,14 @@ export const zhPush = {
   'rollback.deleted': '已删除 {count} 个未跟踪文件',
   'rollback.keptStaged': '暂存区改动已保留（{count} 个文件）',
   'rollback.skipped': '已跳过 {count} 个未跟踪文件',
+  'rollback.becameUntracked': '{count} 个文件在确认后变成未跟踪，未删除',
   'rollback.block.nothing': '只选择了未跟踪文件：勾选删除确认后才能回滚',
 } satisfies Record<string, string>
 
 export const enPush = {
   'write.readOnly': 'Read-only: {reason}',
   'write.showConsole': 'Show Git console',
+  'write.tooManyPaths': 'At most {max} files at once (selected: {count})',
   'write.error.git/auth-required': 'Authentication required. Git cannot ask for credentials inside the panel; run the command below in a terminal to authenticate, then retry.',
   'write.error.git/locked': 'The repository is locked: another Git process is running. Try again shortly.',
   'write.error.git/hook-failed': 'Blocked by a Git hook. See the Git console for the reason.',
@@ -163,5 +166,6 @@ export const enPush = {
   'rollback.deleted': 'Deleted {count} untracked files',
   'rollback.keptStaged': 'Staged changes were kept (files: {count})',
   'rollback.skipped': 'Skipped {count} untracked files',
+  'rollback.becameUntracked': '{count} files became untracked after you confirmed and were not deleted',
   'rollback.block.nothing': 'Only untracked files are selected: confirm the deletion to roll back',
 } satisfies Record<keyof typeof zhPush, string>

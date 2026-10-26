@@ -1,12 +1,17 @@
 // 分支面板（设计 §5.4、§8.1.4）：HEAD → Local → Remote → Tags 分组树。
 // Wide 档为可收起的常驻左栏；Standard 档为抽屉，Compact 档为全高覆盖页（都点外部/Esc 关闭）。
-// A1 只读：单击导航、双击过滤、右键只有复制与跳转；签出等写动作留到 A3。
+// 单击导航、双击过滤；右键菜单来自 branchActions（A3 T7：签出、新建、合并、重命名、删除等），
+// 写动作经 onAction 交给工作台的 BranchActionRunner。
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, KeyboardEvent, MouseEvent, ReactNode } from 'react'
 import type { BranchEntry, BranchesValue, GitError } from '../../shared/protocol.ts'
 import { useT } from '../i18n.tsx'
 import { Button } from '../ui/Button.tsx'
 import { EmptyState } from '../ui/EmptyState.tsx'
+import { activeFocusTarget } from '../focus.ts'
+import type { FocusTarget } from '../focus.ts'
+import { branchActions } from './branch-actions.ts'
+import type { BranchActionContext, BranchActionId, BranchActionItem } from './branch-actions.ts'
 import {
   createBranchActivator,
   formatAheadBehind,
@@ -45,7 +50,13 @@ export interface BranchPanelProps {
   onOpenConsole?: () => void
   /** 复制文本；默认走 navigator.clipboard。 */
   onCopy?: (text: string) => void
+  /** 菜单可用性所需的仓库状态；未传时按只读处理（写动作显示原因而不可用）。 */
+  actionContext?: BranchActionContext
+  /** 菜单里除复制/跳转/过滤外的动作；`trigger` 是右键的那一行（关闭菜单后焦点回到它）。 */
+  onAction?: (id: BranchActionId, entry: BranchEntry, trigger: FocusTarget | null) => void
 }
+
+const READ_ONLY_CONTEXT: BranchActionContext = { writable: false, operation: null, current: null, dirty: false }
 
 /** 默认复制实现：浏览器剪贴板，不可用时静默忽略。 */
 export function copyText(text: string): void {
@@ -68,7 +79,7 @@ function rowIcon(group: BranchGroupKind, row: BranchRow): string {
   return KIND_ICON.local
 }
 
-interface MenuState { entry: BranchEntry; x: number; y: number }
+interface MenuState { entry: BranchEntry; x: number; y: number; trigger: FocusTarget | null }
 
 /** 抽屉内 Esc：有搜索词先清空（同 input[type=search] 习惯），否则关闭抽屉/覆盖页。 */
 export function drawerEscapeAction(search: string): 'clear-search' | 'close' {
@@ -191,7 +202,9 @@ function BranchPanelBody(props: BranchPanelProps): ReactNode {
             onDoubleClickEntry={activator.onDoubleClick}
             onContextMenu={(entry, event) => {
               event.preventDefault()
-              setMenu({ entry, x: event.clientX, y: event.clientY })
+              const row = event.currentTarget
+              const trigger = typeof HTMLElement !== 'undefined' && row instanceof HTMLElement ? row : activeFocusTarget()
+              setMenu({ entry, x: event.clientX, y: event.clientY, trigger })
             }}
           />
         ))}
@@ -255,12 +268,18 @@ function BranchPanelBody(props: BranchPanelProps): ReactNode {
         : (
             <BranchContextMenu
               entry={menu.entry}
+              items={branchActions(menu.entry, props.actionContext ?? READ_ONLY_CONTEXT)}
               position={{ x: menu.x, y: menu.y }}
               onClose={() => setMenu(null)}
-              onCopyName={() => { copy(menu.entry.name); setMenu(null) }}
-              onCopyRef={() => { copy(menu.entry.ref); setMenu(null) }}
-              onNavigate={() => { activator.cancel(); latest.current.onNavigate(menu.entry); setMenu(null) }}
-              onFilter={() => { activator.onDoubleClick(menu.entry); setMenu(null) }}
+              onSelect={(id) => {
+                const { entry, trigger } = menu
+                setMenu(null)
+                if (id === 'copyName') copy(entry.name)
+                else if (id === 'copyRef') copy(entry.ref)
+                else if (id === 'showInLog') { activator.cancel(); latest.current.onNavigate(entry) }
+                else if (id === 'filterLog') activator.onDoubleClick(entry)
+                else latest.current.onAction?.(id, entry, trigger)
+              }}
             />
           )}
     </>
@@ -375,19 +394,16 @@ function BranchRowView({ group, row, selected, onToggleDirectory, onClickEntry, 
 
 export interface BranchContextMenuProps {
   entry: BranchEntry
-  onCopyName: () => void
-  onCopyRef: () => void
-  /** 跳转：日志定位到该分支 HEAD。 */
-  onNavigate: () => void
-  /** 过滤：日志只看该分支（可选）。 */
-  onFilter?: () => void
+  /** 来自 `branchActions(entry, context)`；不可用项带原因，仍然显示。 */
+  items: BranchActionItem[]
+  onSelect: (id: BranchActionId) => void
   onClose?: () => void
-  /** 视口坐标；不传时按文档流渲染（测试/静态渲染）。 */
+  /** 视口坐标；不传时按文档流渲染（测试/静态渲染、分支页的行内菜单）。 */
   position?: { x: number; y: number }
 }
 
-/** 分支右键菜单（A1 只读子集）。 */
-export function BranchContextMenu({ entry, onCopyName, onCopyRef, onNavigate, onFilter, onClose, position }: BranchContextMenuProps): ReactNode {
+/** 分支/标签右键菜单（分支面板与分支页共用）。 */
+export function BranchContextMenu({ entry, items, onSelect, onClose, position }: BranchContextMenuProps): ReactNode {
   const t = useT()
   const ref = useRef<HTMLDivElement>(null)
   useEffect(() => {
@@ -401,6 +417,30 @@ export function BranchContextMenu({ entry, onCopyName, onCopyRef, onNavigate, on
     return () => document.removeEventListener('pointerdown', onPointerDown, true)
   }, [onClose])
   const style = position === undefined ? undefined : { left: `${position.x}px`, top: `${position.y}px` }
+  const nodes: ReactNode[] = []
+  let previousSection: number | null = null
+  for (const item of items) {
+    if (previousSection !== null && item.section !== previousSection) {
+      nodes.push(<div key={`sep-${item.id}`} role="separator" className={css.menuSeparator} />)
+    }
+    previousSection = item.section
+    const reason = item.disabledReason === undefined ? null : t(item.disabledReason.key, item.disabledReason.params)
+    nodes.push(
+      <button
+        key={item.id}
+        type="button"
+        role="menuitem"
+        className={`${css.menuItem} ${reason === null ? '' : css.menuItemDisabled}`}
+        data-action={item.id}
+        {...(item.danger === true ? { 'data-danger': true } : {})}
+        {...(reason === null ? {} : { 'aria-disabled': true, title: reason })}
+        onClick={() => { if (reason === null) onSelect(item.id) }}
+      >
+        <span>{t(item.label.key, item.label.params)}</span>
+        {reason === null ? null : <span className={css.menuReason}>{reason}</span>}
+      </button>,
+    )
+  }
   return (
     <div
       ref={ref}
@@ -410,13 +450,7 @@ export function BranchContextMenu({ entry, onCopyName, onCopyRef, onNavigate, on
       style={style}
       onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); onClose?.() } }}
     >
-      <button type="button" role="menuitem" className={css.menuItem} onClick={onNavigate}>{t('branch.menu.jumpHead')}</button>
-      {onFilter === undefined
-        ? null
-        : <button type="button" role="menuitem" className={css.menuItem} onClick={onFilter}>{t('branch.menu.filter')}</button>}
-      <div role="separator" className={css.menuSeparator} />
-      <button type="button" role="menuitem" className={css.menuItem} onClick={onCopyName}>{t('branch.menu.copyName')}</button>
-      <button type="button" role="menuitem" className={css.menuItem} onClick={onCopyRef}>{t('branch.menu.copyRef')}</button>
+      {nodes}
     </div>
   )
 }

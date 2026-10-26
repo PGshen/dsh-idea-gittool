@@ -12,6 +12,7 @@ import type {
   RollbackRequest,
   RpcResult,
 } from '../../../src/shared/protocol.ts'
+import { WRITE_PATHS_MAX } from '../../../src/shared/protocol.ts'
 import {
   createPushStore,
   createRollbackStore,
@@ -24,6 +25,7 @@ import {
   rejectedSubmitBlock,
   rollbackCounts,
   rollbackEscapeAction,
+  rollbackSkipped,
   rollbackSubmitBlock,
 } from '../../../src/client/store/push-store.ts'
 import type { KeyValueStorage, PushClient, RollbackClient } from '../../../src/client/store/push-store.ts'
@@ -324,6 +326,14 @@ describe('parseRejectedDetails / rejectChoicesFor', () => {
     expect(details).toEqual({ reason: 'other', remote: 'origin', branch: 'main', remoteCommits: [], summary: 'nope' })
   })
 
+  it('TD-10: keeps a well-formed remoteSha, drops a malformed one', () => {
+    const sha = 'a'.repeat(40)
+    const base = { reason: 'non-fast-forward', remote: 'origin', branch: 'main', remoteCommits: [], summary: 's' }
+    expect(parseRejectedDetails({ code: 'git/rejected', message: 'x', details: { ...base, remoteSha: sha } }, { remote: 'o', branch: 'b' }).remoteSha).toBe(sha)
+    expect(parseRejectedDetails({ code: 'git/rejected', message: 'x', details: { ...base, remoteSha: '--force' } }, { remote: 'o', branch: 'b' })).not.toHaveProperty('remoteSha')
+    expect(parseRejectedDetails({ code: 'git/rejected', message: 'x', details: base }, { remote: 'o', branch: 'b' })).not.toHaveProperty('remoteSha')
+  })
+
   it('protected branches never offer force-with-lease', () => {
     expect(rejectChoicesFor('protected')).toEqual(['rebase', 'merge'])
     expect(rejectChoicesFor('non-fast-forward')).toEqual(['rebase', 'merge', 'force'])
@@ -418,6 +428,29 @@ describe('rejected flow', () => {
     expect(client.push.mock.calls[0]?.[0]).toMatchObject({ forceWithLease: true })
   })
 
+  it('TD-10: force-with-lease carries expectedRemoteSha from the rejection details', async () => {
+    const sha = 'c'.repeat(40)
+    const { store, client } = rejectedStore([], ok({ head: 'h' }), rejection({ remoteSha: sha }))
+    store.setChoice('force')
+    store.setChoiceRiskConfirmed(true)
+    await store.resolveRejected()
+    expect(client.push.mock.calls[0]?.[0]).toMatchObject({ forceWithLease: true, expectedRemoteSha: sha })
+  })
+
+  it('TD-10: an old Host without remoteSha → force push without expectedRemoteSha (A2 behaviour)', async () => {
+    const { store, client } = rejectedStore([])
+    store.setChoice('force')
+    store.setChoiceRiskConfirmed(true)
+    await store.resolveRejected()
+    expect(client.push.mock.calls[0]?.[0]).not.toHaveProperty('expectedRemoteSha')
+  })
+
+  it('TD-10: the pull + retry path never sends expectedRemoteSha', async () => {
+    const { store, client } = rejectedStore([], ok({ head: 'h' }), rejection({ remoteSha: 'c'.repeat(40) }))
+    await store.resolveRejected()
+    expect(client.push.mock.calls[0]?.[0]).not.toHaveProperty('expectedRemoteSha')
+  })
+
   it('switching away from force clears the risk tick', () => {
     const { store } = rejectedStore([])
     store.setChoice('force')
@@ -490,12 +523,33 @@ describe('rollback store', () => {
     } satisfies RollbackRequest)
   })
 
-  it('with the danger tick: deleteUntracked true', async () => {
+  it('with the danger tick: deleteUntracked true and confirmedUntracked = the untracked paths shown (TD-8)', async () => {
     const client = rollbackClient()
     const store = createRollbackStore({ client, sessionId: 's1', targets, newRequestId: sequentialIds() })
     store.setDeleteConfirmed(true)
     await store.submit()
-    expect((client.rollback.mock.calls[0]?.[0] as RollbackRequest).deleteUntracked).toBe(true)
+    expect(client.rollback.mock.calls[0]?.[0]).toEqual({
+      sessionId: 's1',
+      requestId: 'req-1',
+      paths: ['a.ts', 'b.ts', 'new1.txt', 'new2.txt'],
+      deleteUntracked: true,
+      confirmedUntracked: ['new1.txt', 'new2.txt'],
+    } satisfies RollbackRequest)
+  })
+
+  it('TD-8: skipped paths split into declined (shown untracked) and became-untracked-after-confirmation', () => {
+    expect(rollbackSkipped(targets, ['new1.txt', 'b.ts'])).toEqual({ declined: ['new1.txt'], becameUntracked: ['b.ts'] })
+    expect(rollbackSkipped(targets, [])).toEqual({ declined: [], becameUntracked: [] })
+  })
+
+  it('TD-9: more targets than WRITE_PATHS_MAX blocks the rollback', async () => {
+    const many = Array.from({ length: WRITE_PATHS_MAX + 1 }, (_, index) => ({ path: `f${index}.ts`, untracked: false }))
+    const client = rollbackClient()
+    const store = createRollbackStore({ client, sessionId: 's1', targets: many })
+    expect(rollbackSubmitBlock(many, store.getState())).toBe('too-many')
+    expect((await store.submit()).kind).toBe('blocked')
+    expect(client.rollback).not.toHaveBeenCalled()
+    expect(rollbackSubmitBlock(many.slice(1), store.getState())).toBeNull()
   })
 
   it('only untracked targets and no tick → nothing to do', async () => {

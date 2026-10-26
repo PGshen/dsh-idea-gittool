@@ -12,23 +12,41 @@ import type {
   CommitFilesRequest,
   CommitRequest,
   CommitResultValue,
+  ConflictCommandValue,
   ConsoleValue,
   DiffFileValue,
   DiffRequest,
   GitError,
   LogRequest,
   LogValue,
+  OperationStateValue,
   PullForPushRequest,
   PullForPushValue,
   PushPreviewValue,
   PushRequest,
   PushValue,
   RefsValue,
+  ResetPreviewRequest,
+  ResetPreviewValue,
   RollbackRequest,
   RollbackValue,
+  RpcEndpointTypes,
   RpcResult,
+  StashFilesRequest,
+  StashFilesValue,
+  StashListValue,
   StatusValue,
+  WriteEndpoint,
 } from '../shared/protocol.ts'
+
+/** Typed call for one write endpoint (request and value from {@link RpcEndpointTypes}). */
+export type WriteMethod<K extends WriteEndpoint> = (
+  request: RpcEndpointTypes[K]['request'],
+  signal?: AbortSignal,
+) => Promise<RpcResult<RpcEndpointTypes[K]['value']>>
+
+/** Every write endpoint as a method (A2 + A3); the action store dispatches through this map. */
+export type WriteMethods = { [K in WriteEndpoint]: WriteMethod<K> }
 
 export interface GitClient {
   bootstrap(sessionId: string, signal?: AbortSignal): Promise<RpcResult<BootstrapValue>>
@@ -47,7 +65,36 @@ export interface GitClient {
   pushPreview(sessionId: string, signal?: AbortSignal): Promise<RpcResult<PushPreviewValue>>
   push(request: PushRequest, signal?: AbortSignal): Promise<RpcResult<PushValue>>
   pullForPush(request: PullForPushRequest, signal?: AbortSignal): Promise<RpcResult<PullForPushValue>>
+  // A3 read endpoints.
+  operationState(sessionId: string, signal?: AbortSignal): Promise<RpcResult<OperationStateValue>>
+  conflictCommand(sessionId: string, signal?: AbortSignal): Promise<RpcResult<ConflictCommandValue>>
+  resetPreview(request: ResetPreviewRequest, signal?: AbortSignal): Promise<RpcResult<ResetPreviewValue>>
+  stashList(sessionId: string, signal?: AbortSignal): Promise<RpcResult<StashListValue>>
+  stashFiles(request: StashFilesRequest, signal?: AbortSignal): Promise<RpcResult<StashFilesValue>>
+  // A3 write endpoints: UI code calls them through the action store (`actions.run`).
+  operationControl: WriteMethod<'operationControl'>
+  operationCommit: WriteMethod<'operationCommit'>
+  resolveConflict: WriteMethod<'resolveConflict'>
+  checkout: WriteMethod<'checkout'>
+  createBranch: WriteMethod<'createBranch'>
+  renameBranch: WriteMethod<'renameBranch'>
+  deleteBranch: WriteMethod<'deleteBranch'>
+  merge: WriteMethod<'merge'>
+  rebase: WriteMethod<'rebase'>
+  cherryPick: WriteMethod<'cherryPick'>
+  revertCommit: WriteMethod<'revertCommit'>
+  reset: WriteMethod<'reset'>
+  fetch: WriteMethod<'fetch'>
+  pull: WriteMethod<'pull'>
+  updateProject: WriteMethod<'updateProject'>
+  resetToRemote: WriteMethod<'resetToRemote'>
+  stashCreate: WriteMethod<'stashCreate'>
+  stashApply: WriteMethod<'stashApply'>
+  stashDrop: WriteMethod<'stashDrop'>
 }
+
+/** Compile-time check: GitClient covers every write endpoint with the protocol's types. */
+export const GIT_CLIENT_COVERS_WRITES: GitClient extends WriteMethods ? true : false = true
 
 /** One id per user action (A2): the Host de-duplicates repeated submissions by it. */
 export function newRequestId(): string {
@@ -84,6 +131,11 @@ async function call<T>(endpoint: string, payload: unknown, signal?: AbortSignal)
   }
 }
 
+/** Method for one write endpoint: posts the request as-is. */
+function write<K extends WriteEndpoint>(endpoint: K): WriteMethod<K> {
+  return (request, signal) => call<RpcEndpointTypes[K]['value']>(endpoint, request, signal)
+}
+
 export function createGitClient(_ctx: unknown): GitClient {
   return {
     bootstrap: (sessionId, signal) => call<BootstrapValue>('bootstrap', { sessionId }, signal),
@@ -101,5 +153,29 @@ export function createGitClient(_ctx: unknown): GitClient {
     pushPreview: (sessionId, signal) => call<PushPreviewValue>('pushPreview', { sessionId }, signal),
     push: (request, signal) => call<PushValue>('push', request, signal),
     pullForPush: (request, signal) => call<PullForPushValue>('pullForPush', request, signal),
+    operationState: (sessionId, signal) => call<OperationStateValue>('operationState', { sessionId }, signal),
+    conflictCommand: (sessionId, signal) => call<ConflictCommandValue>('conflictCommand', { sessionId }, signal),
+    resetPreview: (request, signal) => call<ResetPreviewValue>('resetPreview', request, signal),
+    stashList: (sessionId, signal) => call<StashListValue>('stashList', { sessionId }, signal),
+    stashFiles: (request, signal) => call<StashFilesValue>('stashFiles', request, signal),
+    operationControl: write('operationControl'),
+    operationCommit: write('operationCommit'),
+    resolveConflict: write('resolveConflict'),
+    checkout: write('checkout'),
+    createBranch: write('createBranch'),
+    renameBranch: write('renameBranch'),
+    deleteBranch: write('deleteBranch'),
+    merge: write('merge'),
+    rebase: write('rebase'),
+    cherryPick: write('cherryPick'),
+    revertCommit: write('revertCommit'),
+    reset: write('reset'),
+    fetch: write('fetch'),
+    pull: write('pull'),
+    updateProject: write('updateProject'),
+    resetToRemote: write('resetToRemote'),
+    stashCreate: write('stashCreate'),
+    stashApply: write('stashApply'),
+    stashDrop: write('stashDrop'),
   }
 }

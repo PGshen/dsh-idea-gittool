@@ -1,0 +1,45 @@
+/* Result notice under the page tabs (failed write, kept stash); tokens only (ADR 0005). */
+.notice {
+  display: flex;
+  flex: none;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 8px;
+  border-bottom: 0.5px solid var(--dsw-alias-border-l2);
+  background: var(--dsw-alias-bg-layer-1);
+  font-size: 12px;
+}
+
+.error {
+  border-left: 2px solid var(--dsw-alias-state-error-primary);
+}
+
+.warning {
+  border-left: 2px solid var(--dsw-alias-state-warn);
+}
+
+.message {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.dismiss {
+  flex: none;
+  padding: 0 6px;
+  border: 0;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font: inherit;
+  cursor: pointer;
+}
+
+.link {
+  flex: none;
+  padding: 0 4px;
+  border: 0;
+  background: transparent;
+  color: var(--dsw-alias-brand-primary);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}

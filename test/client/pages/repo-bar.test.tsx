@@ -87,3 +87,44 @@ describe('RepoBar / 推送入口（A2 走查问题 1）', () => {
     expect(render()).not.toContain('data-repo-push')
   })
 })
+
+function tagOf(html: string, marker: string): string {
+  return html.match(new RegExp(`<button[^>]*${marker}[^>]*>`))?.[0] ?? ''
+}
+
+describe('RepoBar / 获取与拉取（A3 T8）', () => {
+  it('传了回调时显示获取与拉取按钮，顺序在推送之前', () => {
+    const html = render({ onFetch: () => {}, onPull: () => {}, onPush: () => {} })
+    expect(html).toContain('data-repo-fetch=""')
+    expect(html).toContain('data-repo-pull=""')
+    expect(html.indexOf('data-repo-fetch')).toBeLessThan(html.indexOf('data-repo-pull'))
+    expect(html.indexOf('data-repo-pull')).toBeLessThan(html.indexOf('data-repo-push'))
+    expect(render()).not.toContain('data-repo-fetch')
+  })
+
+  it('只读或操作进行中时禁用并把原因放进 title', () => {
+    const html = render({
+      onFetch: () => {},
+      onPull: () => {},
+      fetchDisabledReason: '只读模式，不能修改仓库',
+      pullDisabledReason: '有操作进行中，先继续或中止它',
+    })
+    const fetchTag = tagOf(html, 'data-repo-fetch')
+    expect(fetchTag).toContain('disabled=""')
+    expect(fetchTag).toContain('title="只读模式，不能修改仓库"')
+    const pullTag = tagOf(html, 'data-repo-pull')
+    expect(pullTag).toContain('disabled=""')
+    expect(pullTag).toContain('title="有操作进行中，先继续或中止它"')
+    const enabled = render({ onFetch: () => {}, onPull: () => {} })
+    expect(tagOf(enabled, 'data-repo-fetch')).not.toContain('disabled')
+    expect(tagOf(enabled, 'data-repo-pull')).not.toContain('disabled')
+  })
+
+  it('获取进行中显示进行中文案并禁用', () => {
+    const html = render({ onFetch: () => {}, fetching: true })
+    expect(html).toContain('获取中…')
+    const tag = tagOf(html, 'data-repo-fetch')
+    expect(tag).toContain('aria-busy="true"')
+    expect(tag).toContain('disabled=""')
+  })
+})

@@ -57,15 +57,18 @@ pnpm dsh plugin --profile web add /Users/peng/Me/Ai/dsh-idea-gittool
 # 重启 dsh web 后复验
 ```
 
-**pnpm 版本坑（2026-10-25 实测）**：本机 web profile 的 `node_modules` 由 pnpm 10.27（store v10）安装，而 DSH checkout 用 pnpm 11（store v11）。直接 `pnpm dsh plugin ...` 会报 `ERR_PNPM_UNEXPECTED_STORE`。用 pnpm 10 的 CLI 绕过（`pnpm dsh` 会把 checkout 的 `node_modules/.bin` 放到 PATH 最前，所以不能靠改 PATH 解决外层）：
+**pnpm 版本必须统一为 11（2026-10-26 已根治）**：DSH checkout 锁定 pnpm 11.28.5（store v11）。若 profile 的 `node_modules` 由别的大版本 pnpm 安装（此前全局 corepack 默认是 10.27，store v10），`pnpm dsh plugin ...` 会报 `ERR_PNPM_UNEXPECTED_STORE`；`storeDir` 会自动追加 `v10`/`v11`，改配置绕不过去。
+
+- 全局 pnpm 与 DSH 保持一致：`corepack install -g pnpm@11.28.5`。本机 nvm 的 node 与 `/opt/homebrew/bin/pnpm` 都是 corepack shim（后者属于 Homebrew 的 node，不是独立的 pnpm 包），共用这个默认版本。
+- 检查：`pnpm -v` 应为 11.x；`~/.dsh/profiles/web/node_modules/.modules.yaml` 中 `packageManager` 为 `pnpm@11.x`、`storeDir` 以 `/v11` 结尾。
+- profile 已被旧版本装过时，用 pnpm 11 重建一次（负责人确认后执行）：
 
 ```bash
-mkdir -p /tmp/pnpm10
-printf '#!/bin/sh\nexec node ~/.cache/node/corepack/v1/pnpm/10.27.0/bin/pnpm.cjs "$@"\n' > /tmp/pnpm10/pnpm
-chmod +x /tmp/pnpm10/pnpm
 cd /Users/peng/Me/Ai/deepseek-harness
-PATH=/tmp/pnpm10:$PATH node --import tsx/esm apps/cli/src/bin.ts plugin --profile web add /Users/peng/Me/Ai/dsh-idea-gittool
+pnpm dsh plugin --profile web install --config.confirm-modules-purge=false
 ```
+
+DSH 升级 pnpm 大版本时，同步升级全局 pnpm 并重复上面的重建。
 
 安装会写 profile 的 `dependencies`（`link:`）与 `dsh.profile.bundles`。**不重启正在使用的 3080** 也能复验：另起一个不带 `--patch` 的进程（如 `--port 3082`），检查启动日志无 `did not activate`、页面模块图含 `dsh-idea-gittool/client.js`、`POST /dsh-git/bootstrap` 带 Cookie 返回数据。3080 在下次手动重启后才加载插件。
 

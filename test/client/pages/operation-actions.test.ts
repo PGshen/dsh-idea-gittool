@@ -123,11 +123,11 @@ describe('operationOutcomeEffect', () => {
 
   it('stash kept / missing / error are told; restored is silent', () => {
     const kept = operationOutcomeEffect({ kind: 'done', value: { operation: null, head, stashKept: true } }, 'abort')
-    expect(kept.notice).toEqual({ tone: 'warning', message: text('operation.notice.stashKept') })
+    expect(kept.notice).toEqual({ tone: 'warning', message: text('operation.notice.stashKept'), action: 'goStash' })
     const missing = operationOutcomeEffect({ kind: 'done', value: { operation: null, head, stashMissing: true } }, 'continue')
     expect(missing.notice).toEqual({ tone: 'warning', message: text('operation.notice.stashMissing') })
     const error = operationOutcomeEffect({ kind: 'done', value: { sha: head, shortSha: 'x', stashKept: true, stashError: 'bad' } }, 'commit')
-    expect(error.notice).toEqual({ tone: 'warning', message: text('operation.notice.stashError', { message: 'bad' }) })
+    expect(error.notice).toEqual({ tone: 'warning', message: text('operation.notice.stashError', { message: 'bad' }), action: 'goStash' })
     expect(operationOutcomeEffect({ kind: 'done', value: { operation: null, head, stashRestored: true } }, 'continue').notice).toBeNull()
   })
 

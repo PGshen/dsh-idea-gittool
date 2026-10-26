@@ -1,15 +1,17 @@
 // Result notice of a write action that has no sheet to show it (branch menu checkout, fetch, …).
 import type { ReactNode } from 'react'
 import { useT } from '../i18n.tsx'
-import type { ActionNotice as ActionNoticeValue } from './branch-actions.ts'
+import type { ActionNotice as ActionNoticeValue, NoticeActionId } from './branch-actions.ts'
 import css from './ActionNotice.module.css'
 
 export interface ActionNoticeProps {
   notice: ActionNoticeValue | null
   onDismiss: () => void
+  /** The notice's button was pressed (only notices with an `action` show one). */
+  onAction?: (action: NoticeActionId) => void
 }
 
-export function ActionNotice({ notice, onDismiss }: ActionNoticeProps): ReactNode {
+export function ActionNotice({ notice, onDismiss, onAction }: ActionNoticeProps): ReactNode {
   const t = useT()
   if (notice === null) return null
   return (
@@ -19,6 +21,13 @@ export function ActionNotice({ notice, onDismiss }: ActionNoticeProps): ReactNod
       data-notice={notice.tone}
     >
       <span className={css.message}>{t(notice.message.key, notice.message.params)}</span>
+      {notice.action === undefined || onAction === undefined
+        ? null
+        : (
+            <button type="button" className={css.link} data-notice-action={notice.action} onClick={() => onAction(notice.action as NoticeActionId)}>
+              {t('notice.goStash')}
+            </button>
+          )}
       <button type="button" className={css.dismiss} aria-label={t('notice.dismiss')} title={t('notice.dismiss')} onClick={onDismiss}>
         ✕
       </button>

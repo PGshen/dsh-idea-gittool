@@ -32,3 +32,14 @@
   font: inherit;
   cursor: pointer;
 }
+
+.link {
+  flex: none;
+  padding: 0 4px;
+  border: 0;
+  background: transparent;
+  color: var(--dsw-alias-brand-primary);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}

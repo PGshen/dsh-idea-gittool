@@ -98,8 +98,8 @@ type StashFields = Pick<OperationControlValue, 'stashKept' | 'stashMissing' | 's
 
 /** What the user must hear about the pending stash; a successful restore is silent. */
 export function stashNotice(value: StashFields): ActionNotice | null {
-  if (typeof value.stashError === 'string') return { tone: 'warning', message: text('operation.notice.stashError', { message: value.stashError }) }
-  if (value.stashKept === true) return { tone: 'warning', message: text('operation.notice.stashKept') }
+  if (typeof value.stashError === 'string') return { tone: 'warning', message: text('operation.notice.stashError', { message: value.stashError }), action: 'goStash' }
+  if (value.stashKept === true) return { tone: 'warning', message: text('operation.notice.stashKept'), action: 'goStash' }
   if (value.stashMissing === true) return { tone: 'warning', message: text('operation.notice.stashMissing') }
   return null
 }

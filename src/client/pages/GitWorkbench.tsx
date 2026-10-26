@@ -18,6 +18,7 @@ import { ConsoleDrawer, CONSOLE_DEFAULT_HEIGHT } from '../console/ConsoleDrawer.
 import { createConsoleStore, useConsoleState } from '../console/console-store.ts'
 import type { GitClient } from '../git-client.ts'
 import { newRequestId } from '../git-client.ts'
+import { createStashStore } from '../store/stash-store.ts'
 import { createActionStore, useActionState } from '../store/action-store.ts'
 import type { ActionOutcome } from '../store/action-store.ts'
 import { createChangesStore, uncommittedCount, useChangesState } from '../store/changes-store.ts'
@@ -34,6 +35,8 @@ import { CommitPanel } from './CommitPanel.tsx'
 import { PageTabs } from './PageTabs.tsx'
 import type { WorkbenchPage } from './PageTabs.tsx'
 import { PushPage } from './PushPage.tsx'
+import { StashCreateSheet } from './StashCreateSheet.tsx'
+import { StashPage } from './StashPage.tsx'
 import { RollbackSheet } from './RollbackSheet.tsx'
 import { text, useT } from '../i18n.tsx'
 import { readOnlyMessage } from '../localized-text.ts'
@@ -184,6 +187,10 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
     [client, sessionId],
   )
   const branchesStore = useMemo(() => createBranchesStore(), [sessionId])
+  const stashStore = useMemo(() => createStashStore({
+    loadList: () => client.stashList(sessionId),
+    loadFiles: (sha, signal) => client.stashFiles({ sessionId, sha }, signal),
+  }), [client, sessionId])
   const consoleStore = useMemo(
     () => createConsoleStore({ load: signal => client.console(sessionId, signal) }),
     [client, sessionId],
@@ -293,6 +300,11 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
       if (!first) void logStore.refresh()
     })
   }, [consoleStore, head, loadSideData, logStore, value.version])
+
+  // Stash page (A3 T10): load on entering the page and whenever the repository version moves.
+  useEffect(() => {
+    if (page === 'stash') void stashStore.refresh()
+  }, [page, stashStore, value.version])
 
   const refreshAll = useCallback(async (): Promise<void> => {
     setRefreshing(true)
@@ -536,6 +548,7 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
   // fetch only needs a writable repository.
   const integrateBlock = writeBlock(branchContext)
   const fetchBlock = writeBlock({ writable: branchContext.writable, operation: null })
+  const stashBusy = Object.keys(actionState.pending).some(key => key.startsWith('stash'))
   const blockText = (reason: typeof integrateBlock): string | null => (reason === undefined ? null : t(reason.key, reason.params))
   const runCommitAction = useCallback((id: CommitActionId, commit: CommitSummary, trigger: FocusTarget | null, childSha: string | null) => {
     const effect = commitActionEffect(id, commit, childSha)
@@ -632,8 +645,18 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
         }}
         pullDisabledReason={blockText(integrateBlock)}
       />
-      <PageTabs page={page} onChange={setPage} uncommittedCount={uncommittedCount(status)} />
-      <ActionNotice notice={notice} onDismiss={() => { setNotice(null) }} />
+      <PageTabs page={page} onChange={setPage} uncommittedCount={uncommittedCount(status)} stashCount={status?.stashCount ?? 0} />
+      <ActionNotice
+        notice={notice}
+        onDismiss={() => { setNotice(null) }}
+        onAction={(action) => {
+          // "Go to the stash page": the kept stash is restored from there.
+          if (action === 'goStash') {
+            setNotice(null)
+            setPage('stash')
+          }
+        }}
+      />
       <div className={css.content} onKeyDown={event => { handleOverlayEscape(event, overlays.route(), overlays.close) }}>
         {page === 'log' ? (
           <LogPage
@@ -672,6 +695,24 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
             }}
             onRetry={() => { void loadSideData() }}
             onOpenConsole={() => { setConsoleOpen(true) }}
+          />
+        ) : page === 'stash' ? (
+          <StashPage
+            store={stashStore}
+            sessionId={sessionId}
+            actions={actions}
+            busy={stashBusy}
+            block={integrateBlock}
+            dropBlock={fetchBlock}
+            onNotice={setNotice}
+            onOpenDiff={(request, files, source) => {
+              overlays.open({ kind: 'diff', request, files, source })
+            }}
+            onCreate={(trigger) => {
+              setNotice(null)
+              overlays.open({ kind: 'stashCreate' }, trigger)
+            }}
+            onRetry={() => { void stashStore.refresh() }}
           />
         ) : (
           <CommitPanel
@@ -825,6 +866,19 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
             onOutcome={reportOutcome}
             onNotice={setNotice}
             onClose={() => { overlays.closeIf('commitOp') }}
+          />
+        )}
+        {overlay?.kind !== 'stashCreate' ? null : (
+          <StashCreateSheet
+            branch={status?.branch ?? '(no branch)'}
+            block={integrateBlock}
+            actions={actions}
+            onOutcome={(outcome) => {
+              reportOutcome(outcome)
+              void stashStore.refresh()
+            }}
+            onNotice={setNotice}
+            onClose={() => { overlays.closeIf('stashCreate') }}
           />
         )}
         {overlay?.kind !== 'conflicts' ? null : (

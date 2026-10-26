@@ -222,9 +222,13 @@ export function validateBranchName(name: string): LocalizedText | null {
 // Result notices
 // ---------------------------------------------------------------------------
 
+/** A button on a notice: `goStash` switches to the stash page (the kept stash lives there). */
+export type NoticeActionId = 'goStash'
+
 export interface ActionNotice {
   tone: 'error' | 'warning'
   message: LocalizedText
+  action?: NoticeActionId
 }
 
 /** What the user should be told about an outcome (null: nothing — the UI already shows the result). */
@@ -233,7 +237,7 @@ export function outcomeNotice(outcome: ActionOutcome<unknown>): ActionNotice | n
   if (outcome.kind === 'done') {
     const value = outcome.value
     if (typeof value === 'object' && value !== null && (value as { stashKept?: unknown }).stashKept === true) {
-      return { tone: 'warning', message: text('notice.stashKept') }
+      return { tone: 'warning', message: text('notice.stashKept'), action: 'goStash' }
     }
   }
   return null

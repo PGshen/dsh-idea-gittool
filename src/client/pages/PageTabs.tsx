@@ -1,18 +1,19 @@
-// Level 0 page switcher (design §5.2/§5.3): Log / Commit / Branches, with the uncommitted-files
-// badge. The stash tab (and its badge) arrives with the stash page; no empty tabs before then.
+// Level 0 page switcher (design §5.2/§5.3): Log / Commit / Branches / Stash, with the
+// uncommitted-files badge on Commit and the stash count badge on Stash.
 import type { KeyboardEvent, ReactNode } from 'react'
 import { useT } from '../i18n.tsx'
 import type { GitWorkbenchKey } from '../locales.ts'
 import css from './PageTabs.module.css'
 
-export type WorkbenchPage = 'log' | 'commit' | 'branches'
+export type WorkbenchPage = 'log' | 'commit' | 'branches' | 'stash'
 
-export const WORKBENCH_PAGES: readonly WorkbenchPage[] = ['log', 'commit', 'branches']
+export const WORKBENCH_PAGES: readonly WorkbenchPage[] = ['log', 'commit', 'branches', 'stash']
 
 const LABEL: Record<WorkbenchPage, GitWorkbenchKey> = {
   log: 'tabs.log',
   commit: 'tabs.commit',
   branches: 'tabs.branches',
+  stash: 'tabs.stash',
 }
 
 /** Badge text: hidden at 0, capped at `99+`. */
@@ -37,11 +38,14 @@ export interface PageTabsProps {
   onChange: (page: WorkbenchPage) => void
   /** Uncommitted files (`uncommittedCount(status)`), shown on the Commit tab. */
   uncommittedCount: number
+  /** Stashes (`status.stashCount`), shown on the Stash tab; hidden at 0 or when unknown. */
+  stashCount?: number
 }
 
-export function PageTabs({ page, onChange, uncommittedCount }: PageTabsProps): ReactNode {
+export function PageTabs({ page, onChange, uncommittedCount, stashCount = 0 }: PageTabsProps): ReactNode {
   const t = useT()
   const badge = badgeText(uncommittedCount)
+  const stashBadge = badgeText(stashCount)
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
     const next = adjacentPage(page, event.key)
     if (next === null) return
@@ -71,6 +75,13 @@ export function PageTabs({ page, onChange, uncommittedCount }: PageTabsProps): R
               ? (
                   <span className={css.badge} title={t('title.uncommitted', { count: uncommittedCount })} data-badge={uncommittedCount}>
                     {badge}
+                  </span>
+                )
+              : null}
+            {candidate === 'stash' && stashBadge !== null
+              ? (
+                  <span className={css.badge} title={t('status.stash', { count: stashCount })} data-stash-badge={stashCount}>
+                    {stashBadge}
                   </span>
                 )
               : null}

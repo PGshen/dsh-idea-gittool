@@ -20,6 +20,8 @@ import { PushPageView } from '../../src/client/pages/PushPage.tsx'
 import { PushRejectedView } from '../../src/client/pages/PushRejectedPage.tsx'
 import { RepoBar } from '../../src/client/pages/RepoBar.tsx'
 import { RollbackSheetView } from '../../src/client/pages/RollbackSheet.tsx'
+import { StashCreateSheetView } from '../../src/client/pages/StashCreateSheet.tsx'
+import { StashPageView } from '../../src/client/pages/StashPage.tsx'
 import { StatusBar } from '../../src/client/pages/StatusBar.tsx'
 import { ReadOnlyBanner } from '../../src/client/read-only-banner.tsx'
 import { text } from '../../src/client/localized-text.ts'
@@ -133,6 +135,26 @@ const SCREENS: Record<string, (t: Translate) => ReactNode> = {
       onClose={noop}
       onRetry={noop}
       onOpenConsole={noop}
+    />
+  ),
+  stash: () => (
+    <StashPageView
+      state={{
+        list: { status: 'ready', entries: [{ sha: 'a'.repeat(40), index: 0, message: 'WIP on main: aaaaaaa feat', branch: 'main', date: '2026-10-26T07:00:00Z', fileCount: 2 }], version: 1, error: null },
+        selectedSha: 'a'.repeat(40),
+        files: { status: 'ready', sha: 'a'.repeat(40), value: { sha: 'a'.repeat(40), parentSha: 'b'.repeat(40), untrackedSha: null, files: [{ path: 'src/a.ts', status: 'M' }], untracked: [] }, error: null },
+      }}
+      now={NOW}
+      busy={false}
+      confirmingSha={'a'.repeat(40)}
+      onSelect={noop} onPreview={noop} onCreate={noop} onApply={noop} onAskDrop={noop}
+      onCancelDrop={noop} onConfirmDrop={noop} onOpenFile={noop} onRetry={noop}
+    />
+  ),
+  stashCreate: (t) => (
+    <StashCreateSheetView
+      t={t} branch="main" form={{ message: '', includeUntracked: false, keepIndex: false }}
+      busy={false} error={text('stash.nothing')} onChange={noop} onSubmit={noop} onCancel={noop}
     />
   ),
   shell: () => (

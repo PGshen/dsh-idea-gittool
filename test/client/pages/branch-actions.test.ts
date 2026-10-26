@@ -178,7 +178,7 @@ describe('outcomeNotice', () => {
     expect(outcomeNotice(outcome)).toEqual({ tone: 'error', message })
   })
   it('done with a kept stash → warning; plain done / cancelled / conflict → none', () => {
-    expect(outcomeNotice({ kind: 'done', value: { stashKept: true } })).toEqual({ tone: 'warning', message: text('notice.stashKept') })
+    expect(outcomeNotice({ kind: 'done', value: { stashKept: true } })).toEqual({ tone: 'warning', message: text('notice.stashKept'), action: 'goStash' })
     expect(outcomeNotice({ kind: 'done', value: { stashRestored: true } })).toBeNull()
     expect(outcomeNotice({ kind: 'cancelled' })).toBeNull()
     const error: GitError = { code: 'git/conflict', message: 'c' }

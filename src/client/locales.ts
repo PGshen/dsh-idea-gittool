@@ -14,6 +14,7 @@ import { enIntegrate, zhIntegrate } from './locales/integrate.ts'
 import { enLog, zhLog } from './locales/log.ts'
 import { enPush, zhPush } from './locales/push.ts'
 import { enShell, zhShell } from './locales/shell.ts'
+import { enStash, zhStash } from './locales/stash.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
@@ -36,6 +37,7 @@ export const zh = {
   ...zhBranch,
   ...zhIntegrate,
   ...zhConflict,
+  ...zhStash,
 }
 
 export type GitWorkbenchKey = keyof typeof zh
@@ -54,6 +56,7 @@ export const en = {
   ...enBranch,
   ...enIntegrate,
   ...enConflict,
+  ...enStash,
 } satisfies Record<GitWorkbenchKey, string>
 
 /** In-progress repository operation → its display name. */

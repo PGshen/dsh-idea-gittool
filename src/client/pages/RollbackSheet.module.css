@@ -1,0 +1,165 @@
+/* Rollback sheet (design §5.3 Level 2, §11 overlay sheet): slides up from the bottom edge of the
+   Git tab content area (the caller's container must be position: relative). */
+.layer {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+
+.scrim {
+  position: absolute;
+  inset: 0;
+  background: color-mix(in oklab, var(--dsw-alias-label-primary) 12%, transparent);
+}
+
+.sheet {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  max-height: 80%;
+  min-height: 0;
+  background: var(--dsw-alias-bg-base);
+  box-shadow: var(--dsw-elevation-panel);
+  color: var(--dsw-alias-label-primary);
+  font-size: 13px;
+  outline: none;
+  animation: slideUp 160ms ease-out;
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sheet {
+    animation: none;
+  }
+}
+
+.header {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  padding: 8px 12px;
+  border-bottom: 0.5px solid var(--dsw-alias-border-l2);
+}
+
+.body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  margin: 0;
+  padding: 10px 12px 12px;
+  overflow: auto;
+}
+
+.files {
+  max-height: 180px;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+}
+
+.file {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+  height: 24px;
+  font-family: var(--dsw-font-mono);
+  font-size: 12px;
+}
+
+.path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tag {
+  flex: 0 0 auto;
+  padding: 0 4px;
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: var(--dsw-radius-xs);
+  color: var(--dsw-alias-label-tertiary);
+  font-family: inherit;
+  font-size: 11px;
+}
+
+.muted {
+  margin: 0;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+}
+
+.impact {
+  margin: 0;
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.danger {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  border-left: 2px solid var(--dsw-alias-state-error-primary);
+  background: var(--dsw-alias-bg-layer-1);
+}
+
+.check {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  color: var(--dsw-alias-state-error-primary);
+  cursor: pointer;
+}
+
+.result {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.line {
+  margin: 0;
+}
+
+.notice {
+  margin: 0;
+  color: var(--dsw-alias-state-warn);
+}
+
+.footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 8px;
+  border-top: 0.5px solid var(--dsw-alias-border-l2);
+}
+
+.blockReason {
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+}
+
+.actions {
+  display: flex;
+  gap: 16px;
+  margin-left: auto;
+}

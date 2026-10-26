@@ -4,6 +4,8 @@
  */
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
+import { render, text } from '../../../src/client/localized-text.ts'
+import { zhT } from '../i18n-helpers.tsx'
 
 import { FilterBar, closeOpenMenus, filterChips, hasActiveFilter, menuContaining, toggleValue } from '../../../src/client/pages/FilterBar.tsx'
 import type { FilterBarProps } from '../../../src/client/pages/FilterBar.tsx'
@@ -58,7 +60,7 @@ describe('FilterBar', () => {
       noMerges: true,
     }
     const chips = filterChips(filter)
-    expect(chips.map((chip) => chip.label)).toEqual([
+    expect(chips.map((chip) => render(zhT, chip.label))).toEqual([
       '分支: main', '分支: dev', '用户: Alice', '拓扑排序', '仅第一父提交', '不显示合并提交',
     ])
     expect(chips[0]?.remove).toEqual({ branches: ['dev'] })
@@ -106,10 +108,13 @@ describe('FilterBar', () => {
     expect(ok).toContain('aria-invalid="false"')
     expect(ok).not.toContain('role="alert"')
 
-    const failed = renderFilterBar({ jumpError: '未找到「nope」' })
+    const failed = renderFilterBar({ jumpError: text('log.jump.notFound', { target: 'nope', count: 3 }) })
     expect(failed).toContain('aria-invalid="true"')
     expect(failed).toContain('role="alert"')
-    expect(failed).toContain('未找到「nope」')
+    // The explanation is visible text right below the input (not only a title attribute).
+    expect(failed).toContain('已加载的 3 行中未找到「nope」')
+    expect(failed).toMatch(/aria-describedby="([^"]+)"[\s\S]*id="\1"/)
+    expect(failed).not.toContain('title="已加载')
   })
 })
 

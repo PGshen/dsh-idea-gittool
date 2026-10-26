@@ -74,3 +74,16 @@ describe('RepoBar', () => {
     expect(render()).not.toContain('data-console-errors')
   })
 })
+
+describe('RepoBar / 推送入口（A2 走查问题 1）', () => {
+  it('传了 onPush 时显示推送按钮，有待推送提交时带 ↑n', () => {
+    const html = render({ onPush: () => {}, ahead: 2 })
+    expect(html).toContain('data-repo-push=""')
+    expect(html).toContain('↑2')
+  })
+
+  it('没有待推送提交时不显示数字；未传 onPush 时不显示按钮', () => {
+    expect(render({ onPush: () => {}, ahead: 0 })).not.toContain('↑')
+    expect(render()).not.toContain('data-repo-push')
+  })
+})

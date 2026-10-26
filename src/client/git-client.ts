@@ -3,17 +3,29 @@
 // 形状错误都收敛成结构化的 GitError，调用方不需要 try/catch。
 import { RPC_CHANNEL, isRpcResult } from '../shared/protocol.ts'
 import type {
+  AddToVcsRequest,
+  AddToVcsValue,
+  AmendMessageRequest,
   BootstrapValue,
   BranchesValue,
   CommitDetailValue,
+  CommitFilesRequest,
   CommitRequest,
+  CommitResultValue,
   ConsoleValue,
   DiffFileValue,
   DiffRequest,
   GitError,
   LogRequest,
   LogValue,
+  PullForPushRequest,
+  PullForPushValue,
+  PushPreviewValue,
+  PushRequest,
+  PushValue,
   RefsValue,
+  RollbackRequest,
+  RollbackValue,
   RpcResult,
   StatusValue,
 } from '../shared/protocol.ts'
@@ -27,6 +39,21 @@ export interface GitClient {
   commit(request: CommitRequest, signal?: AbortSignal): Promise<RpcResult<CommitDetailValue>>
   diff(request: DiffRequest, signal?: AbortSignal): Promise<RpcResult<DiffFileValue>>
   console(sessionId: string, signal?: AbortSignal): Promise<RpcResult<ConsoleValue>>
+  // A2 写端点：调用方用 newRequestId() 为每次用户动作生成一次 requestId，重试时复用。
+  commitFiles(request: CommitFilesRequest, signal?: AbortSignal): Promise<RpcResult<CommitResultValue>>
+  amendMessage(request: AmendMessageRequest, signal?: AbortSignal): Promise<RpcResult<CommitResultValue>>
+  rollback(request: RollbackRequest, signal?: AbortSignal): Promise<RpcResult<RollbackValue>>
+  addToVcs(request: AddToVcsRequest, signal?: AbortSignal): Promise<RpcResult<AddToVcsValue>>
+  pushPreview(sessionId: string, signal?: AbortSignal): Promise<RpcResult<PushPreviewValue>>
+  push(request: PushRequest, signal?: AbortSignal): Promise<RpcResult<PushValue>>
+  pullForPush(request: PullForPushRequest, signal?: AbortSignal): Promise<RpcResult<PullForPushValue>>
+}
+
+/** One id per user action (A2): the Host de-duplicates repeated submissions by it. */
+export function newRequestId(): string {
+  const cryptoApi = globalThis.crypto as Crypto | undefined
+  if (cryptoApi !== undefined && typeof cryptoApi.randomUUID === 'function') return cryptoApi.randomUUID()
+  return `req-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
 }
 
 function failure<T>(message: string): RpcResult<T> {
@@ -46,12 +73,13 @@ async function call<T>(endpoint: string, payload: unknown, signal?: AbortSignal)
       body: JSON.stringify(payload),
       ...(signal === undefined ? {} : { signal }),
     })
-    if (!response.ok) return failure(`HTTP ${response.status}：${endpoint}`)
+    // Transport failures read like Host errors (English, technical); the UI titles them by code.
+    if (!response.ok) return failure(`HTTP ${response.status}: ${endpoint}`)
     const raw: unknown = await response.json()
-    if (!isRpcResult<T>(raw)) return failure('Host 响应不符合 /dsh-git 协议')
+    if (!isRpcResult<T>(raw)) return failure('Host response does not match the /dsh-git protocol')
     return raw
   } catch (error) {
-    if (signal?.aborted === true) return failure('请求已取消')
+    if (signal?.aborted === true) return failure('Request cancelled')
     return failure(error instanceof Error ? error.message : String(error))
   }
 }
@@ -66,5 +94,12 @@ export function createGitClient(_ctx: unknown): GitClient {
     commit: (request, signal) => call<CommitDetailValue>('commit', request, signal),
     diff: (request, signal) => call<DiffFileValue>('diff', request, signal),
     console: (sessionId, signal) => call<ConsoleValue>('console', { sessionId }, signal),
+    commitFiles: (request, signal) => call<CommitResultValue>('commitFiles', request, signal),
+    amendMessage: (request, signal) => call<CommitResultValue>('amendMessage', request, signal),
+    rollback: (request, signal) => call<RollbackValue>('rollback', request, signal),
+    addToVcs: (request, signal) => call<AddToVcsValue>('addToVcs', request, signal),
+    pushPreview: (sessionId, signal) => call<PushPreviewValue>('pushPreview', { sessionId }, signal),
+    push: (request, signal) => call<PushValue>('push', request, signal),
+    pullForPush: (request, signal) => call<PullForPushValue>('pullForPush', request, signal),
   }
 }

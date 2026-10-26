@@ -28,7 +28,8 @@ export interface ParseStatusOptions extends ReadStatusOptions {
 
 /** argv for one `git status` read (no user-controlled values, no pathspec). */
 export function buildStatusArgv(): string[] {
-  return [...GIT_BASE_ARGV, 'status', '--porcelain=v2', '--branch', '-z']
+  // Every untracked file individually (评审 C1): a bare `newdir/` entry cannot be committed or rolled back by path.
+  return [...GIT_BASE_ARGV, 'status', '--porcelain=v2', '--branch', '-z', '--untracked-files=all']
 }
 
 const TRACKED_STATUS: Readonly<Record<string, FileStatusCode>> = {
@@ -272,7 +273,7 @@ function unparseable(chunk: string): GitCommandFailure {
 }
 
 /** Detect an in-progress merge/rebase/cherry-pick/revert from git's marker files. */
-async function detectOperation(
+export async function detectOperation(
   run: GitRunner,
   cwd: string,
   signal: AbortSignal | undefined,

@@ -6,10 +6,12 @@
  */
 import { useState } from 'react'
 import type { ReactNode } from 'react'
-import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 // Loads the SlotMap declaration for 'sidebar.right.tab.document.actions'.
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-documentpreview/client'
 import css from './document-actions.module.css'
+import { render } from './localized-text.ts'
+import type { LocalizedText } from './localized-text.ts'
 
 /** The one-letter git state a document header can show. */
 export type FileStatusLetter = 'M' | 'A' | 'D' | 'U'
@@ -53,7 +55,7 @@ export function statusLetterOf(code: string | null | undefined): FileStatusLette
 /** Business face injected when the header action is registered. */
 export interface DocumentActionsInjected {
   /** Open the blame page for one file; returns a user-facing failure, or null. */
-  readonly openBlame?: (absolutePath: string, repoRelativePath?: string) => string | null
+  readonly openBlame?: (absolutePath: string, repoRelativePath?: string) => LocalizedText | null
   /** Status letter for one file, when a status source is wired. */
   readonly statusFor?: (absolutePath: string) => FileStatusLetter | null
   /** Repository root for one file, used to derive the repo-relative path. */
@@ -66,7 +68,7 @@ const NO_STATUS = (): FileStatusLetter | null => null
 
 /** Full component props: the slot's owner inputs plus the injected lookups. */
 export type DocumentActionsProps =
-  PropsRuntime<'sidebar.right.tab.document.actions'> & DocumentActionsInjected
+  PropsRuntime<'sidebar.right.tab.document.actions'> & PropsLocale<'gitWorkbench'> & DocumentActionsInjected
 
 /** 状态字母 → 语义色类。 */
 const STATUS_CLASS: Record<FileStatusLetter, string> = {
@@ -88,8 +90,8 @@ function normalizeSeparators(path: string): string {
  * @returns the status badge followed by the document actions.
  */
 export function DocumentActions(props: DocumentActionsProps): ReactNode {
-  const { absolutePath, openBlame, statusFor, repoRootFor, useStatus } = props
-  const [failure, setFailure] = useState<string | null>(null)
+  const { absolutePath, openBlame, statusFor, repoRootFor, useStatus, t } = props
+  const [failure, setFailure] = useState<LocalizedText | null>(null)
   // Hook 位置稳定：注册时固定传同一个函数，缺省用无副作用的 NO_STATUS。
   const useStatusHook = useStatus ?? NO_STATUS
   const liveStatus = useStatusHook(absolutePath)
@@ -109,7 +111,7 @@ export function DocumentActions(props: DocumentActionsProps): ReactNode {
           <span
             className={`git-document-actions__status ${css.badge} ${css.unknown}`}
             data-status="unknown"
-            title="Git 状态待接入"
+            title={t('document.status.pending')}
           >
             ·
           </span>
@@ -118,7 +120,7 @@ export function DocumentActions(props: DocumentActionsProps): ReactNode {
           <span
             className={`git-document-actions__status ${css.badge} ${STATUS_CLASS[status]}`}
             data-status={status}
-            title={`Git 状态：${status}`}
+            title={t('document.status', { status })}
           >
             {status}
           </span>
@@ -135,15 +137,15 @@ export function DocumentActions(props: DocumentActionsProps): ReactNode {
         type="button"
         className={`git-document-actions__action ${css.action} ${css.actionDisabled}`}
         disabled
-        title="历史视图将在 B2 实现"
+        title={t('document.history.pending')}
       >
-        历史
+        {t('document.history')}
       </button>
       <button
         type="button"
         className={`git-document-actions__action ${css.action} ${css.actionDisabled}`}
         disabled
-        title="Diff 视图将在 B2 实现"
+        title={t('document.diff.pending')}
       >
         Diff
       </button>
@@ -154,7 +156,7 @@ export function DocumentActions(props: DocumentActionsProps): ReactNode {
             className={`git-document-actions__failure ${css.failure}`}
             role="alert"
           >
-            {failure}
+            {render(t, failure)}
           </span>
         )}
     </div>

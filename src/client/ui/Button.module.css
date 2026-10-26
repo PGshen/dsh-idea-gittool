@@ -33,6 +33,13 @@
   opacity: 0.9;
 }
 
+/* Disabled primary falls back to the plain outline look so it no longer reads as actionable. */
+.primary:disabled {
+  border-color: var(--dsw-alias-border-l2);
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary);
+}
+
 .danger {
   border-color: var(--dsw-alias-state-error-primary);
   color: var(--dsw-alias-state-error-primary);

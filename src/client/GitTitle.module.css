@@ -1,0 +1,21 @@
+/* Tab title dot (design §5.3): 5px, brand color for changes, warning for conflicts/operations. */
+.title {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.dot {
+  flex: none;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+}
+
+.brand {
+  background: var(--dsw-alias-brand-primary);
+}
+
+.warning {
+  background: var(--dsw-alias-state-warn);
+}

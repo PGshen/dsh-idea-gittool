@@ -1,0 +1,241 @@
+/* Push / Push Rejected full-height overlay (design §11): fills the Git tab content area
+   (the caller's container must be position: relative), header with "← 返回". */
+.root {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: var(--dsw-alias-bg-base);
+  color: var(--dsw-alias-label-primary);
+  font-size: 13px;
+  outline: none;
+  animation: slideIn 160ms ease-out;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateX(12px);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .root {
+    animation: none;
+  }
+}
+
+.header {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+  min-height: 32px;
+  padding: 4px 8px;
+  border-bottom: 0.5px solid var(--dsw-alias-border-l2);
+}
+
+.back {
+  flex: 0 0 auto;
+}
+
+.title {
+  flex: 0 0 auto;
+  font-size: 13px;
+}
+
+.subtitle {
+  overflow: hidden;
+  color: var(--dsw-alias-label-secondary);
+  font-family: var(--dsw-font-mono);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+  margin: 0;
+  padding: 12px;
+  overflow: auto;
+}
+
+.reason {
+  margin: 0;
+  font-weight: 600;
+}
+
+.warning {
+  margin: 0;
+  color: var(--dsw-alias-state-warn);
+}
+
+.muted {
+  margin: 0;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+}
+
+.inlineCode {
+  font-family: var(--dsw-font-mono);
+  word-break: break-all;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.sectionTitle {
+  margin: 0;
+  padding: 0;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.commits {
+  margin: 0;
+  padding: 0;
+  border-top: 0.5px solid var(--dsw-alias-border-l2);
+  list-style: none;
+}
+
+.commit {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+  height: 26px;
+  padding: 0 4px;
+  border-bottom: 0.5px solid var(--dsw-alias-border-l2);
+  font-size: 12px;
+}
+
+.sha {
+  flex: 0 0 auto;
+  color: var(--dsw-alias-label-tertiary);
+  font-family: var(--dsw-font-mono);
+}
+
+.subject {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.author {
+  flex: 0 0 auto;
+  max-width: 30%;
+  overflow: hidden;
+  color: var(--dsw-alias-label-tertiary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.choice {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 4px 0;
+  cursor: pointer;
+}
+
+.choiceText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.check {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  cursor: pointer;
+}
+
+.danger {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border-left: 2px solid var(--dsw-alias-state-error-primary);
+  background: var(--dsw-alias-bg-layer-1);
+}
+
+.dangerText {
+  margin: 0;
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.error {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border-left: 2px solid var(--dsw-alias-state-error-primary);
+  background: var(--dsw-alias-bg-layer-1);
+}
+
+.errorDetail {
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  word-break: break-word;
+}
+
+.command {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.commandText {
+  padding: 2px 6px;
+  background: var(--dsw-alias-bg-layer-2);
+  font-family: var(--dsw-font-mono);
+  font-size: 12px;
+  user-select: all;
+  word-break: break-all;
+}
+
+.footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: auto;
+  padding-top: 8px;
+  border-top: 0.5px solid var(--dsw-alias-border-l2);
+}
+
+.blockReason {
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+}
+
+.actions {
+  display: flex;
+  gap: 16px;
+  margin-left: auto;
+}

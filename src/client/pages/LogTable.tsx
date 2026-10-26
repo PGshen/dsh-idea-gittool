@@ -4,6 +4,7 @@ import { useEffect, useRef } from 'react'
 import type { KeyboardEvent, ReactNode, Ref } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { ROW_HEIGHT } from '../graph/layout.ts'
+import { useT } from '../i18n.tsx'
 import type { LogAction, LogKeyInput, LogKeyResult, LogTableData } from '../store/log-store.ts'
 import { LogRow } from './LogRow.tsx'
 import type { LogRowModifiers } from './LogRow.tsx'
@@ -94,6 +95,7 @@ export function LogTable({
   tableRef,
   viewportHeight = DEFAULT_VIEWPORT_HEIGHT,
 }: LogTableProps): ReactNode {
+  const t = useT()
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const virtualizer = useVirtualizer({
     count: rows.length,
@@ -146,7 +148,7 @@ export function LogTable({
       ref={setScrollRef}
       className={css.scroller}
       role="grid"
-      aria-label="提交列表"
+      aria-label={t('log.table.label')}
       aria-multiselectable
       aria-rowcount={rows.length}
       aria-activedescendant={activeSha === undefined ? undefined : `git-log-row-${activeSha}`}
@@ -174,15 +176,15 @@ export function LogTable({
           )
         })}
       </div>
-      {loadingMore ? <div className={css.skeleton} aria-busy="true">加载更多提交…</div> : null}
+      {loadingMore ? <div className={css.skeleton} aria-busy="true">{t('log.table.loadingMore')}</div> : null}
       {footerError === null ? null : (
         <div className={css.footerError} role="alert">
           <span>{footerError.message}</span>
-          <button type="button" className={css.footerAction} onClick={footerError.onRetry}>重试</button>
+          <button type="button" className={css.footerAction} onClick={footerError.onRetry}>{t('action.retry')}</button>
         </div>
       )}
       {atRowLimit ? (
-        <div className={css.footer}>已显示前 {rows.length} 个提交。用搜索或分支筛选缩小范围。</div>
+        <div className={css.footer}>{t('log.table.rowLimit', { count: rows.length })}</div>
       ) : null}
     </div>
   )

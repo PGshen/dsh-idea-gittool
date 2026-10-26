@@ -1,7 +1,7 @@
 // A1 工作台接线：日志选择 → 详情动作、Diff 文件列表展开。
 import { describe, expect, it } from 'vitest'
-import { detailActionFor, diffFilesOf, logRefreshKey } from '../../../src/client/pages/GitWorkbench.tsx'
-import type { CommitDetailValue, CommitSummary } from '../../../src/shared/protocol.ts'
+import { changeFilesFor, commitFailedJustNow, commitFeedbackIsStale, commitNoticeClearsOnOtherWrite, directPushAllowed, detailActionFor, diffFilesOf, logRefreshKey, rollbackTargetsFor } from '../../../src/client/pages/GitWorkbench.tsx'
+import type { CommitDetailValue, CommitSummary, StatusValue } from '../../../src/shared/protocol.ts'
 
 function summary(sha: string): CommitSummary {
   return { sha, shortSha: sha.slice(0, 7), parents: [], author: 'a', email: 'a@x', date: '2026-10-25T00:00:00Z', subject: sha }
@@ -75,5 +75,72 @@ describe('logRefreshKey', () => {
     const a = logRefreshKey('h', { x: [ref('a', 'x')], y: [ref('b', 'y')] })
     const b = logRefreshKey('h', { y: [ref('b', 'y')], x: [ref('a', 'x')] })
     expect(a).toBe(b)
+  })
+})
+
+function status(): StatusValue {
+  return {
+    branch: 'main', detached: false, head: 'h', upstream: null, ahead: 0, behind: 0,
+    staged: [{ path: 's.txt', status: 'M' }],
+    unstaged: [{ path: 'u.txt', status: 'M' }],
+    untracked: [{ path: 'n.txt', status: '?' }],
+    conflicts: [{ path: 'c.txt', status: 'U' }],
+    operation: null, truncated: false,
+  }
+}
+
+describe('changeFilesFor', () => {
+  it('暂存区 diff 只在已暂存文件间切换；工作区 diff 覆盖冲突、未暂存与未跟踪', () => {
+    expect(changeFilesFor(status(), 'staged').map(f => f.path)).toEqual(['s.txt'])
+    expect(changeFilesFor(status(), 'worktree').map(f => f.path)).toEqual(['c.txt', 'u.txt', 'n.txt'])
+    expect(changeFilesFor(null, 'worktree')).toEqual([])
+  })
+})
+
+describe('rollbackTargetsFor', () => {
+  it('按 status 标记未跟踪文件（需要删除确认）', () => {
+    expect(rollbackTargetsFor(status(), ['u.txt', 'n.txt'])).toEqual([
+      { path: 'u.txt', untracked: false },
+      { path: 'n.txt', untracked: true },
+    ])
+  })
+})
+
+describe('commitFeedbackIsStale（A2 走查问题 3）', () => {
+  it('HEAD 已不是刚提交的哈希（例如拉取变基后）时，「已提交」提示过期', () => {
+    expect(commitFeedbackIsStale('ed51451aaa', '426a6a2bbb')).toBe(true)
+    expect(commitFeedbackIsStale('ed51451aaa', 'ed51451aaa')).toBe(false)
+    expect(commitFeedbackIsStale(null, '426a6a2bbb')).toBe(false)
+    expect(commitFeedbackIsStale('ed51451aaa', null)).toBe(false)
+  })
+})
+
+describe('directPushAllowed（评审 I3）', () => {
+  const base = status()
+  it('只有 upstream 分支名与本地分支同名时才直接推送', () => {
+    expect(directPushAllowed({ ...base, branch: 'main', upstream: 'origin/main' })).toBe(true)
+    expect(directPushAllowed({ ...base, branch: 'fix', upstream: 'origin/main' })).toBe(false)
+    expect(directPushAllowed({ ...base, branch: 'feature/x', upstream: 'origin/feature/x' })).toBe(true)
+    expect(directPushAllowed({ ...base, branch: 'x', upstream: 'origin/feature/x' })).toBe(false)
+  })
+
+  it('无 upstream、detached 或无状态时打开 Push 页', () => {
+    expect(directPushAllowed({ ...base, upstream: null })).toBe(false)
+    expect(directPushAllowed({ ...base, detached: true, branch: null, upstream: 'origin/main' })).toBe(false)
+    expect(directPushAllowed(null)).toBe(false)
+  })
+})
+
+describe('演示问题 2/3：提交提示的刷新与清除', () => {
+  it('提交刚失败时刷新一次（带回 pendingWrites=0），持续失败不重复刷新', () => {
+    expect(commitFailedJustNow('submitting', 'failure')).toBe(true)
+    expect(commitFailedJustNow('failure', 'failure')).toBe(false)
+    expect(commitFailedJustNow('submitting', 'success')).toBe(false)
+  })
+
+  it('开始其它写操作（推送、回滚、加入 VCS）时清掉旧的失败提示，成功提示保留', () => {
+    expect(commitNoticeClearsOnOtherWrite('failure')).toBe(true)
+    expect(commitNoticeClearsOnOtherWrite('success')).toBe(false)
+    expect(commitNoticeClearsOnOtherWrite('idle')).toBe(false)
   })
 })

@@ -4,6 +4,7 @@
 import { useEffect, useRef } from 'react'
 import type { KeyboardEvent, PointerEvent as ReactPointerEvent, ReactNode } from 'react'
 import { CONSOLE_BUFFER_SIZE } from '../../shared/protocol.ts'
+import { render, useT } from '../i18n.tsx'
 import { EmptyState } from '../ui/EmptyState.tsx'
 import {
   exitLabel,
@@ -54,6 +55,7 @@ function defaultCopy(text: string): void {
 }
 
 export function ConsoleDrawer(props: ConsoleDrawerProps): ReactNode {
+  const t = useT()
   const { state, fullHeight = false, onPausedChange } = props
   const height = clampDrawerHeight(props.height ?? CONSOLE_DEFAULT_HEIGHT)
   const listRef = useRef<HTMLDivElement>(null)
@@ -114,21 +116,21 @@ export function ConsoleDrawer(props: ConsoleDrawerProps): ReactNode {
     body = (
       <EmptyState
         error
-        title="读取控制台失败"
-        hint={`${state.error.code}：${state.error.message}`}
-        {...(props.onRetry === undefined ? {} : { action: { label: '重试', onClick: props.onRetry } })}
+        title={t('console.loadFailed')}
+        hint={t('error.detail', { code: state.error.code, message: state.error.message })}
+        {...(props.onRetry === undefined ? {} : { action: { label: t('action.retry'), onClick: props.onRetry } })}
       />
     )
   } else if (state.entries.length === 0) {
     body = (
       <EmptyState
-        title={state.loading ? '读取中…' : state.cleared ? '已清空' : '还没有命令记录'}
-        hint={state.cleared ? '之后执行的 git 命令会继续显示在这里' : '插件执行的每条 git 命令都会记录在这里'}
+        title={t(state.loading ? 'state.loading' : state.cleared ? 'console.cleared' : 'console.empty')}
+        hint={t(state.cleared ? 'console.cleared.hint' : 'console.empty.hint')}
       />
     )
   } else {
     body = (
-      <ol className={css.list} aria-label="git 命令记录">
+      <ol className={css.list} aria-label={t('console.list')}>
         {state.entries.map(entry => (
           <ConsoleRow
             key={entry.key}
@@ -147,7 +149,7 @@ export function ConsoleDrawer(props: ConsoleDrawerProps): ReactNode {
       ref={rootRef}
       className={`${css.drawer} ${fullHeight ? css.fullHeight : ''}`}
       style={fullHeight ? undefined : { height: `${height}px` }}
-      aria-label="Git 控制台"
+      aria-label={t('console.title')}
       data-dsh-git-console=""
       data-full-height={fullHeight}
       onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); props.onClose() } }}
@@ -158,7 +160,7 @@ export function ConsoleDrawer(props: ConsoleDrawerProps): ReactNode {
             <div
               role="separator"
               aria-orientation="horizontal"
-              aria-label="调整控制台高度"
+              aria-label={t('console.resize')}
               aria-valuenow={height}
               aria-valuemin={CONSOLE_MIN_HEIGHT}
               tabIndex={0}
@@ -168,31 +170,31 @@ export function ConsoleDrawer(props: ConsoleDrawerProps): ReactNode {
             />
           )}
       <header className={css.toolbar}>
-        <strong className={css.title}>Git 控制台</strong>
+        <strong className={css.title}>{t('console.title')}</strong>
         <span className={css.count}>{state.entries.length}</span>
-        {state.failedCount > 0 ? <span className={css.failedCount} data-failed-count={state.failedCount}>{state.failedCount} 条失败</span> : null}
+        {state.failedCount > 0 ? <span className={css.failedCount} data-failed-count={state.failedCount}>{t('console.failedCount', { count: state.failedCount })}</span> : null}
         {state.error !== null && state.entries.length > 0
-          ? <span role="alert" className={css.failedCount}>刷新失败：{state.error.code}</span>
+          ? <span role="alert" className={css.failedCount}>{t('refresh.failed', { code: state.error.code })}</span>
           : null}
         <span className={css.spacer} />
         <button
           type="button"
           className={css.toolButton}
           aria-pressed={state.paused}
-          title={state.paused ? '恢复自动滚动' : '暂停自动滚动'}
+          title={t(state.paused ? 'console.scroll.resume.title' : 'console.scroll.pause.title')}
           onClick={() => onPausedChange(!state.paused)}
         >
-          {state.paused ? '▶ 自动滚动' : '⏸ 暂停滚动'}
+          {t(state.paused ? 'console.scroll.resume' : 'console.scroll.pause')}
         </button>
         <button type="button" className={css.toolButton} onClick={props.onClear} disabled={state.entries.length === 0}>
-          清空
+          {t('console.clear')}
         </button>
-        <button type="button" className={css.toolButton} aria-label="关闭 Git 控制台" title="关闭" onClick={props.onClose}>
+        <button type="button" className={css.toolButton} aria-label={t('console.close')} title={t('action.close')} onClick={props.onClose}>
           ✕
         </button>
       </header>
       {state.hostTruncated
-        ? <div className={css.notice}>仅保留最近 {CONSOLE_BUFFER_SIZE} 条记录，更早的已丢弃</div>
+        ? <div className={css.notice}>{t('console.dropped', { count: CONSOLE_BUFFER_SIZE })}</div>
         : null}
       <div ref={listRef} className={css.body} onScroll={onScroll}>
         {body}
@@ -209,6 +211,7 @@ interface ConsoleRowProps {
 }
 
 function ConsoleRow({ entry, expanded, onToggle, onCopy }: ConsoleRowProps): ReactNode {
+  const t = useT()
   const { record, failed } = entry
   const { globals, subcommand, args } = splitArgv(record.argv)
   const summary = outputSummary(record)
@@ -221,7 +224,7 @@ function ConsoleRow({ entry, expanded, onToggle, onCopy }: ConsoleRowProps): Rea
           type="button"
           className={css.expander}
           aria-expanded={expanded}
-          aria-label={expanded ? '收起输出' : '展开输出'}
+          aria-label={t(expanded ? 'console.output.collapse' : 'console.output.expand')}
           disabled={!hasOutput}
           onClick={onToggle}
         >
@@ -235,12 +238,12 @@ function ConsoleRow({ entry, expanded, onToggle, onCopy }: ConsoleRowProps): Rea
           {args.map((arg, index) => <span key={`a${index}`} className={css.arg}> {arg}</span>)}
         </code>
         {record.repeat !== undefined && record.repeat > 1
-          ? <span className={css.repeat} data-repeat={record.repeat} title={`相同命令重复执行 ${record.repeat} 次（轮询），只保留最近一次`}>×{record.repeat}</span>
+          ? <span className={css.repeat} data-repeat={record.repeat} title={t('console.repeat', { count: record.repeat })}>×{record.repeat}</span>
           : null}
         <span className={css.duration}>{formatDuration(record.durationMs)}</span>
-        <span className={`${css.exit} ${failed ? css.exitFailed : ''}`}>{exitLabel(record)}</span>
-        {truncated ? <span className={css.truncated} data-truncated="true">已截断</span> : null}
-        <button type="button" className={css.copy} aria-label="复制命令" title="复制命令" onClick={onCopy}>
+        <span className={`${css.exit} ${failed ? css.exitFailed : ''}`}>{render(t, exitLabel(record))}</span>
+        {truncated ? <span className={css.truncated} data-truncated="true">{t('console.truncated')}</span> : null}
+        <button type="button" className={css.copy} aria-label={t('console.copyCommand')} title={t('console.copyCommand')} onClick={onCopy}>
           ⧉
         </button>
       </div>
@@ -258,11 +261,12 @@ function ConsoleRow({ entry, expanded, onToggle, onCopy }: ConsoleRowProps): Rea
 }
 
 function OutputBlock({ label, text, truncated, error = false }: { label: string; text: string; truncated: boolean; error?: boolean }): ReactNode {
+  const t = useT()
   return (
     <div className={css.block} data-stream={label}>
       <span className={css.streamLabel}>{label}</span>
       <pre className={`${css.pre} ${error ? css.stderr : ''}`}>{text}</pre>
-      {truncated ? <div className={css.truncatedNote}>输出超过 64KB，已截断</div> : null}
+      {truncated ? <div className={css.truncatedNote}>{t('console.outputTruncated')}</div> : null}
     </div>
   )
 }

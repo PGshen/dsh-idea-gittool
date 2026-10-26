@@ -997,4 +997,20 @@ Git 与构建行为（A1 实测，git 2.50.1）：
 | esbuild local-css 会给 `@container` 名加文件前缀，跨文件容器查询需用匿名 `container-type` | ✅ 2026-10-25 | A1 T4 |
 | 单测里 `@deepseek-ai/dsh-client-ui-primitives` 经 `link:` 解析到 DSH 仓库自带的 React 副本，直接调用其 hook 报 invalid hook call；运行时 React 是 external，不受影响 | ✅ 2026-10-25 | A1 T6（DiffViewer 留 `useHighlighter` 注入点） |
 
+写执行与沙箱（A2 T1 spike，2026-10-26，git 2.50.1 / macOS Seatbelt）：
+
+方法：按 `dsh-sandbox-local` 的 `seatbeltProfileArgs` + `dsh-sandbox` 的 `writableRoots` 原样拼出 `workspace-write` 的 SBPL（allow default、deny file-write*、放行 `/dev/null`、workspaceRoot、`/tmp`、`os.tmpdir()`），用 `sandbox-exec -p <profile> -- git ...` 在临时仓库里执行。脚本与输出在 `.evidence/a2/spike.log`。这是对 confine 产物的等价复现，**不是**经 3081 Host 的端到端调用；端到端复验放在 A2 T8。
+
+| 结论 | 状态 | 证据 |
+|---|---|---|
+| `.git` 在 workspaceRoot 内时，confine 下 `commit --only -- <path>` 成功 | ✅ 2026-10-26 | spike 1a |
+| workspaceRoot 是仓库子目录（`.git` 在边界外）时被拒：`fatal: Unable to create '<repo>/.git/index.lock': Operation not permitted`，退出 128，工作区与索引不变。写门禁的「仓库根必须在工作区内」判定与此一致 | ✅ 2026-10-26 | spike 1b/1c |
+| **Seatbelt profile 不限制网络**：confine 下 HTTPS `ls-remote` 与 SSH（`BatchMode=yes`，读 `~/.ssh` 私钥与 `known_hosts`）都成功 | ✅ 2026-10-26 | spike 2c/2d；`dsh-sandbox` 源码注释「Network and process visibility are outside this vocabulary」 |
+| 推送到**工作区外的本地 bare 仓库**会失败，表现为 porcelain `!` 行 `[remote rejected] (unpacker error)`，stderr `unable to create temporary object directory`。这是沙箱拒绝，不是非快进；分类时必须先于 `git/rejected` 识别为 `git/sandbox-denied`。bare 仓库在工作区内时推送成功 | ✅ 2026-10-26 | spike 2a/2b |
+| macOS 自带 git 的 `credential.helper=osxkeychain` 配在 **Xcode 的系统 gitconfig**（`/Applications/Xcode.app/.../git-core/gitconfig`）；读命令用的 `GIT_CONFIG_NOSYSTEM=1` 会让它不可见 | ✅ 2026-10-26 | spike 3a/3b |
+| **osxkeychain 在 `workspace-write` confine 下不可用**：`git credential-osxkeychain get` 返回 `failed to get: -67674`（Module Directory Service error）。根因是 Security 框架要写 `getconf DARWIN_USER_CACHE_DIR`（`/private/var/folders/<..>/C`），而 profile 只放行 `os.tmpdir()`（同目录下的 `T`）；只多放行 `C` 即恢复。结果：依赖钥匙串的 HTTPS 推送在 confine 下得到 `could not read Username ...: terminal prompts disabled` | ✅ 2026-10-26 | spike 3c + 二分放行目录 |
+| **经 3081 Host 端到端复验**：`workspace-write` 会话里提交、推送到工作区内 bare 远程成功；推送到工作区外 bare 远程得到 `git/sandbox-denied`（`remote unpack failed`），与上面的等价复现一致 | ✅ 2026-10-26 | A2 计划「验证记录」 |
+| 同理，hook 或 git 子进程写 `~/.cache`、`~/Library/Caches` 等工作区外目录（pre-commit 框架、prettier 缓存）在 `workspace-write` confine 下会失败；表现为 hook 自身报错 | ⚠️ 2026-10-26 推断，未实测 | A2 代码评审 |
+| 无凭据的 HTTPS 认证失败在 `GIT_TERMINAL_PROMPT=0` 下立即返回 `fatal: could not read Username for '<url>': terminal prompts disabled`（退出 128），不会挂起 | ✅ 2026-10-26 | spike 3d |
+
 依赖与类型：DSH 类型用 `link:` 指向本机 checkout；`webServer` 服务的类型包是 **`@deepseek-ai/dsh-host-webserver`**（不是 `dsh-webserver`）；`ctx.connection` 的 Host 半边类型来自 `@deepseek-ai/dsh-client-connection`。

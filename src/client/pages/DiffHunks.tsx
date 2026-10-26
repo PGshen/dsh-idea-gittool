@@ -5,6 +5,8 @@ import type { CSSProperties, ReactNode } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import type { CodeHighlighter, HighlightSpan } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { DiffHunk, DiffLine } from '../../shared/protocol.ts'
+import { useT } from '../i18n.tsx'
+import type { Translate } from '../i18n.tsx'
 import css from './DiffHunks.module.css'
 
 /** 固定行高（px）：虚拟化按它估算总高度。 */
@@ -47,6 +49,7 @@ export function buildDiffRows(hunks: readonly DiffHunk[], collapsed: ReadonlySet
 }
 
 export interface HunkHeaderRowProps {
+  t: Translate
   hunkIndex: number
   header: string
   collapsed: boolean
@@ -60,7 +63,7 @@ export interface HunkHeaderRowProps {
  * @param props - hunk 下标、原始头、折叠状态与切换回调。
  * @returns hunk 头按钮。
  */
-export function HunkHeaderRow({ hunkIndex, header, collapsed, lineCount, onToggle, style }: HunkHeaderRowProps): ReactNode {
+export function HunkHeaderRow({ t, hunkIndex, header, collapsed, lineCount, onToggle, style }: HunkHeaderRowProps): ReactNode {
   return (
     <button
       type="button"
@@ -68,12 +71,12 @@ export function HunkHeaderRow({ hunkIndex, header, collapsed, lineCount, onToggl
       style={style}
       data-hunk-header={hunkIndex}
       aria-expanded={!collapsed}
-      title={collapsed ? '展开此变更块' : '折叠此变更块'}
+      title={t(collapsed ? 'diff.hunk.expand' : 'diff.hunk.collapse')}
       onClick={() => onToggle(hunkIndex)}
     >
       <span className={css.chevron} aria-hidden="true">{collapsed ? '▸' : '▾'}</span>
       <span className={css.hunkText}>{header}</span>
-      {collapsed ? <span className={css.hunkCount}>{lineCount} 行</span> : null}
+      {collapsed ? <span className={css.hunkCount}>{t('diff.hunk.lines', { count: lineCount })}</span> : null}
     </button>
   )
 }
@@ -138,6 +141,7 @@ export function DiffHunks({
   initialScrollTop = 0,
   onScrollTopChange,
 }: DiffHunksProps): ReactNode {
+  const t = useT()
   const [collapsed, setCollapsed] = useState<ReadonlySet<number>>(() => new Set(initialCollapsedHunks ?? []))
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const rows = useMemo(() => buildDiffRows(hunks, collapsed), [hunks, collapsed])
@@ -188,6 +192,7 @@ export function DiffHunks({
             return (
               <HunkHeaderRow
                 key={`h${row.hunkIndex}`}
+                t={t}
                 hunkIndex={row.hunkIndex}
                 header={row.header}
                 collapsed={row.collapsed}

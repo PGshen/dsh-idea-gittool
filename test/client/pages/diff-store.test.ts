@@ -3,6 +3,8 @@
  * 传输状态机与纯格式化函数都做单测；组件渲染见 diff.test.tsx。
  */
 import { describe, expect, it } from 'vitest'
+import { zhT } from '../i18n-helpers.tsx'
+import { render } from '../../../src/client/localized-text.ts'
 import type { CommitFileEntry, DiffFileValue, DiffRequest, RpcResult } from '../../../src/shared/protocol.ts'
 import {
   createDiffStore,
@@ -196,9 +198,9 @@ describe('truncationNotice', () => {
   })
 
   it('按行截断与按字节截断都给出「仅显示前 N 行」', () => {
-    expect(truncationNotice(diffOf({ truncated: true, truncatedReason: 'lines' })))
+    expect(render(zhT, truncationNotice(diffOf({ truncated: true, truncatedReason: 'lines' }))!))
       .toBe('文件过大，仅显示前 3 行（上限 5000 行）。')
-    expect(truncationNotice(diffOf({ truncated: true, truncatedReason: 'bytes' })))
+    expect(render(zhT, truncationNotice(diffOf({ truncated: true, truncatedReason: 'bytes' }))!))
       .toBe('文件过大，仅显示前 3 行（上限 256KiB）。')
   })
 })

@@ -14,6 +14,14 @@ export const RPC_ENDPOINTS = [
   'commit',
   'diff',
   'console',
+  // A2 写端点与推送预览（写端点名避开读端点 `commit`）。
+  'commitFiles',
+  'amendMessage',
+  'rollback',
+  'addToVcs',
+  'pushPreview',
+  'push',
+  'pullForPush',
 ] as const
 
 export type RpcEndpoint = (typeof RPC_ENDPOINTS)[number]
@@ -27,6 +35,16 @@ export const GIT_ERROR_CODES = [
   'git/timeout',
   'git/output-too-large',
   'git/sandbox-denied',
+  // A2 写操作
+  'git/auth-required',
+  'git/rejected',
+  'git/hook-failed',
+  'git/conflict',
+  'git/locked',
+  'git/index-not-clean',
+  'git/operation-in-progress',
+  /** 勾选的路径在提交前已被改动/删除（status 快照过期），刷新后重试。 */
+  'git/paths-changed',
 ] as const
 
 export type GitErrorCode = (typeof GIT_ERROR_CODES)[number]
@@ -152,9 +170,22 @@ export interface LogValue {
 }
 
 /** 写能力判定结果；read-only 时 UI 顶部横幅并禁用写操作（调研 §8.3）。 */
+/** 只读原因的稳定代码（A2 追加）：客户端按它取本地化文案，`reason` 只作兜底。 */
+export type WritePolicyReasonCode =
+  | 'policy-unavailable'
+  | 'session-not-live'
+  | 'resolve-failed'
+  | 'read-only-mode'
+  | 'repo-outside-workspace'
+  | 'sandbox-unavailable'
+  | 'confine-failed'
+  | 'partial-enforcement'
+  | 'not-a-repository'
+
 export interface WritePolicyValue {
   mode: 'read-write' | 'read-only'
   reason?: string
+  reasonCode?: WritePolicyReasonCode
   workspaceRoot?: string
 }
 
@@ -168,6 +199,8 @@ export interface BootstrapValue {
   version: number
   /** Host 侧 git 版本号（如 `2.50.1`），进程内只探测一次；探测失败时省略（A1 追加）。 */
   gitVersion?: string
+  /** 该仓库正在执行或排队的写操作数；>0 时客户端显示「等待当前操作完成」（A2 追加）。 */
+  pendingWrites?: number
 }
 
 // ---------------------------------------------------------------------------
@@ -325,4 +358,145 @@ export interface ConsoleRecord {
 export interface ConsoleValue {
   records: ConsoleRecord[]
   truncated: boolean
+}
+
+// ---------------------------------------------------------------------------
+// A2 写操作（提交、Amend、回滚、加入 VCS、推送、推送被拒后拉取）
+// ---------------------------------------------------------------------------
+
+/** 写端点超时（设计 §16.4）：本地写 60s，网络 180s；读命令仍是 8s。 */
+export const GIT_WRITE_TIMEOUT_MS = 60_000
+export const GIT_NETWORK_TIMEOUT_MS = 180_000
+
+/** 单次写请求的路径数与提交信息上限；超出返回 `git/invalid-payload`。 */
+export const WRITE_PATHS_MAX = 2000
+export const COMMIT_MESSAGE_MAX_BYTES = 64 * 1024
+
+/** 推送预览最多列出的待推送提交数。 */
+export const PUSH_PREVIEW_COMMIT_LIMIT = 100
+
+/** 写请求共有字段：`requestId` 由客户端生成，Host 用它对重复提交去重。 */
+export interface WriteRequest extends RpcRequest {
+  requestId: string
+}
+
+/** 只提交勾选的文件（`commit --only`），不改动其余暂存内容。 */
+export interface CommitFilesRequest extends WriteRequest {
+  /** repo 相对 POSIX 路径；未跟踪路径由 Host 先 `add -N`。 */
+  paths: string[]
+  message: string
+  amend?: boolean
+}
+
+/** 无勾选的 Amend：只改 HEAD 的提交信息。 */
+export interface AmendMessageRequest extends WriteRequest {
+  message: string
+}
+
+export interface CommitResultValue {
+  sha: string
+  shortSha: string
+  version?: number
+}
+
+/** 回滚（设计 §8.2.5）：已跟踪文件丢弃工作区改动；未跟踪文件仅在显式确认时删除。 */
+export interface RollbackRequest extends WriteRequest {
+  paths: string[]
+  deleteUntracked: boolean
+}
+
+export interface RollbackValue {
+  /** 已丢弃工作区改动的已跟踪路径。 */
+  restored: string[]
+  /** 已删除的未跟踪路径。 */
+  deleted: string[]
+  /** 回滚后暂存区仍有改动的路径（暂存内容按设计保留）。 */
+  keptStaged: string[]
+  /** 因 `deleteUntracked=false` 跳过的未跟踪路径。 */
+  skipped: string[]
+  version?: number
+}
+
+export interface AddToVcsRequest extends WriteRequest {
+  paths: string[]
+}
+
+export interface AddToVcsValue {
+  added: string[]
+  version?: number
+}
+
+/** Push 页数据（读端点）。 */
+export interface PushPreviewValue {
+  remotes: string[]
+  /** 当前分支；detached 时为 null，客户端必须让用户显式选择远程分支。 */
+  branch: string | null
+  detached: boolean
+  /** 形如 `origin/main`；无 upstream 时为 null。 */
+  upstream: string | null
+  /** 建议的远程：upstream 的远程，否则唯一远程或 `origin`；没有远程时为 null。 */
+  defaultRemote: string | null
+  /** 将被推送的提交（最多 {@link PUSH_PREVIEW_COMMIT_LIMIT} 条）。 */
+  commits: CommitSummary[]
+  truncated: boolean
+  version?: number
+}
+
+export interface PushRequest extends WriteRequest {
+  remote: string
+  /** 远程分支名（不含 `refs/heads/`）；本地推送源是 HEAD。 */
+  branch: string
+  setUpstream?: boolean
+  /** 只提供 `--force-with-lease`，永不提供 `--force`。 */
+  forceWithLease?: boolean
+  tags?: boolean
+}
+
+export interface PushValue {
+  remote: string
+  branch: string
+  /** 远程是否有变化（`up to date` 时为 false）。 */
+  updated: boolean
+  version?: number
+}
+
+/** `git/rejected` 的 `details.reason`。 */
+export type PushRejectReason =
+  | 'non-fast-forward'
+  | 'fetch-first'
+  | 'stale-lease'
+  | 'protected'
+  | 'hook-declined'
+  | 'other'
+
+/** `git/rejected` 错误的 `details` 形状（Push Rejected 页据此渲染）。 */
+export interface PushRejectedDetails {
+  reason: PushRejectReason
+  remote: string
+  branch: string
+  /** 远程上本地没有的提交（fetch 后 `HEAD..<remote>/<branch>`，最多 100 条）。 */
+  remoteCommits: CommitSummary[]
+  /** porcelain 被拒行的原始说明（已脱敏）。 */
+  summary: string
+}
+
+/** `git/auth-required` 错误的 `details` 形状。 */
+export interface AuthRequiredDetails {
+  /** 可在终端里执行的等价命令（不含凭据）。 */
+  command: string
+}
+
+/** Push Rejected 页的拉取方式；完整 Pull/Update Project 在 A3。 */
+export type PullForPushMode = 'rebase' | 'merge'
+
+export interface PullForPushRequest extends WriteRequest {
+  remote: string
+  branch: string
+  mode: PullForPushMode
+}
+
+export interface PullForPushValue {
+  /** 拉取后的 HEAD。 */
+  head: string
+  version?: number
 }

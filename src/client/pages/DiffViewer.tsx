@@ -17,6 +17,8 @@ import {
   useDiffState,
 } from '../store/diff-store.ts'
 import type { DiffLoader, DiffState, DiffViewerPosition } from '../store/diff-store.ts'
+import { render, useT } from '../i18n.tsx'
+import type { LocalizedText, Translate } from '../i18n.tsx'
 import { Button } from '../ui/Button.tsx'
 import { EmptyState } from '../ui/EmptyState.tsx'
 import { StatusLetter } from '../ui/StatusLetter.tsx'
@@ -43,11 +45,15 @@ function shortHash(sha: string | undefined): string {
 // 顶部工具栏
 // ---------------------------------------------------------------------------
 
+/** 面包屑的一段：文案键（如「日志」）或原样显示的文本（如短哈希）。 */
+export type DiffSourcePart = string | LocalizedText
+
 export interface DiffViewerHeaderProps {
+  t: Translate
   path: string
   status: FileStatusCode | undefined
-  /** 来源面包屑，例如 ['日志', '7f3a2c1']。 */
-  source: readonly string[]
+  /** 来源面包屑，例如 [text('diff.source.log'), '7f3a2c1']。 */
+  source: readonly DiffSourcePart[]
   files: readonly CommitFileEntry[]
   position: DiffViewerPosition
   onClose: () => void
@@ -63,6 +69,7 @@ export interface DiffViewerHeaderProps {
  * @returns 工具栏。
  */
 export function DiffViewerHeader({
+  t,
   path,
   status,
   source,
@@ -77,11 +84,11 @@ export function DiffViewerHeader({
   const switchable = files.length > 1
   return (
     <header className={css.header}>
-      <Button className={css.back} title="返回（Esc）" onClick={onClose}>← 返回</Button>
-      <nav className={css.breadcrumb} aria-label="来源">
+      <Button className={css.back} title={t('diff.back.title')} onClick={onClose}>{t('diff.back')}</Button>
+      <nav className={css.breadcrumb} aria-label={t('diff.source')}>
         {source.map((part, index) => (
-          <span key={`${index}:${part}`} className={css.crumb}>
-            {part}
+          <span key={index} className={css.crumb}>
+            {typeof part === 'string' ? part : render(t, part)}
             <span className={css.crumbSeparator} aria-hidden="true">/</span>
           </span>
         ))}
@@ -92,16 +99,16 @@ export function DiffViewerHeader({
         {switchable ? (
           <>
             <span className={css.fileSelect}>
-              <DiffFileSelect files={files} currentIndex={position.index} onSelect={onSelectFile} />
+              <DiffFileSelect t={t} files={files} currentIndex={position.index} onSelect={onSelectFile} />
             </span>
-            <Button title="上一个文件" disabled={!position.hasPrev} onClick={onPrev}>↑</Button>
+            <Button title={t('diff.prevFile')} disabled={!position.hasPrev} onClick={onPrev}>↑</Button>
             <span className={css.position}>
               {position.index === -1 ? '—' : position.index + 1} / {position.total}
             </span>
-            <Button title="下一个文件" disabled={!position.hasNext} onClick={onNext}>↓</Button>
+            <Button title={t('diff.nextFile')} disabled={!position.hasNext} onClick={onNext}>↓</Button>
           </>
         ) : null}
-        <Button title="复制文件路径" onClick={() => onCopy(path)}>复制路径</Button>
+        <Button title={t('diff.copyPath.title')} onClick={() => onCopy(path)}>{t('diff.copyPath')}</Button>
       </div>
     </header>
   )
@@ -124,13 +131,14 @@ export interface DiffContentProps {
 }
 
 function BinaryPanel({ value }: { value: DiffFileValue }): ReactNode {
+  const t = useT()
   return (
     <div className={css.binary} data-binary>
-      <strong className={css.binaryTitle}>二进制文件</strong>
+      <strong className={css.binaryTitle}>{t('diff.binary')}</strong>
       <dl className={css.binaryFacts}>
         {value.oldSize === undefined && value.oldSha === undefined ? null : (
           <>
-            <dt>旧</dt>
+            <dt>{t('diff.binary.old')}</dt>
             <dd>
               {value.oldSize === undefined ? '' : formatBytes(value.oldSize)}
               <code className={css.hash} title={value.oldSha}>{shortHash(value.oldSha)}</code>
@@ -139,7 +147,7 @@ function BinaryPanel({ value }: { value: DiffFileValue }): ReactNode {
         )}
         {value.newSize === undefined && value.newSha === undefined ? null : (
           <>
-            <dt>新</dt>
+            <dt>{t('diff.binary.new')}</dt>
             <dd>
               {value.newSize === undefined ? '' : formatBytes(value.newSize)}
               <code className={css.hash} title={value.newSha}>{shortHash(value.newSha)}</code>
@@ -166,6 +174,7 @@ export function DiffContent({
   onScrollTopChange,
   onCopy = copyToClipboard,
 }: DiffContentProps): ReactNode {
+  const t = useT()
   const renamed = value.oldPath !== null && value.newPath !== null && value.oldPath !== value.newPath
   const notice = truncationNotice(value)
   const command = terminalCommandFor(request)
@@ -175,9 +184,9 @@ export function DiffContent({
     body = <BinaryPanel value={value} />
   } else if (hasNoTextChange(value)) {
     body = renamed ? (
-      <EmptyState title="仅重命名，内容没有变化" />
+      <EmptyState title={t('diff.renameOnly')} />
     ) : (
-      <EmptyState title="没有文本差异" hint="可能只是文件权限或换行符变化；可在终端用 git diff 查看详情。" />
+      <EmptyState title={t('diff.noTextChange')} hint={t('diff.noTextChange.hint')} />
     )
   } else {
     body = (
@@ -202,10 +211,10 @@ export function DiffContent({
       ) : null}
       {notice === undefined ? null : (
         <div className={css.notice} data-truncated role="note">
-          <span>{notice}</span>
+          <span>{render(t, notice)}</span>
           <span className={css.terminal}>
-            在终端查看：<code className={css.command}>{command}</code>
-            <Button title="复制命令" onClick={() => onCopy(command)}>复制命令</Button>
+            {t('diff.viewInTerminal')}<code className={css.command}>{command}</code>
+            <Button title={t('diff.copyCommand')} onClick={() => onCopy(command)}>{t('diff.copyCommand')}</Button>
           </span>
         </div>
       )}
@@ -219,12 +228,13 @@ export function DiffContent({
 // ---------------------------------------------------------------------------
 
 export interface DiffViewerViewProps {
+  t: Translate
   /** 当前文件请求（store 关闭后仍用它渲染最后一帧）。 */
   request: DiffRequest
   state: DiffState
   files: readonly CommitFileEntry[]
   position: DiffViewerPosition
-  source: readonly string[]
+  source: readonly DiffSourcePart[]
   highlighter?: CodeHighlighter
   viewportHeight?: number
   initialScrollTop?: number
@@ -245,6 +255,7 @@ export interface DiffViewerViewProps {
  * @returns 覆盖层。
  */
 export function DiffViewerView({
+  t,
   request,
   state,
   files,
@@ -286,14 +297,14 @@ export function DiffViewerView({
       <div className={css.state}>
         <EmptyState
           error
-          title="读取 diff 失败"
-          hint={state.error?.message ?? '请重试'}
-          action={{ label: '重试', onClick: onRetry }}
+          title={t('diff.loadFailed')}
+          hint={state.error?.message ?? t('action.retryHint')}
+          action={{ label: t('action.retry'), onClick: onRetry }}
         />
       </div>
     )
   } else {
-    main = <p className={css.loading} role="status">加载 diff…</p>
+    main = <p className={css.loading} role="status">{t('diff.loading')}</p>
   }
 
   return (
@@ -301,12 +312,13 @@ export function DiffViewerView({
       ref={rootRef}
       className={css.root}
       role="dialog"
-      aria-label={`Diff：${current.path}`}
+      aria-label={t('diff.dialog', { path: current.path })}
       tabIndex={-1}
       data-diff-viewer
       onKeyDown={onKeyDown}
     >
       <DiffViewerHeader
+        t={t}
         path={current.path}
         status={status}
         source={source}
@@ -321,7 +333,7 @@ export function DiffViewerView({
       <div className={css.body}>
         {files.length > 1 ? (
           <div className={css.sideList}>
-            <DiffFileList files={files} currentIndex={position.index} onSelect={onSelectFile} />
+            <DiffFileList t={t} files={files} currentIndex={position.index} onSelect={onSelectFile} />
           </div>
         ) : null}
         <div className={css.main}>{main}</div>
@@ -341,8 +353,8 @@ export interface DiffViewerProps {
   load: DiffLoader
   /** 可切换的文件（提交的变更文件；合并提交分组里的条目带 parentSha）。变化不会重开当前文件。 */
   files?: readonly CommitFileEntry[]
-  /** 来源面包屑，例如 ['日志', shortSha]。 */
-  source?: readonly string[]
+  /** 来源面包屑，例如 [text('diff.source.log'), shortSha]。 */
+  source?: readonly DiffSourcePart[]
   /** 返回（Esc / ← 返回）。参数是关闭前最后打开的请求，调用方据此恢复来源页选中。 */
   onClose: (last: DiffRequest | null) => void
   /** 在查看器内切换文件后回调，便于来源页同步文件选中。 */
@@ -365,7 +377,7 @@ function positionOf(files: readonly CommitFileEntry[], request: DiffRequest): Di
   const index = fileIndexOf(files, request)
   return { index, total: files.length, hasPrev: index > 0, hasNext: index !== -1 && index < files.length - 1 }
 }
-const EMPTY_SOURCE: readonly string[] = []
+const EMPTY_SOURCE: readonly DiffSourcePart[] = []
 
 /**
  * Diff 查看器容器：持有 diff store 与控制器，挂载即打开 `request`，卸载/关闭时中止 RPC。
@@ -384,6 +396,7 @@ export function DiffViewer({
   highlight = true,
   useHighlighter = useCodeHighlighter,
 }: DiffViewerProps): ReactNode {
+  const t = useT()
   // 回调走 ref，避免调用方每次渲染传新函数时重建 store / 控制器。
   const loadRef = useRef(load)
   const onCloseRef = useRef(onClose)
@@ -423,6 +436,7 @@ export function DiffViewer({
 
   return (
     <DiffViewerView
+      t={t}
       request={current}
       state={state}
       files={files}

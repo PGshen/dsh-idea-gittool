@@ -6,6 +6,7 @@ import type { KeyboardEvent, ReactNode } from 'react'
 import type { CommitSummary, RefEntry } from '../../shared/protocol.ts'
 import { DEFAULT_LOG_FILTER } from '../store/log-store.ts'
 import type { LogAction, LogState, LogStore } from '../store/log-store.ts'
+import { useT } from '../i18n.tsx'
 import { EmptyState } from '../ui/EmptyState.tsx'
 import { FilterBar, hasActiveFilter } from './FilterBar.tsx'
 import type { BranchOption } from './FilterBar.tsx'
@@ -91,6 +92,7 @@ export function LogPage({
   sidebar,
   viewportHeight,
 }: LogPageProps): ReactNode {
+  const t = useT()
   const state = useSyncExternalStore(store.subscribe, store.getState, store.getState)
   const rows = store.getRows()
   const searchRef = useRef<HTMLInputElement | null>(null)
@@ -166,14 +168,14 @@ export function LogPage({
     content = (
       <EmptyState
         error
-        title="读取提交历史失败"
+        title={t('log.loadFailed')}
         hint={state.error.message}
-        action={{ label: '重试', onClick: () => { void store.refresh() } }}
+        action={{ label: t('action.retry'), onClick: () => { void store.refresh() } }}
       />
     )
   } else if (pending) {
     content = (
-      <div className={css.skeleton} aria-busy="true" aria-label="读取提交历史">
+      <div className={css.skeleton} aria-busy="true" aria-label={t('log.loading')}>
         {Array.from({ length: 8 }, (_, index) => <div key={index} className={css.skeletonRow} />)}
       </div>
     )
@@ -181,12 +183,12 @@ export function LogPage({
     content = hasActiveFilter(state.filter)
       ? (
         <EmptyState
-          title="没有匹配的提交"
-          hint="换个关键词，或清除筛选条件。"
-          action={{ label: '清除筛选', onClick: () => store.setFilter({ ...DEFAULT_LOG_FILTER }) }}
+          title={t('log.noMatch.title')}
+          hint={t('log.noMatch.hint')}
+          action={{ label: t('log.clearFilters'), onClick: () => store.setFilter({ ...DEFAULT_LOG_FILTER }) }}
         />
       )
-      : <EmptyState title="还没有提交" hint="这个仓库里还没有任何提交。" />
+      : <EmptyState title={t('log.empty.title')} hint={t('log.empty.hint')} />
   } else {
     content = (
       <LogTable

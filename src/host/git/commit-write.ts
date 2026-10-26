@@ -76,6 +76,15 @@ async function withRenamePartners(ctx: WriteContext, paths: readonly string[]): 
   return [...selected]
 }
 
+/** git's own failures that a hook can never cause; never report them as a blocked hook (评审 M1). */
+const NOT_A_HOOK_PATTERNS: readonly RegExp[] = [
+  /Author identity unknown/i,
+  /unable to auto-detect email address/i,
+  /empty ident name/i,
+  /gpg failed to sign/i,
+  /failed to write commit object/i,
+]
+
 /** Classify a failed `git commit`. */
 async function commitFailure(ctx: WriteContext, result: GitRunResult, paths: readonly string[]): Promise<GitCommandFailure> {
   const text = `${result.stderr}\n${result.stdout}`
@@ -84,7 +93,7 @@ async function commitFailure(ctx: WriteContext, result: GitRunResult, paths: rea
   if (PATHS_CHANGED_PATTERNS.some((pattern) => pattern.test(text))) {
     return pathsChanged('the selected files changed since the last refresh', paths)
   }
-  if (await hasHook(ctx, COMMIT_HOOKS)) {
+  if (!NOT_A_HOOK_PATTERNS.some((pattern) => pattern.test(text)) && (await hasHook(ctx, COMMIT_HOOKS))) {
     return new GitCommandFailure('git/hook-failed', 'the commit was blocked by a Git hook', {
       exitCode: result.exitCode,
       output: outputSummary(result),
@@ -163,6 +172,12 @@ export const addToVcsOperation: WriteOperation<AddToVcsInput, Omit<AddToVcsValue
   },
 
   async run(ctx, input) {
+    // Only untracked files (评审 M3): staging a tracked change or a whole directory is not "add to VCS".
+    const states = await readPathStates(ctx, input.paths)
+    const notUntracked = input.paths.filter((path) => states.get(path)?.x !== '?')
+    if (notUntracked.length > 0) {
+      throw pathsChanged('only untracked files can be added; refresh and retry', notUntracked)
+    }
     const result = await ctx.git([...GIT_BASE_ARGV, 'add', '--', ...input.paths])
     if (result.exitCode !== 0) {
       if (/pathspec '.*' did not match/i.test(result.stderr)) {

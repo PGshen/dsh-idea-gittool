@@ -61,7 +61,11 @@ export const GIT_READ_ENV: Readonly<NodeJS.ProcessEnv> = Object.freeze({
  * Write/network environment (A2 T1 spike, references §13「写执行与沙箱」):
  * - same selector tombstones, no prompts, literal pathspecs, stable locale;
  * - system config stays visible: it carries user intent such as the credential helper;
- * - `GIT_OPTIONAL_LOCKS` is removed (tombstoned) so an inherited value cannot leak in.
+ * - `GIT_OPTIONAL_LOCKS` is removed (tombstoned) so an inherited value cannot leak in;
+ * - no credential UI of any kind (评审 I5): an empty `GIT_ASKPASS` makes git skip askpass
+ *   entirely (including `core.askPass`/`SSH_ASKPASS` inherited from e.g. an IDE terminal),
+ *   OpenSSH never asks, Git Credential Manager stays non-interactive;
+ * - no editor: nothing should open one, `true` makes any accidental request succeed silently.
  */
 export const GIT_WRITE_ENV: Readonly<NodeJS.ProcessEnv> = Object.freeze({
   ...Object.fromEntries(CLEARED_GIT_ENV_KEYS.map((key) => [key, undefined])),
@@ -70,6 +74,11 @@ export const GIT_WRITE_ENV: Readonly<NodeJS.ProcessEnv> = Object.freeze({
   GIT_OPTIONAL_LOCKS: undefined,
   GIT_LITERAL_PATHSPECS: '1',
   LC_ALL: 'C',
+  GIT_ASKPASS: '',
+  SSH_ASKPASS_REQUIRE: 'never',
+  GCM_INTERACTIVE: 'never',
+  GIT_EDITOR: 'true',
+  GIT_SEQUENCE_EDITOR: 'true',
 })
 
 /** Execution class of one command: decides timeout, environment and confinement. */

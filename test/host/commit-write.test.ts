@@ -324,3 +324,40 @@ describe('addToVcsOperation', () => {
     expect(failure.code).toBe('git/paths-changed')
   })
 })
+
+describe('review fixes', () => {
+  it('commits a file inside a new untracked directory (评审 C1)', async () => {
+    const repo = makeRepo()
+    repo.write('newdir/a.txt', 'a\n')
+    repo.write('newdir/b.txt', 'b\n')
+    await commit(repo, ['newdir/a.txt'])
+    expect(committedFiles(repo)).toEqual(['A\tnewdir/a.txt'])
+    expect(porcelain(repo)).toEqual(['?? newdir/b.txt'])
+  })
+
+  it('does not report a signing failure as a hook failure even when a hook exists (评审 M1)', async () => {
+    const repo = makeRepo()
+    installHook(repo, 'pre-commit', '#!/bin/sh\nexit 0\n')
+    repo.git('config', 'commit.gpgsign', 'true')
+    repo.git('config', 'gpg.program', 'false')
+    repo.write('a.txt', 'base\n')
+    repo.git('add', 'a.txt')
+    repo.git('-c', 'commit.gpgsign=false', 'commit', '-qm', 'base')
+    repo.write('a.txt', 'changed\n')
+    const op = commitFilesOperation
+    const failure = await failureOf(op.run(contextFor(repo), op.parse({ paths: ['a.txt'], message: 'm' })))
+    expect(failure.code).toBe('git/exec-failed')
+  })
+
+  it('addToVcs only accepts untracked files (评审 M3)', async () => {
+    const repo = makeRepo()
+    repo.write('a.txt', 'base\n')
+    repo.git('add', 'a.txt')
+    repo.git('commit', '-qm', 'base')
+    repo.write('a.txt', 'changed\n')
+    const op = addToVcsOperation
+    const failure = await failureOf(op.run(contextFor(repo), op.parse({ paths: ['a.txt'] })))
+    expect(failure.code).toBe('git/paths-changed')
+    expect(porcelain(repo)).toEqual([' M a.txt'])
+  })
+})

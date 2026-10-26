@@ -137,3 +137,24 @@ describe('pullForPushOperation.run', () => {
     expect(calls.some((args) => args[0] === 'rebase')).toBe(false)
   })
 })
+
+describe('pullForPushOperation / autostash conflict（评审 I2）', () => {
+  it('reports git/conflict when restoring the autostash conflicts, instead of success', async () => {
+    const remote = setup()
+    remote.local.write('shared.txt', 'base\n')
+    remote.local.commit('shared base')
+    remote.local.git('push', '-q', 'origin', 'main')
+    remote.other.git('pull', '-q', '--no-rebase', 'origin', 'main')
+    pushFromOther(remote.other, 'shared.txt', 'theirs\n', 'their change')
+    remote.local.write('mine.txt', 'mine\n')
+    remote.local.commit('my change')
+    // Uncommitted edit to the same file the remote changed.
+    remote.local.write('shared.txt', 'local edit\n')
+
+    const failure = await failureOf(pull(contextFor(remote.local), { mode: 'rebase' }))
+    expect(failure.code).toBe('git/conflict')
+    expect(failure.details).toMatchObject({ autostash: true })
+    // The user's edit is still recoverable from the stash.
+    expect(remote.local.git('stash', 'list').trim()).not.toBe('')
+  })
+})

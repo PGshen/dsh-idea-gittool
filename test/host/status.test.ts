@@ -333,3 +333,14 @@ describe('readStatus A1 additions', () => {
     expect(status.stashCount).toBeUndefined()
   })
 })
+
+describe('readStatus / untracked directories（评审 C1）', () => {
+  it('lists each untracked file inside a new directory instead of the directory itself', async () => {
+    const repo = makeRepo()
+    repo.write('newdir/a.txt', 'a\n')
+    repo.write('newdir/sub/b.txt', 'b\n')
+    const { run } = makeRunner()
+    const status = await readStatus(run, repo.root)
+    expect(status.untracked.map(entry => entry.path).sort()).toEqual(['newdir/a.txt', 'newdir/sub/b.txt'])
+  })
+})

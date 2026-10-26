@@ -77,6 +77,15 @@ export const pullForPushOperation: WriteOperation<PullForPushInput, Omit<PullFor
       }
       throw generic
     }
+    // `--autostash` exits 0 even when re-applying the stash conflicts (评审 I2): the user's
+    // uncommitted edits are then in the stash and the worktree holds conflict markers.
+    if (/Applying autostash resulted in conflicts/i.test(`${result.stdout}\n${result.stderr}`)) {
+      throw new GitCommandFailure('git/conflict', 'your uncommitted changes conflicted and were kept in the stash', {
+        autostash: true,
+        mode: input.mode,
+        output: outputSummary(result),
+      })
+    }
     return { head: (await readHead(ctx)).sha }
   },
 }

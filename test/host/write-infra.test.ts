@@ -488,3 +488,59 @@ describe('write endpoints / gate, queue and version', () => {
     expect((status.ok ? (status.value as StatusValue).branch : null)).toBe('main')
   })
 })
+
+describe('review fixes', () => {
+  it('write environment disables every interactive credential path (评审 I5)', async () => {
+    const repo = makeRepo()
+    const fake = createFakeSubprocess()
+    await createGitRunner(fake)(['status'], { cwd: repo.root, mode: 'network', confine: UNCONFINED })
+    expect(lastSpawn(fake).env).toMatchObject({
+      GIT_ASKPASS: '',
+      SSH_ASKPASS_REQUIRE: 'never',
+      GCM_INTERACTIVE: 'never',
+      GIT_EDITOR: 'true',
+      GIT_SEQUENCE_EDITOR: 'true',
+    })
+  })
+
+  it('a git directory outside the workspace makes the repository read-only (评审 I6)', async () => {
+    const repo = makeRepo()
+    const { deps } = gateDeps(repo.root, 'workspace-write')
+    const access = await resolveWriteAccess(
+      { repoRoot: repo.root, sessionId: 's', gitDirs: [repo.root + '/.git', '/somewhere/else/.git'] },
+      deps,
+    )
+    expect(access.policy.mode).toBe('read-only')
+    expect(access.policy.reasonCode).toBe('repo-outside-workspace')
+  })
+
+  it('a write keeps running after the HTTP request is cancelled (评审 I1)', async () => {
+    let seen: WriteContext | undefined
+    const gate = deferred<void>()
+    const repo = makeRepo()
+    const { deps } = gateDeps(repo.root, 'workspace-write')
+    const handler = createRpcHandler({
+      runner: createGitRunner(createFakeSubprocess()),
+      ...deps,
+      writeOperations: {
+        commitFiles: {
+          parse: () => ({}),
+          run: async (ctx) => {
+            seen = ctx
+            await gate.promise
+            return { sha: 'abcdef1234567', shortSha: 'abcdef1' }
+          },
+        },
+      },
+    })
+    const request = new AbortController()
+    const pending = handler('commitFiles', { sessionId: 's', requestId: 'r' }, request.signal)
+    for (let waited = 0; seen === undefined && waited < 10_000; waited += 20) {
+      await new Promise(resolve => setTimeout(resolve, 20))
+    }
+    request.abort()
+    expect(seen?.signal.aborted).toBe(false)
+    gate.resolve()
+    expect((await pending).ok).toBe(true)
+  })
+})

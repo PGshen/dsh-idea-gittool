@@ -39,6 +39,11 @@ export interface SandboxGateDeps {
 export interface WritePolicyInput {
   repoRoot: string
   sessionId: string
+  /**
+   * Where the repository's git data actually lives (`--absolute-git-dir`, `--git-common-dir`).
+   * A linked worktree keeps its index and objects under the main repository (评审 I6).
+   */
+  gitDirs?: readonly string[] | undefined
 }
 
 /** Cancellation for the confine probe. */
@@ -117,7 +122,9 @@ export async function resolveWriteAccess(
 
   // workspace-write: the whole repository (including .git) must sit inside the boundary.
   try {
-    if (!(await isInside(policy.workspaceRoot, input.repoRoot))) {
+    const targets = [input.repoRoot, ...(input.gitDirs ?? [])]
+    const inside = await Promise.all(targets.map((target) => isInside(policy.workspaceRoot, target)))
+    if (inside.includes(false)) {
       return { policy: readOnly('repoOutsideWorkspace', policy.workspaceRoot) }
     }
   } catch {

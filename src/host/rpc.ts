@@ -34,8 +34,10 @@ import type { RepoCache } from './cache.ts'
 import { createRepoCache } from './cache.ts'
 import type { FsWatch, RepoWatch } from './watch.ts'
 import { watchRepo } from './watch.ts'
+import { isAbsolute, resolve as resolvePath } from 'node:path'
+
 import type { GitRunner, WriteOperation } from './git-executor.ts'
-import { GitCommandFailure, bindWriteContext, messageOf } from './git-executor.ts'
+import { GIT_BASE_ARGV, GitCommandFailure, bindWriteContext, messageOf } from './git-executor.ts'
 import { addToVcsOperation, amendMessageOperation, commitFilesOperation } from './git/commit-write.ts'
 import { pullForPushOperation } from './git/pull.ts'
 import { pushOperation, readPushPreview } from './git/push.ts'
@@ -134,6 +136,14 @@ interface HandlerRuntime {
   /** Per-repository serial write queue with requestId de-duplication (A2). */
   writes: WriteQueue
   operations: WriteOperations
+  /**
+   * Writes run on the runtime's lifetime, not the HTTP request's (评审 I1, ADR 0007): a closed
+   * tab or dropped connection must not kill a commit half-way or skip its index cleanup.
+   * Each command still has its own write/network deadline.
+   */
+  writeSignal: AbortSignal
+  /** Where the repository's git data lives, memoized per repository root (评审 I6). */
+  gitDirs: (repoRoot: string, signal: AbortSignal) => Promise<string[] | undefined>
 }
 
 /** `git version 2.50.1 (Apple Git-155)` → `2.50.1`. */
@@ -191,7 +201,33 @@ export function createRpcRuntime(deps: RpcDeps): RpcRuntime {
     return version
   }
 
+  const lifetime = new AbortController()
+  const gitDirsByRoot = new Map<string, string[]>()
+  const gitDirs = async (repoRoot: string, signal: AbortSignal): Promise<string[] | undefined> => {
+    const known = gitDirsByRoot.get(repoRoot)
+    if (known !== undefined) return known
+    try {
+      const result = await deps.runner(
+        [...GIT_BASE_ARGV, 'rev-parse', '--absolute-git-dir', '--git-common-dir'],
+        { cwd: repoRoot, signal },
+      )
+      if (result.exitCode !== 0) return undefined
+      const dirs = result.stdout
+        .split('\n')
+        .map((line) => line.trim())
+        .filter((line) => line !== '')
+        .map((dir) => (isAbsolute(dir) ? dir : resolvePath(repoRoot, dir)))
+      gitDirsByRoot.set(repoRoot, dirs)
+      return dirs
+    } catch {
+      // Unknown location: the root check still applies and the sandbox still enforces writes.
+      return undefined
+    }
+  }
+
   const runtime: HandlerRuntime = {
+    writeSignal: lifetime.signal,
+    gitDirs,
     cache: cacheOf,
     ensureWatch,
     gitVersion,
@@ -261,6 +297,7 @@ export function createRpcRuntime(deps: RpcDeps): RpcRuntime {
 
   const dispose = async (): Promise<void> => {
     disposed = true
+    lifetime.abort()
     const closing = [...watches.values()].map(async (watch) => {
       await watch.close()
     })
@@ -299,7 +336,7 @@ async function handleBootstrap(
   // the older version, so the client treats that data as stale and polls again.
   const version = runtime.cache().versionOf(resolution.root)
   const status = await cachedStatus(deps, runtime, resolution.root, signal, version)
-  const writePolicy = await resolveWritePolicy(deps, resolution.root, sessionId, signal)
+  const writePolicy = await resolveWritePolicy(deps, runtime, resolution.root, sessionId, signal)
   const gitVersion = await runtime.gitVersion(resolution.root, signal)
   const pendingWrites = runtime.writes.pending(resolution.root)
   return ok<BootstrapValue>({
@@ -331,14 +368,15 @@ async function handleWrite<V extends object>(
   const requestId = parseRequestId(payload)
   const input = operation.parse(payload)
   const root = await repositoryRoot(deps, sessionId, signal)
+  const writeSignal = runtime.writeSignal
   const value = await runtime.writes.run(root, requestId, async () => {
-    const access = await resolveWriteAccessFor(deps, root, sessionId, signal)
+    const access = await resolveWriteAccessFor(deps, runtime, root, sessionId, writeSignal)
     assertWritable(access.policy)
     if (access.confiner === undefined) {
       throw new GitCommandFailure('git/sandbox-denied', 'write confinement is unavailable (fail closed)', {})
     }
     try {
-      const result = await operation.run(bindWriteContext(deps.runner, root, access.confiner, signal), input)
+      const result = await operation.run(bindWriteContext(deps.runner, root, access.confiner, writeSignal), input)
       return { ...result, version: runtime.cache().bumpVersion(root) }
     } catch (error) {
       runtime.cache().bumpVersion(root)
@@ -473,6 +511,7 @@ async function repositoryRoot(
 
 async function resolveWritePolicy(
   deps: RpcDeps,
+  runtime: HandlerRuntime,
   repoRoot: string,
   sessionId: string,
   signal: AbortSignal,
@@ -483,12 +522,14 @@ async function resolveWritePolicy(
     sandboxPolicy: deps.sandboxPolicy,
     sandbox: deps.sandbox,
   }
-  return await evaluateWritePolicy({ repoRoot, sessionId }, gateDeps, { signal })
+  const gitDirs = await runtime.gitDirs(repoRoot, signal)
+  return await evaluateWritePolicy({ repoRoot, sessionId, gitDirs }, gateDeps, { signal })
 }
 
 /** Gate decision for a write; the `writePolicy` test seam yields no confiner (writes refused). */
 async function resolveWriteAccessFor(
   deps: RpcDeps,
+  runtime: HandlerRuntime,
   repoRoot: string,
   sessionId: string,
   signal: AbortSignal,
@@ -499,7 +540,8 @@ async function resolveWriteAccessFor(
     sandboxPolicy: deps.sandboxPolicy,
     sandbox: deps.sandbox,
   }
-  return await resolveWriteAccess({ repoRoot, sessionId }, gateDeps, { signal })
+  const gitDirs = await runtime.gitDirs(repoRoot, signal)
+  return await resolveWriteAccess({ repoRoot, sessionId, gitDirs }, gateDeps, { signal })
 }
 
 function parseRequestId(payload: unknown): string {

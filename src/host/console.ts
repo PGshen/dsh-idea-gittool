@@ -24,6 +24,8 @@ export interface GitConsoleInput {
   /** 上游（subprocess 收集窗口）已经丢过字节时的提示。 */
   stdoutTruncated?: boolean | undefined
   stderrTruncated?: boolean | undefined
+  /** 经 stdin 传给 git 的字节数（A3）；内容本身（路径、提交信息）永不记录。 */
+  stdinBytes?: number | undefined
 }
 
 /** Git 控制台数据源：记录入口 + 只读快照。 */
@@ -125,6 +127,7 @@ export function createGitConsole(options: GitConsoleOptions = {}): GitConsole {
     if (input.cancelled === true) entry.cancelled = true
     if (input.timedOut === true) entry.timedOut = true
     if (input.cwd !== undefined) entry.cwd = input.cwd
+    if (input.stdinBytes !== undefined) entry.stdinBytes = input.stdinBytes
     // 轮询会反复执行同样的读命令：成功且输出一致的重复命令折叠成一条（移到末尾、计数），
     // 否则 3s 一轮的噪音会很快冲掉用户真正想排查的记录。失败永远单独保留。
     if (entry.exitCode === 0) {
@@ -157,6 +160,7 @@ function isSameSuccess(left: ConsoleRecord, right: ConsoleRecord): boolean {
     && left.cwd === right.cwd
     && left.stdout === right.stdout
     && left.stderr === right.stderr
+    && left.stdinBytes === right.stdinBytes
     && left.argv.length === right.argv.length
     && left.argv.every((argument, index) => argument === right.argv[index])
 }

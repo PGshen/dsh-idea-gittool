@@ -187,6 +187,40 @@ export function authRequired(result: GitRunResult, repoRoot: string, gitArgs: re
   })
 }
 
+/**
+ * Paths per argv batch for commands without `--pathspec-from-file` (`clean`, `status`).
+ * 200 × the 4096-byte PATH_MAX stays below 1MiB (macOS ARG_MAX); real paths are far shorter
+ * (A3 T1 spike: 200 × 600-byte paths cleaned in one confined call).
+ */
+export const CLEAN_BATCH_MAX = 200
+
+/** Pathspec delivered on stdin (A3 T1, TD-9): no path ever lands in argv, so ARG_MAX cannot bite. */
+export interface PathspecInput {
+  /** Append after the subcommand's options; replaces `-- <paths...>`. */
+  args: readonly ['--pathspec-from-file=-', '--pathspec-file-nul']
+  /** NUL-terminated paths; literal because `GIT_LITERAL_PATHSPECS=1` is set for writes. */
+  stdin: string
+}
+
+/**
+ * `--pathspec-from-file=- --pathspec-file-nul` + the NUL-terminated list, for `add`, `commit`,
+ * `restore`, `reset`, `checkout`, `rm` and `stash push` (references §13, A3 spike).
+ * Paths come from {@link parseWritePaths} (validated, no NUL), so the encoding is unambiguous.
+ */
+export function pathspecArgs(paths: readonly string[]): PathspecInput {
+  return {
+    args: ['--pathspec-from-file=-', '--pathspec-file-nul'],
+    stdin: paths.map((path) => `${path}\0`).join(''),
+  }
+}
+
+/** Split a list into consecutive batches of at most `size` items. */
+export function batches<T>(items: readonly T[], size: number): T[][] {
+  const result: T[][] = []
+  for (let index = 0; index < items.length; index += size) result.push(items.slice(index, index + size))
+  return result
+}
+
 /** Index (`x`) and worktree (`y`) status letters of one path; `??` is untracked. */
 export interface PathState {
   x: string
@@ -196,17 +230,20 @@ export interface PathState {
 /**
  * Status of exactly the given paths (`status --porcelain=v1 -z --no-renames`, all untracked
  * files listed individually). A path absent from the map has no change at all.
+ * `status` has no `--pathspec-from-file`, so long lists run in {@link CLEAN_BATCH_MAX} batches.
  */
 export async function readPathStates(ctx: WriteContext, paths: readonly string[]): Promise<Map<string, PathState>> {
-  const stdout = await queryOk(
-    ctx,
-    ['status', '--porcelain=v1', '-z', '--no-renames', '--untracked-files=all', '--ignore-submodules=none', '--', ...paths],
-    'git status',
-  )
   const states = new Map<string, PathState>()
-  for (const record of stdout.split('\0')) {
-    if (record.length < 4 || record[2] !== ' ') continue
-    states.set(record.slice(3), { x: record[0] ?? ' ', y: record[1] ?? ' ' })
+  for (const batch of batches(paths, CLEAN_BATCH_MAX)) {
+    const stdout = await queryOk(
+      ctx,
+      ['status', '--porcelain=v1', '-z', '--no-renames', '--untracked-files=all', '--ignore-submodules=none', '--', ...batch],
+      'git status',
+    )
+    for (const record of stdout.split('\0')) {
+      if (record.length < 4 || record[2] !== ' ') continue
+      states.set(record.slice(3), { x: record[0] ?? ' ', y: record[1] ?? ' ' })
+    }
   }
   return states
 }

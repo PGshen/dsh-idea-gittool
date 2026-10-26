@@ -38,11 +38,11 @@ dsh-idea-gittool/
 | `src/client/ui/` | A1 基础组件：Button/Chip/StatusLetter/EmptyState（CSS Modules，ADR 0005） | React |
 | `src/host/` | `/dsh-git` HTTP 路由（webServer prefix + `requestRejection` 鉴权，**不用** `connection.rpc.handle`）、RPC 处理器、sessionId → 仓库根解析、git 进程执行与解析、写能力门禁、缓存与刷新 | `src/shared/`；`node:*`；DSH 能力只从 `ctx` 取 |
 | `src/host/http.ts` | 自注册 `/dsh-git/<endpoint>` 前缀路由、JSON 信封与错误映射；原因见 references §13 | 同上 |
-| `src/host/git/` | A2 写操作：`commit-write`（只提交勾选、仅改信息 Amend、加入 VCS）、`rollback`、`push`（含推送预览与被拒分类）、`pull`（推送被拒后拉取），共用 `write-support`；读取器：`status`（含贮藏数/操作状态）、`log`（Host 侧筛选与 v1/v2 游标）、`refs`、`branches`、`commit`、`diff`（结构化 hunk、截断规则）；`regex-worker`（用户正则在 `worker_threads` 中限时匹配，避免阻塞 Host） | `src/shared/`、`git-executor.ts` |
-| `src/host/{git-executor,console}.ts` | `ctx.subprocess` 执行 git（固定环境、超时、输出上限）；A2 起分 read/write/network 三种模式（8/60/180s），写与网络命令必须带 `GitConfiner`（`sandbox.confine` 或 danger 模式下不 confine），否则拒绝且不 spawn；`instrumentGitRunner` 把每次调用写进控制台环形缓冲（脱敏/截断） | `src/shared/` |
+| `src/host/git/` | A2 写操作：`commit-write`（只提交勾选、仅改信息 Amend、加入 VCS）、`rollback`、`push`（含推送预览与被拒分类）、`pull`（推送被拒后拉取），共用 `write-support`（A3 起路径经 stdin `--pathspec-from-file`，不支持该选项的 `clean`/`status` 每批 ≤200）；读取器：`status`（含贮藏数/操作状态/冲突类型）、`log`（Host 侧筛选与 v1/v2 游标）、`refs`、`branches`、`commit`、`diff`（结构化 hunk、截断规则）；`regex-worker`（用户正则在 `worker_threads` 中限时匹配，避免阻塞 Host） | `src/shared/`、`git-executor.ts` |
+| `src/host/{git-executor,console}.ts` | `ctx.subprocess` 执行 git（固定环境、超时、输出上限；A3 起可选 stdin，控制台只记字节数）；A2 起分 read/write/network 三种模式（8/60/180s），写与网络命令必须带 `GitConfiner`（`sandbox.confine` 或 danger 模式下不 confine），否则拒绝且不 spawn；`instrumentGitRunner` 把每次调用写进控制台环形缓冲（脱敏/截断） | `src/shared/` |
 | `src/host/{write-queue,sandbox-gate}.ts` | 每仓库写队列（串行、`requestId` 去重）；写门禁 `resolveWriteAccess` 每次写请求重新判定并给出 confiner，只读原因带稳定 `reasonCode` | `src/shared/`、`git-executor.ts` |
-| `src/host/{watch,cache}.ts` | `.git` 关键目标经 `ctx.fs`（先 `resolve()` 再 `watch()`）防抖监听，递增每仓库 version 使缓存失效；无 `fs` 时降级为 1s TTL + 客户端 3s 轮询 | `node:path` |
-| `src/shared/` | RPC 方法与 payload 类型、文件状态与 diff 数据结构、错误码 | 无（只放两端都能内联的类型与常量） |
+| `src/host/{watch,cache}.ts` | `.git` 关键目标经 `ctx.fs`（先 `resolve()` 再 `watch()`）防抖监听，另枚举 `refs/{heads,remotes,tags}` 的嵌套子目录逐个监听（≤256，超出降级），递增每仓库 version 使缓存失效；无 `fs` 时降级为 1s TTL + 客户端 3s 轮询 | `node:path` |
+| `src/shared/` | RPC 方法与 payload 类型（`RpcEndpointTypes` 逐端点穷举；`WRITE_ENDPOINTS` 为写端点子集；A3 契约在 T1 冻结）、文件状态与 diff 数据结构、错误码 | 无（只放两端都能内联的类型与常量） |
 | `build.mjs` | 产出 `lib/host.js` / `lib/client.js`，复刻 `window.__ModuleLoader__` 契约与 baseline externals | `package.json`；以 `src/` 为构建输入 |
 | `scripts/check_docs.py` | 文档链接、计划/ADR 章节、技术债编号、AGENTS.md 行数检查 | 无（仅 Python 标准库） |
 

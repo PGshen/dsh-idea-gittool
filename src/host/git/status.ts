@@ -5,6 +5,7 @@ import { access } from 'node:fs/promises'
 import { join } from 'node:path'
 
 import type {
+  ConflictKind,
   FileEntry,
   FileStatusCode,
   RepoOperation,
@@ -40,6 +41,22 @@ const TRACKED_STATUS: Readonly<Record<string, FileStatusCode>> = {
   C: 'C',
   T: 'T',
   U: 'U',
+}
+
+/** Unmerged XY → conflict kind (git-status(1) "Unmerged entries"; A3 T1). */
+const CONFLICT_KINDS: Readonly<Record<string, ConflictKind>> = {
+  UU: 'both-modified',
+  AA: 'both-added',
+  DD: 'both-deleted',
+  AU: 'added-by-us',
+  UA: 'added-by-them',
+  DU: 'deleted-by-us',
+  UD: 'deleted-by-them',
+}
+
+/** Conflict kind of an unmerged record; an unknown XY falls back to both-modified. */
+export function conflictKindOf(xy: string): ConflictKind {
+  return CONFLICT_KINDS[xy] ?? 'both-modified'
 }
 
 function toFileStatus(letter: string | undefined): FileStatusCode {
@@ -183,7 +200,7 @@ export function parseStatusPorcelainV2Z(
     if (kind === 'u') {
       const fields = chunk.split(' ')
       if (fields.length < 11) throw unparseable(chunk)
-      emit(conflicts, { path: fields.slice(10).join(' '), status: 'U' })
+      emit(conflicts, { path: fields.slice(10).join(' '), status: 'U', conflict: conflictKindOf(fields[1] ?? 'UU') })
       continue
     }
     if (kind === '?') {

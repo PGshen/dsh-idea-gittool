@@ -13,22 +13,20 @@ import type {
 } from '@deepseek-ai/dsh-client-connection'
 
 import type {
-  AddToVcsValue,
   BootstrapValue,
   BranchesValue,
   CommitDetailValue,
-  CommitResultValue,
   ConsoleValue,
   DiffFileValue,
   LogValue,
-  PullForPushValue,
   PushPreviewValue,
-  PushValue,
   RefsValue,
-  RollbackValue,
+  RpcEndpointTypes,
   StatusValue,
+  WriteEndpoint,
   WritePolicyValue,
 } from '../shared/protocol.ts'
+import { isWriteEndpoint } from '../shared/protocol.ts'
 import type { GitConsole } from './console.ts'
 import type { RepoCache } from './cache.ts'
 import { createRepoCache } from './cache.ts'
@@ -37,7 +35,7 @@ import { watchRepo } from './watch.ts'
 import { isAbsolute, resolve as resolvePath } from 'node:path'
 
 import type { GitRunner, WriteOperation } from './git-executor.ts'
-import { GIT_BASE_ARGV, GitCommandFailure, bindWriteContext, messageOf } from './git-executor.ts'
+import { GIT_BASE_ARGV, GitCommandFailure, bindWriteContext, messageOf, notImplemented } from './git-executor.ts'
 import { addToVcsOperation, amendMessageOperation, commitFilesOperation } from './git/commit-write.ts'
 import { pullForPushOperation } from './git/pull.ts'
 import { pushOperation, readPushPreview } from './git/push.ts'
@@ -70,14 +68,25 @@ const PUSH_PREVIEW_CACHE_KEY = 'pushPreview'
 /** Longest accepted requestId (client-generated UUIDs are 36). */
 const MAX_REQUEST_ID_LENGTH = 100
 
-/** A2 write endpoints → their operations; tests override single entries. */
-export interface WriteOperations {
-  commitFiles: WriteOperation<unknown, Omit<CommitResultValue, 'version'>>
-  amendMessage: WriteOperation<unknown, Omit<CommitResultValue, 'version'>>
-  rollback: WriteOperation<unknown, Omit<RollbackValue, 'version'>>
-  addToVcs: WriteOperation<unknown, Omit<AddToVcsValue, 'version'>>
-  push: WriteOperation<unknown, Omit<PushValue, 'version'>>
-  pullForPush: WriteOperation<unknown, Omit<PullForPushValue, 'version'>>
+/** A write endpoint's response without the version the RPC layer stamps on it. */
+export type WriteValue<E extends WriteEndpoint> = Omit<RpcEndpointTypes[E]['value'], 'version'>
+
+/** Write endpoints (A2 + A3) → their operations; tests override single entries. */
+export type WriteOperations = { [E in WriteEndpoint]: WriteOperation<unknown, WriteValue<E>> }
+
+/**
+ * Placeholder for an A3 write endpoint registered in T1 ahead of its implementation:
+ * refuses at parse time (before the queue and gate), so nothing runs.
+ */
+function pendingOperation<E extends WriteEndpoint>(endpoint: E): WriteOperation<unknown, WriteValue<E>> {
+  return {
+    parse() {
+      throw notImplemented(endpoint)
+    },
+    run() {
+      return Promise.reject(notImplemented(endpoint))
+    },
+  }
 }
 
 const DEFAULT_WRITE_OPERATIONS: WriteOperations = {
@@ -87,6 +96,26 @@ const DEFAULT_WRITE_OPERATIONS: WriteOperations = {
   addToVcs: addToVcsOperation,
   push: pushOperation,
   pullForPush: pullForPushOperation,
+  // A3: replaced by T2 (operation*), T3 (branches, conflicts), T4 (integrate/update), T5 (stash).
+  operationControl: pendingOperation('operationControl'),
+  operationCommit: pendingOperation('operationCommit'),
+  resolveConflict: pendingOperation('resolveConflict'),
+  checkout: pendingOperation('checkout'),
+  createBranch: pendingOperation('createBranch'),
+  renameBranch: pendingOperation('renameBranch'),
+  deleteBranch: pendingOperation('deleteBranch'),
+  merge: pendingOperation('merge'),
+  rebase: pendingOperation('rebase'),
+  cherryPick: pendingOperation('cherryPick'),
+  revertCommit: pendingOperation('revertCommit'),
+  reset: pendingOperation('reset'),
+  fetch: pendingOperation('fetch'),
+  pull: pendingOperation('pull'),
+  updateProject: pendingOperation('updateProject'),
+  resetToRemote: pendingOperation('resetToRemote'),
+  stashCreate: pendingOperation('stashCreate'),
+  stashApply: pendingOperation('stashApply'),
+  stashDrop: pendingOperation('stashDrop'),
 }
 
 /** Everything the handler needs; all session services are lazy and optional. */
@@ -280,14 +309,19 @@ export function createRpcRuntime(deps: RpcDeps): RpcRuntime {
           return await handleCached<PushPreviewValue>(deps, runtime, payload, signal, PUSH_PREVIEW_CACHE_KEY, (root) =>
             readPushPreview(deps.runner, root, { signal }),
           )
-        case 'commitFiles':
-        case 'amendMessage':
-        case 'rollback':
-        case 'addToVcs':
-        case 'push':
-        case 'pullForPush':
-          return await handleWrite<object>(deps, runtime, payload, signal, runtime.operations[endpoint])
+        // A3 read endpoints registered in T1; T2 (operationState), T3 (conflictCommand),
+        // T4 (resetPreview) and T5 (stashList, stashFiles) replace these cases.
+        case 'operationState':
+        case 'conflictCommand':
+        case 'resetPreview':
+        case 'stashList':
+        case 'stashFiles':
+          parseSessionId(payload)
+          throw notImplemented(endpoint)
         default:
+          if (isWriteEndpoint(endpoint)) {
+            return await handleWrite<object>(deps, runtime, payload, signal, runtime.operations[endpoint])
+          }
           throw invalidPayload('unknown RPC endpoint', { endpoint })
       }
     } catch (error) {

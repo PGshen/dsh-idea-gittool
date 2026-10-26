@@ -12,9 +12,10 @@ import {
   amendMessageOperation,
   commitFilesOperation,
 } from '../../src/host/git/commit-write.ts'
-import { createTempRepo, writeExecutableScript } from './fixtures.ts'
+import { createTempRepo, longPaths, writeExecutableScript } from './fixtures.ts'
 import type { TempRepo } from './fixtures.ts'
 import { createFakeSubprocess } from './fake-subprocess.ts'
+import type { FakeSubprocess } from './fake-subprocess.ts'
 
 vi.setConfig({ testTimeout: 30_000 })
 
@@ -359,5 +360,69 @@ describe('review fixes', () => {
     const failure = await failureOf(op.run(contextFor(repo), op.parse({ paths: ['a.txt'] })))
     expect(failure.code).toBe('git/paths-changed')
     expect(porcelain(repo)).toEqual([' M a.txt'])
+  })
+})
+
+describe('paths through stdin (A3 T1, TD-9)', () => {
+  function recordedContext(repo: TempRepo): { ctx: WriteContext; fake: FakeSubprocess } {
+    const fake = createFakeSubprocess()
+    const ctx = bindWriteContext(createGitRunner(fake), repo.root, { kind: 'unconfined' }, new AbortController().signal)
+    return { ctx, fake }
+  }
+
+  /** Largest argv (bytes) any spawn used: must stay far below ARG_MAX (1MiB on macOS). */
+  function largestArgvBytes(fake: FakeSubprocess): number {
+    return Math.max(...fake.spawns.map(({ spec }) => spec.argv.reduce((sum, arg) => sum + Buffer.byteLength(arg) + 1, 0)))
+  }
+
+  it('commits 2000 untracked paths of ~600 bytes (>1MiB in total)', async () => {
+    const repo = makeRepo()
+    const paths = longPaths(WRITE_PATHS_MAX)
+    expect(paths.reduce((sum, path) => sum + Buffer.byteLength(path), 0)).toBeGreaterThan(1024 * 1024)
+    for (const path of paths) repo.write(path, `${path.slice(-24)}\n`)
+    repo.write('other.txt', 'not selected\n')
+    const { ctx, fake } = recordedContext(repo)
+    const op = commitFilesOperation
+
+    await op.run(ctx, op.parse({ paths, message: 'many' }))
+
+    const committed = repo.git('diff-tree', '--no-commit-id', '--name-only', '-r', 'HEAD').split('\n').filter((line) => line !== '')
+    expect(committed).toHaveLength(WRITE_PATHS_MAX)
+    expect(porcelain(repo)).toEqual(['?? other.txt'])
+    expect(largestArgvBytes(fake)).toBeLessThan(256 * 1024)
+    const commitSpawn = fake.spawns.find(({ spec }) => spec.argv.includes('commit'))
+    expect(commitSpawn?.spec.argv).toEqual(expect.arrayContaining(['--only', '--pathspec-from-file=-', '--pathspec-file-nul']))
+    expect(commitSpawn?.spec.stdio.stdin).toBe('pipe')
+    expect(commitSpawn?.stdinWritten).toBe(`${paths.join('\0')}\0`)
+  })
+
+  it('undoes intent-to-add through stdin when the commit fails', async () => {
+    const repo = makeRepo()
+    const paths = longPaths(300)
+    for (const path of paths) repo.write(path, 'x\n')
+    installHook(repo, 'pre-commit', '#!/bin/sh\nexit 1\n')
+    const { ctx, fake } = recordedContext(repo)
+    const op = commitFilesOperation
+
+    const failure = await failureOf(op.run(ctx, op.parse({ paths, message: 'blocked' })))
+
+    expect(failure.code).toBe('git/hook-failed')
+    expect(repo.git('diff', '--cached', '--name-only')).toBe('')
+    const reset = fake.spawns.find(({ spec }) => spec.argv.includes('reset'))
+    expect(reset?.spec.argv).toEqual(expect.arrayContaining(['--pathspec-from-file=-', '--pathspec-file-nul']))
+  })
+
+  it('adds 2000 long untracked paths to VCS', async () => {
+    const repo = makeRepo()
+    const paths = longPaths(WRITE_PATHS_MAX)
+    for (const path of paths) repo.write(path, 'x\n')
+    const { ctx, fake } = recordedContext(repo)
+    const op = addToVcsOperation
+
+    const value = await op.run(ctx, op.parse({ paths }))
+
+    expect(value.added).toHaveLength(WRITE_PATHS_MAX)
+    expect(repo.git('diff', '--cached', '--name-only').split('\n').filter((line) => line !== '')).toHaveLength(WRITE_PATHS_MAX)
+    expect(largestArgvBytes(fake)).toBeLessThan(256 * 1024)
   })
 })

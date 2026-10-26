@@ -19,6 +19,7 @@ import type {
   StatusValue,
   WritePolicyValue,
 } from '../../src/shared/protocol.ts'
+import { RPC_ENDPOINTS, WRITE_ENDPOINTS, isWriteEndpoint } from '../../src/shared/protocol.ts'
 import { GitCommandFailure, createGitRunner, instrumentGitRunner } from '../../src/host/git-executor.ts'
 import { createGitConsole } from '../../src/host/console.ts'
 import { createRepoCache } from '../../src/host/cache.ts'
@@ -508,5 +509,69 @@ describe('createRpcHandler / A1 read endpoints', () => {
     const result = await handler(endpoint, payload, SIGNAL)
 
     expect(errorOf(result).code).toBe('git/invalid-payload')
+  })
+})
+
+describe('endpoint registry (A3 T1)', () => {
+  const A3_PENDING = [
+    'operationState',
+    'conflictCommand',
+    'resetPreview',
+    'stashList',
+    'stashFiles',
+    'operationControl',
+    'operationCommit',
+    'resolveConflict',
+    'checkout',
+    'createBranch',
+    'renameBranch',
+    'deleteBranch',
+    'merge',
+    'rebase',
+    'cherryPick',
+    'revertCommit',
+    'reset',
+    'fetch',
+    'pull',
+    'updateProject',
+    'resetToRemote',
+    'stashCreate',
+    'stashApply',
+    'stashDrop',
+  ]
+
+  it('routes every registered endpoint (none answers "unknown RPC endpoint")', async () => {
+    const { handler } = makeHandler()
+    for (const endpoint of RPC_ENDPOINTS) {
+      const result = await handler(endpoint, { sessionId: 'session-1', requestId: 'r-1', sha: 'a'.repeat(40) }, SIGNAL)
+      if (!result.ok) expect(result.error.message, endpoint).not.toBe('unknown RPC endpoint')
+    }
+    expect(errorOf(await handler('nope', { sessionId: 'session-1' }, SIGNAL)).message).toBe('unknown RPC endpoint')
+  })
+
+  it('registers every A3 endpoint and answers git/exec-failed "not implemented" until it lands', async () => {
+    const { handler } = makeHandler()
+    expect(RPC_ENDPOINTS).toEqual(expect.arrayContaining(A3_PENDING))
+    for (const endpoint of A3_PENDING) {
+      const error = errorOf(await handler(endpoint, { sessionId: 'session-1', requestId: 'r-1' }, SIGNAL))
+      expect({ endpoint, code: error.code, message: error.message }).toEqual({
+        endpoint,
+        code: 'git/exec-failed',
+        message: 'not implemented',
+      })
+    }
+  })
+
+  it('write endpoints are a subset of the registry and require a requestId', async () => {
+    const { handler } = makeHandler()
+    for (const endpoint of WRITE_ENDPOINTS) {
+      expect(RPC_ENDPOINTS).toContain(endpoint)
+      expect(isWriteEndpoint(endpoint)).toBe(true)
+      const error = errorOf(await handler(endpoint, { sessionId: 'session-1' }, SIGNAL))
+      expect({ endpoint, code: error.code }).toEqual({ endpoint, code: 'git/invalid-payload' })
+    }
+    for (const endpoint of ['status', 'operationState', 'stashList', 'resetPreview']) {
+      expect(isWriteEndpoint(endpoint)).toBe(false)
+    }
   })
 })

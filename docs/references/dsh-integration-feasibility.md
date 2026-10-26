@@ -1013,4 +1013,17 @@ Git 与构建行为（A1 实测，git 2.50.1）：
 | 同理，hook 或 git 子进程写 `~/.cache`、`~/Library/Caches` 等工作区外目录（pre-commit 框架、prettier 缓存）在 `workspace-write` confine 下会失败；表现为 hook 自身报错 | ⚠️ 2026-10-26 推断，未实测 | A2 代码评审 |
 | 无凭据的 HTTPS 认证失败在 `GIT_TERMINAL_PROMPT=0` 下立即返回 `fatal: could not read Username for '<url>': terminal prompts disabled`（退出 128），不会挂起 | ✅ 2026-10-26 | spike 3d |
 
+stdin 与长路径（A3 T1 spike，2026-10-26，git 2.50.1 / macOS Seatbelt，ARG_MAX=1048576）：
+
+方法同上：按 `seatbeltProfileArgs` + `writableRoots` 拼出 `workspace-write` 的 SBPL，用 Node `spawn('/usr/bin/sandbox-exec', ['-p', profile, '--', 'git', ...], { stdio: ['pipe', ...] })` 写入 stdin 后 `end()`（与 DSH subprocess 的 `'pipe'` 模式同形）。脚本 `.evidence/a3/spike.mjs`，输出 `.evidence/a3/spike.log`。仍是等价复现，不是经 3081 Host 的端到端调用。
+
+| 结论 | 状态 | 证据 |
+|---|---|---|
+| DSH `ctx.subprocess.spawn` 的 `stdio.stdin` 支持 `'ignore' \| 'pipe' \| { data: string }`：`'pipe'` 时 `handle.stdin` 是 `Writable`，调用方 `end(data)`；`{ data }` 由 seam 写完即关。本插件用 `'pipe'` + `end()`（`GitRunOptions.stdin`，可传 `Uint8Array`） | ✅ 2026-10-26 源码 | `packages/subprocess/subprocess/src/types.ts:36,171`；`subprocess-local/src/spawn.ts:382-386,432` |
+| **confine 下 stdin 原样到达 git**：`add -N` 与 `commit --only -m … --pathspec-from-file=- --pathspec-file-nul` 处理 2003 个路径（2000 个约 600 字节 + `-dash.txt`、`中文 空格.txt`、`star*.txt`），stdin 共 1,202,038 字节，退出 0，提交恰好含 2003 个文件、工作区干净 | ✅ 2026-10-26 | spike 1、2 |
+| 同样的 2003 个路径放进 argv 时 spawn 直接失败 `E2BIG`（总长 >1MiB 超过 ARG_MAX）——这就是 TD-9 的真实失败形态 | ✅ 2026-10-26 | spike 0b |
+| `restore --worktree`、`reset -q`、`stash push` 也接受 `--pathspec-from-file=- --pathspec-file-nul`，confine 下成功 | ✅ 2026-10-26 | spike 3、4、8 |
+| `git clean`、`git status`、`git diff` **不支持** `--pathspec-from-file`（退出 129 `unknown option`）；改为每批 ≤200 个路径的 argv：200 个约 600 字节路径一次 `clean -f -q --` 在 confine 下成功（200 × PATH_MAX 4096 也低于 1MiB） | ✅ 2026-10-26 | spike 5、6、9 |
+| stdin 不影响沙箱拒绝的分类：workspaceRoot 为仓库子目录时同样是 `Unable to create '.../.git/index.lock': Operation not permitted`（退出 128） | ✅ 2026-10-26 | spike 7 |
+
 依赖与类型：DSH 类型用 `link:` 指向本机 checkout；`webServer` 服务的类型包是 **`@deepseek-ai/dsh-host-webserver`**（不是 `dsh-webserver`）；`ctx.connection` 的 Host 半边类型来自 `@deepseek-ai/dsh-client-connection`。

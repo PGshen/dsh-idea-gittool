@@ -154,6 +154,59 @@ describe('createGitRunner', () => {
   })
 })
 
+describe('createGitRunner stdin (A3 T1)', () => {
+  it('pipes a string to stdin and closes it', async () => {
+    const repo = makeRepo()
+    const fake = createFakeSubprocess()
+    const run = createGitRunner(fake)
+
+    const result = await run(['hash-object', '--stdin'], { cwd: repo.root, stdin: 'hello\n' })
+
+    expect(result.exitCode).toBe(0)
+    // `printf 'hello\n' | git hash-object --stdin`
+    expect(result.stdout.trim()).toBe('ce013625030ba8dba906f756967f9e9ca394464a')
+    const spec = lastSpawn(fake)
+    expect(spec.stdio.stdin).toBe('pipe')
+    expect(fake.spawns.at(-1)?.stdinWritten).toBe('hello\n')
+  })
+
+  it('pipes raw bytes (NUL-separated pathspecs survive)', async () => {
+    const repo = makeRepo()
+    const fake = createFakeSubprocess()
+    const run = createGitRunner(fake)
+    const bytes = new TextEncoder().encode('a\0b\0')
+
+    const result = await run(['hash-object', '--stdin'], { cwd: repo.root, stdin: bytes })
+
+    expect(result.exitCode).toBe(0)
+    expect(lastSpawn(fake).stdio.stdin).toBe('pipe')
+    expect(fake.spawns.at(-1)?.stdinWritten).toBe('a\0b\0')
+  })
+
+  it('keeps stdin ignored when no input is given', async () => {
+    const repo = makeRepo()
+    const fake = createFakeSubprocess()
+    await createGitRunner(fake)(['rev-parse', 'HEAD'], { cwd: repo.root })
+    expect(lastSpawn(fake).stdio.stdin).toBe('ignore')
+  })
+
+  it('passes stdin through a confined write command', async () => {
+    const repo = makeRepo()
+    const fake = createFakeSubprocess()
+    const run = createGitRunner(fake)
+    const confine = {
+      kind: 'confined' as const,
+      wrap: async (argv: readonly string[]) => ['env', ...argv],
+    }
+
+    const result = await run(['hash-object', '--stdin'], { cwd: repo.root, mode: 'write', confine, stdin: 'hello\n' })
+
+    expect(result.stdout.trim()).toBe('ce013625030ba8dba906f756967f9e9ca394464a')
+    expect(lastSpawn(fake).argv[0]).toBe('env')
+    expect(lastSpawn(fake).stdio.stdin).toBe('pipe')
+  })
+})
+
 describe('instrumentGitRunner', () => {
   const fixedNow = () => Date.parse('2026-10-25T10:00:00.000Z')
 
@@ -171,6 +224,18 @@ describe('instrumentGitRunner', () => {
     expect(typeof record?.durationMs).toBe('number')
     expect(record?.stdout.trim().length).toBeGreaterThan(0)
     expect(record?.at).toBe('2026-10-25T10:00:00.000Z')
+  })
+
+  it('records the stdin size but never its content', async () => {
+    const repo = makeRepo()
+    const gitConsole = createGitConsole({ now: fixedNow })
+    const run = instrumentGitRunner(createGitRunner(createFakeSubprocess()), gitConsole)
+
+    await run(['hash-object', '--stdin'], { cwd: repo.root, stdin: 'secret-path\0' })
+
+    const [record] = gitConsole.recent().records
+    expect(record?.stdinBytes).toBe(12)
+    expect(JSON.stringify(record)).not.toContain('secret-path')
   })
 
   it('records non-zero exits as data instead of throwing', async () => {

@@ -62,6 +62,8 @@ export function createTempRepo(options: { initialCommit?: boolean } = {}): TempR
       env: TEST_GIT_ENV,
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],
+      // Long-path fixtures (A3 T1: 2000 × 600-byte paths) print well over the 1MB default.
+      maxBuffer: 64 * 1024 * 1024,
     })
     if (result.error !== undefined) throw result.error
     const outcome: GitResult = {
@@ -113,4 +115,17 @@ export async function delay(ms: number): Promise<void> {
   await new Promise<void>((resolve) => {
     setTimeout(resolve, ms)
   })
+}
+
+/**
+ * `count` distinct repo-relative paths of about 600 bytes each (three 190-byte directory
+ * levels, every component below the 255-byte filename limit). 2000 of them exceed 1MiB,
+ * more than macOS ARG_MAX, so they can only reach git through stdin (A3 T1, TD-9).
+ */
+export function longPaths(count: number, suffix = '.txt'): string[] {
+  const segment = 'd'.repeat(190)
+  return Array.from(
+    { length: count },
+    (_, index) => `${segment}/${segment}/${segment}/f-${String(index).padStart(4, '0')}-${'x'.repeat(16)}${suffix}`,
+  )
 }

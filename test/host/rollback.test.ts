@@ -7,9 +7,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { GitCommandFailure, bindWriteContext, createGitRunner } from '../../src/host/git-executor.ts'
 import type { WriteContext } from '../../src/host/git-executor.ts'
 import { rollbackOperation } from '../../src/host/git/rollback.ts'
-import { createTempRepo } from './fixtures.ts'
+import { createTempRepo, longPaths } from './fixtures.ts'
 import type { TempRepo } from './fixtures.ts'
 import { createFakeSubprocess } from './fake-subprocess.ts'
+import { CLEAN_BATCH_MAX } from '../../src/host/git/write-support.ts'
+import { WRITE_PATHS_MAX } from '../../src/shared/protocol.ts'
 
 vi.setConfig({ testTimeout: 30_000 })
 
@@ -134,5 +136,35 @@ describe('rollbackOperation.run', () => {
     const value = await rollback(repo, ['s.txt'], true)
     expect(value).toEqual({ restored: [], deleted: [], keptStaged: ['s.txt'], skipped: [] })
     expect(porcelain(repo)).toEqual(['A  s.txt'])
+  })
+})
+
+describe('long path lists (A3 T1, TD-9)', () => {
+  it('restores 2000 long tracked paths through stdin and cleans untracked ones in batches', async () => {
+    const repo = makeRepo()
+    const tracked = longPaths(WRITE_PATHS_MAX - 450)
+    for (const path of tracked) repo.write(path, 'base\n')
+    repo.commit('long paths')
+    for (const path of tracked) repo.write(path, 'changed\n')
+    const untracked = longPaths(450, '.untracked')
+    for (const path of untracked) repo.write(path, 'u\n')
+    const fake = createFakeSubprocess()
+    const ctx = bindWriteContext(createGitRunner(fake), repo.root, { kind: 'unconfined' }, new AbortController().signal)
+    const op = rollbackOperation
+
+    const value = await op.run(ctx, op.parse({ paths: [...tracked, ...untracked], deleteUntracked: true }))
+
+    expect(value.restored).toHaveLength(tracked.length)
+    expect(value.deleted).toHaveLength(untracked.length)
+    expect(porcelain(repo)).toEqual([])
+    const restore = fake.spawns.filter(({ spec }) => spec.argv.includes('restore'))
+    expect(restore).toHaveLength(1)
+    expect(restore[0]?.spec.argv).toEqual(expect.arrayContaining(['--pathspec-from-file=-', '--pathspec-file-nul']))
+    const cleans = fake.spawns.filter(({ spec }) => spec.argv.includes('clean'))
+    expect(cleans).toHaveLength(Math.ceil(untracked.length / CLEAN_BATCH_MAX))
+    for (const { spec } of cleans) {
+      const separator = spec.argv.indexOf('--')
+      expect(spec.argv.length - separator - 1).toBeLessThanOrEqual(CLEAN_BATCH_MAX)
+    }
   })
 })

@@ -3,6 +3,7 @@
 // 目的是让 src/host 的 git 代码在测试里被真实 git 驱动，同时不引入新的 devDependency。
 
 import { spawn as spawnChild } from 'node:child_process'
+import { PassThrough } from 'node:stream'
 import type { Readable } from 'node:stream'
 
 import type {
@@ -16,6 +17,8 @@ import type {
 /** One recorded spawn request: assertions read the exact spec the Host produced. */
 export interface RecordedSpawn {
   readonly spec: SubprocessSpawnSpec
+  /** Everything the caller wrote to a `'pipe'` stdin (or the batch `{ data }`), decoded as UTF-8. */
+  stdinWritten?: string
 }
 
 /** Minimal `ctx.subprocess` surface consumed by the git executor. */
@@ -41,8 +44,9 @@ export function createFakeSubprocess(options: { executable?: string } = {}): Fak
       return fake.executable
     },
     spawn: (spec) => {
-      spawns.push({ spec })
-      return spawnCollected(spec)
+      const recorded: RecordedSpawn = { spec }
+      spawns.push(recorded)
+      return spawnCollected(spec, recorded)
     },
   }
   return fake
@@ -120,7 +124,7 @@ function createCollector(stream: Readable, mode: SubprocessOutputMode): Collecto
 }
 
 /** Spawn with collect-mode stdio, matching the seam's handle contract. */
-function spawnCollected(spec: SubprocessSpawnSpec): SubprocessHandle {
+function spawnCollected(spec: SubprocessSpawnSpec, recorded: RecordedSpawn): SubprocessHandle {
   if (spec.signal?.aborted === true) {
     throw new Error('fake subprocess: spawn aborted before start')
   }
@@ -135,8 +139,28 @@ function spawnCollected(spec: SubprocessSpawnSpec): SubprocessHandle {
   const child = spawnChild(program, args, {
     cwd: spec.cwd,
     env: childEnvironment(spec.env),
-    stdio: ['ignore', 'pipe', 'pipe'],
+    stdio: [spec.stdio.stdin === 'ignore' ? 'ignore' : 'pipe', 'pipe', 'pipe'],
   })
+  // stdin: 'pipe' hands the caller a tap that records what it writes and forwards it to the child.
+  let stdinTap: PassThrough | undefined
+  if (child.stdin !== null) {
+    child.stdin.on('error', () => undefined)
+    const written: Buffer[] = []
+    const remember = (chunk: Buffer): void => {
+      written.push(chunk)
+      recorded.stdinWritten = Buffer.concat(written).toString('utf8')
+    }
+    const mode = spec.stdio.stdin
+    if (mode === 'pipe') {
+      stdinTap = new PassThrough()
+      stdinTap.on('data', remember)
+      stdinTap.pipe(child.stdin)
+    } else if (typeof mode === 'object') {
+      remember(Buffer.from(mode.data, 'utf8'))
+      child.stdin.end(mode.data)
+    }
+  }
+  if (child.stdout === null || child.stderr === null) throw new Error('fake subprocess: output pipes missing')
   const stdout = createCollector(child.stdout, spec.stdio.stdout)
   const stderr = createCollector(child.stderr, spec.stdio.stderr)
   const collected: { stdout?: SubprocessOutputReader; stderr?: SubprocessOutputReader } = {}
@@ -161,7 +185,7 @@ function spawnCollected(spec: SubprocessSpawnSpec): SubprocessHandle {
   spec.signal?.addEventListener('abort', onAbort, { once: true })
 
   return {
-    stdin: undefined,
+    stdin: stdinTap,
     stdout: undefined,
     stderr: undefined,
     control: undefined,

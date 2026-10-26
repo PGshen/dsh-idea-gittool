@@ -127,6 +127,17 @@ export interface GitRunOptions {
   timeoutMs?: number | undefined
   stdoutMaxBytes?: number | undefined
   stderrMaxBytes?: number | undefined
+  /**
+   * Bytes for the child's stdin (A3 T1: `--pathspec-from-file=-`, `commit -F -`).
+   * Present → `stdio.stdin: 'pipe'`, written in full and closed right after spawn;
+   * absent → `'ignore'` (fd 0 on /dev/null), so git can never wait on input.
+   */
+  stdin?: string | Uint8Array | undefined
+}
+
+/** Byte length of a stdin payload (console records only the size, never the content). */
+export function stdinByteLength(stdin: string | Uint8Array): number {
+  return typeof stdin === 'string' ? Buffer.byteLength(stdin, 'utf8') : stdin.byteLength
 }
 
 /** Executor-level defaults, fixed when the plugin is applied. */
@@ -260,13 +271,23 @@ export function createGitRunner(
         signal: lifetime,
         graceMs: GIT_GRACE_MS,
         stdio: {
-          stdin: 'ignore',
+          stdin: options.stdin === undefined ? 'ignore' : 'pipe',
           stdout: { maxBytes: stdoutMaxBytes },
           stderr: { maxBytes: stderrMaxBytes },
         },
       })
     } catch (error) {
       throw classifyAbort(error)
+    }
+
+    if (options.stdin !== undefined) {
+      const input = child.stdin
+      if (input !== undefined) {
+        // A child that exits without reading (bad option, early failure) closes the pipe:
+        // EPIPE is expected then and the exit facts carry the real failure.
+        input.on('error', () => undefined)
+        input.end(options.stdin)
+      }
     }
 
     try {
@@ -311,7 +332,7 @@ export interface WriteContext {
   /** Run git in the repository; `mode` defaults to `write` (confined). */
   git: (
     argv: readonly string[],
-    options?: { mode?: GitRunMode; timeoutMs?: number; stdoutMaxBytes?: number },
+    options?: { mode?: GitRunMode; timeoutMs?: number; stdoutMaxBytes?: number; stdin?: string | Uint8Array },
   ) => Promise<GitRunResult>
 }
 
@@ -326,9 +347,9 @@ export interface WriteOperation<I, V extends object> {
   run(ctx: WriteContext, input: I): Promise<V>
 }
 
-/** Thrown by write endpoints whose implementation has not landed yet. */
+/** Thrown by endpoints registered ahead of their implementation (A3 T1 registers T2–T5). */
 export function notImplemented(endpoint: string): GitCommandFailure {
-  return new GitCommandFailure('git/exec-failed', `${endpoint} is not implemented yet`, { endpoint })
+  return new GitCommandFailure('git/exec-failed', 'not implemented', { endpoint })
 }
 
 /** Bind a runner to one repository, confinement and request signal. */
@@ -349,6 +370,7 @@ export function bindWriteContext(
         mode: options.mode ?? 'write',
         timeoutMs: options.timeoutMs,
         stdoutMaxBytes: options.stdoutMaxBytes,
+        stdin: options.stdin,
       }),
   }
 }
@@ -364,6 +386,7 @@ export function bindWriteContext(
 export function instrumentGitRunner(run: GitRunner, recorder: GitConsole): GitRunner {
   return async function instrumentedGitRunner(argv, options) {
     const startedAt = Date.now()
+    const stdinBytes = options.stdin === undefined ? undefined : stdinByteLength(options.stdin)
     try {
       const result = await run(argv, options)
       recorder.record({
@@ -373,6 +396,7 @@ export function instrumentGitRunner(run: GitRunner, recorder: GitConsole): GitRu
         exitCode: result.exitCode,
         stdout: result.stdout,
         stderr: result.stderr,
+        stdinBytes,
       })
       return result
     } catch (error) {
@@ -394,6 +418,7 @@ export function instrumentGitRunner(run: GitRunner, recorder: GitConsole): GitRu
         timedOut: failure?.code === 'git/timeout',
         // The collected stream lost its head before the executor refused to parse it.
         stdoutTruncated: failure?.code === 'git/output-too-large',
+        stdinBytes,
       })
       throw error
     }

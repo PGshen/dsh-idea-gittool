@@ -174,7 +174,25 @@ describe('createActionStore.run', () => {
     const actions = createActionStore({ client: fakeClient({ merge }), sessionId: 's1', newRequestId: ids(), onConflict })
     const outcome = await actions.run('merge', { ref: 'feature' })
     expect(outcome).toEqual({ kind: 'conflict', error, details: { operation: 'merge', conflicts: 2, stashKept: true } })
-    expect(onConflict).toHaveBeenCalledWith('merge', { operation: 'merge', conflicts: 2, stashKept: true })
+    expect(onConflict).toHaveBeenCalledWith('merge', { operation: 'merge', conflicts: 2, stashKept: true }, null)
+  })
+
+  it('carries the trigger captured at click time to the ask and to onConflict', async () => {
+    const trigger = { focus: vi.fn<() => void>(), isConnected: true }
+    const merge = vi.fn<(request: MergeRequest) => Promise<RpcResult<IntegrateValue>>>()
+      .mockResolvedValueOnce(dirty({ operation: 'merge', paths: ['a.ts'], count: 1 }))
+      .mockResolvedValueOnce({ ok: false, error: { code: 'git/conflict', message: 'c' } })
+    const onAskStash = vi.fn()
+    const onConflict = vi.fn()
+    const actions = createActionStore({ client: fakeClient({ merge }), sessionId: 's1', newRequestId: ids(), onAskStash, onConflict })
+    const outcome = actions.run('merge', { ref: 'feature' }, { smartStash: 'merge', trigger })
+    await vi.waitFor(() => { expect(actions.getState().ask).not.toBeNull() })
+    expect(onAskStash.mock.calls[0]?.[0].trigger).toBe(trigger)
+    actions.confirmStash()
+    await expect(outcome).resolves.toMatchObject({ kind: 'conflict' })
+    expect(onConflict).toHaveBeenCalledWith('merge', {}, trigger)
+    // The trigger is not part of the de-duplication key and is never sent.
+    expect(merge.mock.calls[0]?.[0]).not.toHaveProperty('trigger')
   })
 
   it('a thrown client call becomes a failed outcome instead of a rejection', async () => {

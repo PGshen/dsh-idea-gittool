@@ -27,7 +27,7 @@ function findAll(node: unknown, predicate: (element: AnyElement) => boolean): An
 const paths = Array.from({ length: 12 }, (_, index) => `src/file-${index + 1}.ts`)
 
 function ask(overrides: Partial<StashAsk> = {}): StashAsk {
-  return { key: 'merge:x', endpoint: 'merge', operation: 'merge', paths, count: 37, ...overrides }
+  return { key: 'merge:x', endpoint: 'merge', operation: 'merge', paths, count: 37, trigger: null, ...overrides }
 }
 
 function props(overrides: Partial<DirtyWorktreeSheetViewProps> = {}): DirtyWorktreeSheetViewProps {

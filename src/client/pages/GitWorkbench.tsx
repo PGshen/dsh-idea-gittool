@@ -45,8 +45,14 @@ import type { LogSelection } from './LogPage.tsx'
 import { OperationBanner, bannerFromStatus } from './OperationBanner.tsx'
 import { RepoBar } from './RepoBar.tsx'
 import { StatusBar } from './StatusBar.tsx'
-import { handleOverlayEscape, useWorkbenchOverlay } from './workbench-overlay.ts'
-import type { WorkbenchOverlay } from './workbench-overlay.ts'
+import {
+  actionOverlayWiring,
+  dirtySheetHandlers,
+  handleOverlayEscape,
+  overlayLeaveEffects,
+  useWorkbenchOverlay,
+} from './workbench-overlay.ts'
+import type { FocusTarget, WorkbenchOverlay } from './workbench-overlay.ts'
 
 export interface GitWorkbenchProps {
   sessionId: string
@@ -196,27 +202,24 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
   const [consoleOpen, setConsoleOpen] = useState(false)
 
   // 写动作框架（A3 T6）：回调经 ref 取最新值，store 只随会话重建。
-  const actionCallbacks = useRef<{ onRefresh: () => Promise<unknown>; openOverlay: (overlay: WorkbenchOverlay) => void }>({
-    onRefresh,
-    openOverlay: () => undefined,
-  })
+  const actionCallbacks = useRef<{
+    onRefresh: () => Promise<unknown>
+    openOverlay: (overlay: WorkbenchOverlay, trigger: FocusTarget | null) => void
+  }>({ onRefresh, openOverlay: () => undefined })
   actionCallbacks.current.onRefresh = onRefresh
   const actions = useMemo(() => createActionStore({
     client,
     sessionId,
-    onAskStash: () => { actionCallbacks.current.openOverlay({ kind: 'dirtyWorktree' }) },
-    onConflict: () => {
-      void actionCallbacks.current.onRefresh()
-      actionCallbacks.current.openOverlay({ kind: 'conflicts' })
-    },
-    onSuccess: () => { void actionCallbacks.current.onRefresh() },
+    ...actionOverlayWiring({
+      open: (next, trigger) => { actionCallbacks.current.openOverlay(next, trigger) },
+      refresh: () => { void actionCallbacks.current.onRefresh() },
+    }),
   }), [client, sessionId])
   const actionState = useActionState(actions)
   // 覆盖层同一时刻只有一个（设计 §5.3）：打开新的替换旧的；离开智能操作询问即视为取消。
-  const overlays = useWorkbenchOverlay((left, next) => {
-    if (left.kind === 'dirtyWorktree' && next?.kind !== 'dirtyWorktree') actions.cancelStash()
-  })
+  const overlays = useWorkbenchOverlay(overlayLeaveEffects(actions))
   actionCallbacks.current.openOverlay = overlays.open
+  const dirtyHandlers = dirtySheetHandlers(actions, overlays)
   const overlay = overlays.overlay
   const diff = overlay?.kind === 'diff' ? overlay : null
   const push = overlay?.kind === 'push' ? overlay : null
@@ -522,11 +525,8 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
         {overlay?.kind !== 'dirtyWorktree' || actionState.ask === null ? null : (
           <DirtyWorktreeSheet
             ask={actionState.ask}
-            onStash={() => {
-              actions.confirmStash()
-              overlays.closeIf('dirtyWorktree')
-            }}
-            onCancel={() => { overlays.closeIf('dirtyWorktree') }}
+            onStash={dirtyHandlers.onStash}
+            onCancel={dirtyHandlers.onCancel}
           />
         )}
       </div>

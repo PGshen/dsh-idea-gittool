@@ -18,6 +18,7 @@ import type {
   StaleTargetDetails,
   WriteEndpoint,
 } from '../../shared/protocol.ts'
+import type { FocusTarget } from '../focus.ts'
 import type { WriteMethods } from '../git-client.ts'
 import { newRequestId as defaultRequestId } from '../git-client.ts'
 import { text } from '../localized-text.ts'
@@ -44,6 +45,12 @@ export interface RunOptions<K extends WriteEndpoint> {
   target?: string
   /** Ask "stash and continue / cancel" on `git/dirty-worktree` (smart endpoints only). */
   smartStash?: K extends SmartEndpoint ? SmartOperationKind : never
+  /**
+   * The control the user clicked, captured at click time. Overlays opened later by this action
+   * (dirty-worktree question, conflict list) return focus to it; `document.activeElement` is
+   * already stale by then.
+   */
+  trigger?: FocusTarget | null
 }
 
 export type ActionOutcome<V> =
@@ -65,6 +72,8 @@ export interface StashAsk {
   paths: string[]
   /** Total number of changed paths. */
   count: number
+  /** {@link RunOptions.trigger} of the waiting action (null when none was given). */
+  trigger: FocusTarget | null
 }
 
 export interface ActionState {
@@ -80,7 +89,7 @@ export interface ActionStoreDeps {
   /** A dirty-worktree question opened (the workbench shows the sheet). */
   onAskStash?: (ask: StashAsk) => void
   /** The operation stopped on conflicts (the workbench opens the conflict list). */
-  onConflict?: (endpoint: WriteEndpoint, details: ConflictDetails) => void
+  onConflict?: (endpoint: WriteEndpoint, details: ConflictDetails, trigger: FocusTarget | null) => void
   /** A write succeeded (the workbench refreshes). */
   onSuccess?: (endpoint: WriteEndpoint, value: unknown) => void
 }
@@ -246,7 +255,11 @@ export function createActionStore(deps: ActionStoreDeps): ActionStore {
     resolve(value)
   }
 
-  function outcomeOf<K extends WriteEndpoint>(endpoint: K, result: RpcResult<ActionValue<K>>): ActionOutcome<ActionValue<K>> {
+  function outcomeOf<K extends WriteEndpoint>(
+    endpoint: K,
+    result: RpcResult<ActionValue<K>>,
+    trigger: FocusTarget | null,
+  ): ActionOutcome<ActionValue<K>> {
     if (result.ok) {
       deps.onSuccess?.(endpoint, result.value)
       return { kind: 'done', value: result.value }
@@ -254,7 +267,7 @@ export function createActionStore(deps: ActionStoreDeps): ActionStore {
     const { error } = result
     if (error.code === 'git/conflict') {
       const details = (error.details ?? {}) as ConflictDetails
-      deps.onConflict?.(endpoint, details)
+      deps.onConflict?.(endpoint, details, trigger)
       return { kind: 'conflict', error, details }
     }
     return { kind: 'failed', error, message: actionErrorText(error) }
@@ -268,13 +281,14 @@ export function createActionStore(deps: ActionStoreDeps): ActionStore {
   ): Promise<ActionOutcome<ActionValue<K>>> {
     let result = await send(endpoint, payload, {})
     const operation = options.smartStash
+    const trigger = options.trigger ?? null
     if (!result.ok && result.error.code === 'git/dirty-worktree' && operation !== undefined) {
-      const reply = await ask({ key, endpoint, operation, ...dirtyDetails(result.error) })
+      const reply = await ask({ key, endpoint, operation, ...dirtyDetails(result.error), trigger })
       if (reply === 'cancel') return { kind: 'cancelled' }
       setPending(key, 'running')
       result = await send(endpoint, payload, { stash: true })
     }
-    return outcomeOf(endpoint, result)
+    return outcomeOf(endpoint, result, trigger)
   }
 
   return {

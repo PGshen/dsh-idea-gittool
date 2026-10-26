@@ -4,6 +4,8 @@
  */
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import { describe, expect, it } from 'vitest'
+import { zhT } from './i18n-helpers.tsx'
+import { render } from '../../src/client/localized-text.ts'
 
 import { DocumentActions } from '../../src/client/document-actions.tsx'
 import { BlamePage } from '../../src/client/blame-page.tsx'
@@ -169,8 +171,8 @@ describe('registerDocumentActions', () => {
     const fake = createFakeContext({ openThrows: true })
     registerDocumentActions(fake.ctx)
 
-    const message = injectedFace(fake).openBlame?.('/repo/src/a.ts')
-    expect(message).toContain('会话')
+    const message = injectedFace(fake).openBlame?.('/repo/src/a.ts') ?? null
+    expect(message === null ? null : render(zhT, message)).toContain('会话')
   })
 })
 

@@ -1,36 +1,67 @@
-// `gitWorkbench` 文案命名空间与键集。
-// zh 是键的真源，en 用 satisfies 保证键一致。
+// `gitWorkbench` 文案命名空间与键集：按页面拆在 locales/*.ts，这里合并。
+// zh 是键的真源，en 用 satisfies 保证键一致（每个分区也各自校验）。
 import type {} from '@deepseek-ai/dsh-client-ui-slots'
+import type { RepoOperation, WritePolicyReasonCode } from '../shared/protocol.ts'
+import { enCommit, zhCommit } from './locales/commit.ts'
+import { enCommon, zhCommon } from './locales/common.ts'
+import { enCore, zhCore } from './locales/core.ts'
+import { enDetail, zhDetail } from './locales/detail.ts'
+import { enDocument, zhDocument } from './locales/document.ts'
+import { enLog, zhLog } from './locales/log.ts'
+import { enPush, zhPush } from './locales/push.ts'
+import { enShell, zhShell } from './locales/shell.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
-    /** Git 工作台的页签、引导卡片与快捷键文案。 */
+    /** Git 工作台的全部可见文案。 */
     gitWorkbench: GitWorkbenchKey
   }
 }
 
-/** 简体中文文案（M0 spike 先只覆盖入口）。 */
+/** 简体中文文案。 */
 export const zh = {
-  'type.label': 'Git',
-  'guide.title': 'Git 工作台',
-  'guide.description': '提交图、历史与工作区改动',
-  'shortcut.open': 'Git: 打开工作台',
-  'shortcut.noSession': '请先选择会话',
-  'body.title': 'Git 工作台',
-  'body.emptyNoCwd': '这个会话没有工作目录。',
-  'body.spike': 'M0 集成 spike：RPC 数据接入中。',
-} satisfies Record<string, string>
+  ...zhCore,
+  ...zhCommon,
+  ...zhLog,
+  ...zhDetail,
+  ...zhShell,
+  ...zhCommit,
+  ...zhPush,
+  ...zhDocument,
+}
 
 export type GitWorkbenchKey = keyof typeof zh
 
 /** English dictionary, checked against the Chinese key set. */
 export const en = {
-  'type.label': 'Git',
-  'guide.title': 'Git workbench',
-  'guide.description': 'Commit graph, history and workspace changes',
-  'shortcut.open': 'Git: Open workbench',
-  'shortcut.noSession': 'Select a session first',
-  'body.title': 'Git workbench',
-  'body.emptyNoCwd': 'This session has no working directory.',
-  'body.spike': 'M0 integration spike: wiring up RPC data.',
+  ...enCore,
+  ...enCommon,
+  ...enLog,
+  ...enDetail,
+  ...enShell,
+  ...enCommit,
+  ...enPush,
+  ...enDocument,
 } satisfies Record<GitWorkbenchKey, string>
+
+/** In-progress repository operation → its display name. */
+export const OPERATION_KEY: Record<Exclude<RepoOperation, null>, GitWorkbenchKey> = {
+  merge: 'operation.merge',
+  rebase: 'operation.rebase',
+  'cherry-pick': 'operation.cherryPick',
+  revert: 'operation.revert',
+  bisect: 'operation.bisect',
+}
+
+/** Host read-only reason code → localized explanation. */
+export const READ_ONLY_REASON_KEY: Record<WritePolicyReasonCode, GitWorkbenchKey> = {
+  'policy-unavailable': 'readOnly.reason.policy-unavailable',
+  'session-not-live': 'readOnly.reason.session-not-live',
+  'resolve-failed': 'readOnly.reason.resolve-failed',
+  'read-only-mode': 'readOnly.reason.read-only-mode',
+  'repo-outside-workspace': 'readOnly.reason.repo-outside-workspace',
+  'sandbox-unavailable': 'readOnly.reason.sandbox-unavailable',
+  'confine-failed': 'readOnly.reason.confine-failed',
+  'partial-enforcement': 'readOnly.reason.partial-enforcement',
+  'not-a-repository': 'readOnly.reason.not-a-repository',
+}

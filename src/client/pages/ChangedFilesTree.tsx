@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import type { CommitFileEntry } from '../../shared/protocol.ts'
+import { useT } from '../i18n.tsx'
 import { StatusLetter } from '../ui/StatusLetter.tsx'
 import css from './ChangedFilesTree.module.css'
 
@@ -207,12 +208,13 @@ export function ChangedFilesTree({
   selectedPath,
   headerExtra,
 }: ChangedFilesTreeProps): ReactNode {
+  const t = useT()
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set(initialCollapsedDirs ?? []))
   const tree = useMemo(() => buildChangedTree(files), [files])
   const flat = useMemo(() => flattenChangedFiles(files), [files])
 
   if (files.length === 0) {
-    return <p className={css.empty}>{emptyHint ?? '该提交没有文件变更'}</p>
+    return <p className={css.empty}>{emptyHint ?? t('detail.noFiles')}</p>
   }
 
   const toggle = (path: string): void => {

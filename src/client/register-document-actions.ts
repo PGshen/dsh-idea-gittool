@@ -16,6 +16,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-sidebar-documentpreview/client'
 import type {} from '@deepseek-ai/dsh-client-ui-slots'
 import { BlamePage } from './blame-page.tsx'
 import { DocumentActions } from './document-actions.tsx'
+import { text } from './localized-text.ts'
 import { statusLetterOf } from './document-actions.tsx'
 import type { DocumentActionsInjected, FileStatusLetter } from './document-actions.tsx'
 
@@ -76,6 +77,7 @@ export function registerBlameTab(ctx: ClientContext): void {
     () => ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register({
       name: 'sidebar.right.pane.tab',
       key: BLAME_TAB_ID,
+      locale: 'gitWorkbench',
     }, BlamePage)),
     'git: blame body',
   )
@@ -95,6 +97,7 @@ export function registerDocumentActions(
     () => ctx.slots.inject(DOCUMENT_ACTIONS_SLOT, () => ctx.slots.register({
       name: DOCUMENT_ACTIONS_SLOT,
       id: DOCUMENT_ACTIONS_ID,
+      locale: 'gitWorkbench',
       inject: (sessionId): DocumentActionsInjected => ({
         openBlame: (absolutePath, repoRelativePath) => {
           try {
@@ -102,7 +105,7 @@ export function registerDocumentActions(
             return null
           } catch {
             // `openTab` throws while no Session is on screen; surface it in the header.
-            return '没有可用的会话，无法打开 Blame 视图'
+            return text('document.noSession')
           }
         },
         statusFor: absolutePath => statusLetterOf(options.statusCodeFor?.(absolutePath, sessionId)),

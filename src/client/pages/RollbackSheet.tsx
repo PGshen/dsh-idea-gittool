@@ -7,7 +7,6 @@ import type { KeyboardEvent, ReactNode, Ref } from 'react'
 import type { RollbackValue } from '../../shared/protocol.ts'
 import {
   createRollbackStore,
-  formatText,
   rememberFocus,
   rollbackCounts,
   rollbackEscapeAction,
@@ -15,35 +14,13 @@ import {
   useRollbackState,
 } from '../store/push-store.ts'
 import type { RollbackBlockReason, RollbackClient, RollbackOutcome, RollbackState, RollbackStore, RollbackTarget } from '../store/push-store.ts'
+import { useT } from '../i18n.tsx'
+import type { Translate } from '../i18n.tsx'
 import { Button } from '../ui/Button.tsx'
 import { submitHandler, WriteErrorNotice } from './PushRejectedPage.tsx'
 import css from './RollbackSheet.module.css'
 
 /** Every visible string of this file (moved into locales by T7). */
-export const TEXT = {
-  title: '回滚',
-  dialogLabel: '回滚 {count} 个文件',
-  summary: '回滚 {count} 个文件',
-  untrackedTag: '未跟踪',
-  more: '还有 {count} 个文件',
-  trackedImpact: '将丢弃 {count} 个文件的未提交改动，且无法恢复。暂存区里的内容会保留。',
-  deleteUntracked: '删除 {count} 个未跟踪文件且无法恢复',
-  untrackedSkipHint: '不勾选时跳过未跟踪文件，不会删除。',
-  cancel: '取消',
-  submit: '回滚',
-  submitting: '正在回滚…',
-  close: '关闭',
-  readOnly: '只读模式：{reason}',
-  block: {
-    busy: '',
-    nothing: '只选择了未跟踪文件：勾选删除确认后才能回滚',
-  },
-  resultTitle: '回滚完成',
-  restored: '已丢弃 {count} 个文件的工作区改动',
-  deleted: '已删除 {count} 个未跟踪文件',
-  keptStaged: '暂存区改动已保留（{count} 个文件）',
-  skipped: '已跳过 {count} 个未跟踪文件',
-} as const
 
 /** Rows shown before collapsing into "还有 N 个文件". */
 export const ROLLBACK_VISIBLE_ROWS = 50
@@ -53,10 +30,10 @@ function copyToClipboard(text: string): void {
   void navigator.clipboard.writeText(text).catch(() => undefined)
 }
 
-export function rollbackBlockText(reason: RollbackBlockReason | null, readOnlyReason: string | null): string | null {
-  if (readOnlyReason !== null) return formatText(TEXT.readOnly, { reason: readOnlyReason })
+export function rollbackBlockText(t: Translate, reason: RollbackBlockReason | null, readOnlyReason: string | null): string | null {
+  if (readOnlyReason !== null) return t('write.readOnly', { reason: readOnlyReason })
   if (reason === null || reason === 'busy') return null
-  return TEXT.block[reason]
+  return t(`rollback.block.${reason}`)
 }
 
 /** Whether the result carries something the user must read before the sheet closes. */
@@ -68,34 +45,34 @@ export function rollbackResultNeedsAttention(value: RollbackValue): boolean {
 // View (no hooks)
 // ---------------------------------------------------------------------------
 
-function PathList({ paths, label }: { paths: readonly string[]; label: string }): ReactNode {
+function PathList({ t, paths, label }: { t: Translate; paths: readonly string[]; label: string }): ReactNode {
   const visible = paths.slice(0, ROLLBACK_VISIBLE_ROWS)
   return (
     <>
       <ul className={css.files} aria-label={label}>
         {visible.map(path => <li key={path} className={css.file} title={path}>{path}</li>)}
       </ul>
-      {paths.length > visible.length ? <p className={css.muted}>{formatText(TEXT.more, { count: paths.length - visible.length })}</p> : null}
+      {paths.length > visible.length ? <p className={css.muted}>{t('rollback.more', { count: paths.length - visible.length })}</p> : null}
     </>
   )
 }
 
-function RollbackResult({ value }: { value: RollbackValue }): ReactNode {
+function RollbackResult({ t, value }: { t: Translate; value: RollbackValue }): ReactNode {
   return (
     <div className={css.result} role="status" data-rollback-result>
-      <strong>{TEXT.resultTitle}</strong>
-      {value.restored.length > 0 ? <p className={css.line}>{formatText(TEXT.restored, { count: value.restored.length })}</p> : null}
-      {value.deleted.length > 0 ? <p className={css.line}>{formatText(TEXT.deleted, { count: value.deleted.length })}</p> : null}
+      <strong>{t('rollback.resultTitle')}</strong>
+      {value.restored.length > 0 ? <p className={css.line}>{t('rollback.restored', { count: value.restored.length })}</p> : null}
+      {value.deleted.length > 0 ? <p className={css.line}>{t('rollback.deleted', { count: value.deleted.length })}</p> : null}
       {value.keptStaged.length > 0 ? (
         <div data-kept-staged>
-          <p className={css.notice}>{formatText(TEXT.keptStaged, { count: value.keptStaged.length })}</p>
-          <PathList paths={value.keptStaged} label={formatText(TEXT.keptStaged, { count: value.keptStaged.length })} />
+          <p className={css.notice}>{t('rollback.keptStaged', { count: value.keptStaged.length })}</p>
+          <PathList t={t} paths={value.keptStaged} label={t('rollback.keptStaged', { count: value.keptStaged.length })} />
         </div>
       ) : null}
       {value.skipped.length > 0 ? (
         <div data-skipped>
-          <p className={css.notice}>{formatText(TEXT.skipped, { count: value.skipped.length })}</p>
-          <PathList paths={value.skipped} label={formatText(TEXT.skipped, { count: value.skipped.length })} />
+          <p className={css.notice}>{t('rollback.skipped', { count: value.skipped.length })}</p>
+          <PathList t={t} paths={value.skipped} label={t('rollback.skipped', { count: value.skipped.length })} />
         </div>
       ) : null}
     </div>
@@ -103,6 +80,7 @@ function RollbackResult({ value }: { value: RollbackValue }): ReactNode {
 }
 
 export interface RollbackSheetViewProps {
+  t: Translate
   targets: readonly RollbackTarget[]
   state: RollbackState
   readOnlyReason: string | null
@@ -116,6 +94,7 @@ export interface RollbackSheetViewProps {
 }
 
 export function RollbackSheetView({
+  t,
   targets,
   state,
   readOnlyReason,
@@ -130,7 +109,7 @@ export function RollbackSheetView({
   const counts = rollbackCounts(targets)
   const block = rollbackSubmitBlock(targets, state)
   const disabled = readOnlyReason !== null || block !== null
-  const blockText = rollbackBlockText(block, readOnlyReason)
+  const blockText = rollbackBlockText(t, block, readOnlyReason)
   const result = state.result
 
   return (
@@ -141,40 +120,40 @@ export function RollbackSheetView({
         className={css.sheet}
         role="dialog"
         aria-modal="true"
-        aria-label={formatText(TEXT.dialogLabel, { count: counts.total })}
+        aria-label={t('rollback.dialogLabel', { count: counts.total })}
         aria-busy={state.busy ? true : undefined}
         tabIndex={-1}
         onKeyDown={onKeyDown}
       >
         <header className={css.header}>
-          <strong>{TEXT.title}</strong>
-          <span className={css.muted}>{formatText(TEXT.summary, { count: counts.total })}</span>
+          <strong>{t('rollback.title')}</strong>
+          <span className={css.muted}>{t('rollback.summary', { count: counts.total })}</span>
         </header>
         {result !== null ? (
           <div className={css.body}>
-            <RollbackResult value={result} />
+            <RollbackResult t={t} value={result} />
             <footer className={css.footer}>
               <span />
               <span className={css.actions}>
-                <Button tone="primary" onClick={onCancel} data-primary>{TEXT.close}</Button>
+                <Button tone="primary" onClick={onCancel} data-primary>{t('action.close')}</Button>
               </span>
             </footer>
           </div>
         ) : (
           <form className={css.body} onSubmit={submitHandler(() => { if (!disabled) onSubmit() })}>
-            <ul className={css.files} aria-label={formatText(TEXT.summary, { count: counts.total })}>
+            <ul className={css.files} aria-label={t('rollback.summary', { count: counts.total })}>
               {targets.slice(0, ROLLBACK_VISIBLE_ROWS).map(target => (
                 <li key={target.path} className={css.file} title={target.path} data-untracked={target.untracked ? 'true' : undefined}>
                   <span className={css.path}>{target.path}</span>
-                  {target.untracked ? <span className={css.tag}>{TEXT.untrackedTag}</span> : null}
+                  {target.untracked ? <span className={css.tag}>{t('rollback.untrackedTag')}</span> : null}
                 </li>
               ))}
             </ul>
             {targets.length > ROLLBACK_VISIBLE_ROWS
-              ? <p className={css.muted}>{formatText(TEXT.more, { count: targets.length - ROLLBACK_VISIBLE_ROWS })}</p>
+              ? <p className={css.muted}>{t('rollback.more', { count: targets.length - ROLLBACK_VISIBLE_ROWS })}</p>
               : null}
             {counts.tracked > 0
-              ? <p className={css.impact} data-tracked-impact>{formatText(TEXT.trackedImpact, { count: counts.tracked })}</p>
+              ? <p className={css.impact} data-tracked-impact>{t('rollback.trackedImpact', { count: counts.tracked })}</p>
               : null}
             {counts.untracked > 0 ? (
               <div className={css.danger} data-untracked-confirm>
@@ -185,18 +164,18 @@ export function RollbackSheetView({
                     disabled={state.busy}
                     onChange={event => onDeleteConfirmedChange(event.currentTarget.checked)}
                   />
-                  <span>{formatText(TEXT.deleteUntracked, { count: counts.untracked })}</span>
+                  <span>{t('rollback.deleteUntracked', { count: counts.untracked })}</span>
                 </label>
-                {state.deleteConfirmed ? null : <span className={css.muted}>{TEXT.untrackedSkipHint}</span>}
+                {state.deleteConfirmed ? null : <span className={css.muted}>{t('rollback.untrackedSkipHint')}</span>}
               </div>
             ) : null}
-            {state.error === null ? null : <WriteErrorNotice error={state.error} onCopy={onCopy} onShowConsole={onShowConsole} />}
+            {state.error === null ? null : <WriteErrorNotice t={t} error={state.error} onCopy={onCopy} onShowConsole={onShowConsole} />}
             <footer className={css.footer}>
               {blockText === null ? <span /> : <span className={css.blockReason} data-block-reason>{blockText}</span>}
               <span className={css.actions}>
-                <Button disabled={state.busy} onClick={onCancel}>{TEXT.cancel}</Button>
+                <Button disabled={state.busy} onClick={onCancel}>{t('action.cancel')}</Button>
                 <Button type="submit" tone="danger" disabled={disabled} aria-busy={state.busy ? true : undefined} data-primary>
-                  {state.busy ? TEXT.submitting : TEXT.submit}
+                  {state.busy ? t('rollback.submitting') : t('rollback.submit')}
                 </Button>
               </span>
             </footer>
@@ -248,6 +227,7 @@ export function handleRollbackEscape(
 }
 
 export function RollbackSheet(props: RollbackSheetProps): ReactNode {
+  const t = useT()
   const propsRef = useRef(props)
   propsRef.current = props
   const store = useMemo(
@@ -278,6 +258,7 @@ export function RollbackSheet(props: RollbackSheetProps): ReactNode {
 
   return (
     <RollbackSheetView
+      t={t}
       targets={props.targets}
       state={state}
       readOnlyReason={props.readOnlyReason ?? null}

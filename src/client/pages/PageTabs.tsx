@@ -1,22 +1,15 @@
 // Level 0 page switcher (design §5.2/§5.3): Log / Commit, with the uncommitted-files badge.
 // Branch and stash pages arrive in A3; no empty tabs before then.
 import type { KeyboardEvent, ReactNode } from 'react'
-import { fillText } from '../store/changes-store.ts'
+import { useT } from '../i18n.tsx'
+import type { GitWorkbenchKey } from '../locales.ts'
 import css from './PageTabs.module.css'
-
-/** Visible strings of this module; moved into the locale namespace in T7. */
-export const TEXT = {
-  tabsLabel: 'Git 页面',
-  log: '日志',
-  commit: '提交',
-  badgeTitle: '{count} 个未提交文件',
-} as const
 
 export type WorkbenchPage = 'log' | 'commit'
 
 export const WORKBENCH_PAGES: readonly WorkbenchPage[] = ['log', 'commit']
 
-const LABEL: Record<WorkbenchPage, string> = { log: TEXT.log, commit: TEXT.commit }
+const LABEL: Record<WorkbenchPage, GitWorkbenchKey> = { log: 'tabs.log', commit: 'tabs.commit' }
 
 /** Badge text: hidden at 0, capped at `99+`. */
 export function badgeText(count: number): string | null {
@@ -43,6 +36,7 @@ export interface PageTabsProps {
 }
 
 export function PageTabs({ page, onChange, uncommittedCount }: PageTabsProps): ReactNode {
+  const t = useT()
   const badge = badgeText(uncommittedCount)
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
     const next = adjacentPage(page, event.key)
@@ -53,7 +47,7 @@ export function PageTabs({ page, onChange, uncommittedCount }: PageTabsProps): R
     target?.focus()
   }
   return (
-    <div role="tablist" aria-label={TEXT.tabsLabel} className={css.tabs} onKeyDown={onKeyDown}>
+    <div role="tablist" aria-label={t('tabs.tabsLabel')} className={css.tabs} onKeyDown={onKeyDown}>
       {WORKBENCH_PAGES.map((candidate) => {
         const selected = candidate === page
         return (
@@ -68,10 +62,10 @@ export function PageTabs({ page, onChange, uncommittedCount }: PageTabsProps): R
             data-page={candidate}
             onClick={() => { if (!selected) onChange(candidate) }}
           >
-            {LABEL[candidate]}
+            {t(LABEL[candidate])}
             {candidate === 'commit' && badge !== null
               ? (
-                  <span className={css.badge} title={fillText(TEXT.badgeTitle, { count: uncommittedCount })} data-badge={uncommittedCount}>
+                  <span className={css.badge} title={t('title.uncommitted', { count: uncommittedCount })} data-badge={uncommittedCount}>
                     {badge}
                   </span>
                 )

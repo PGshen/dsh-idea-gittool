@@ -4,28 +4,16 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { CommitResultValue, StatusValue, WritePolicyValue } from '../../shared/protocol.ts'
+import { useT } from '../i18n.tsx'
 import { Button } from '../ui/Button.tsx'
 import type { ChangesState, ChangesStore } from '../store/changes-store.ts'
-import { fillText } from '../store/changes-store.ts'
-import { TEXT as STORE_TEXT, commitErrorView, commitGate } from '../store/commit-store.ts'
+import { commitErrorView, commitGate } from '../store/commit-store.ts'
 import type { CommitGate, CommitMode, CommitOutcome, CommitStore, CommitStoreState } from '../store/commit-store.ts'
 import { ChangesTree } from './ChangesTree.tsx'
 import type { DiffOpenScope } from './ChangesTree.tsx'
 import { CommitMessage } from './CommitMessage.tsx'
 import css from './CommitPanel.module.css'
 
-/** Visible strings of this module; moved into the locale namespace in T7. */
-export const TEXT = {
-  amend: 'Amend',
-  amendTitle: '修改上一次提交（HEAD）',
-  submitting: '提交中…',
-  commitAndPush: '提交并推送',
-  pushMenu: '更多推送选项',
-  commitAndOpenPush: '提交后打开推送页…',
-  showConsole: '查看 Git 控制台',
-  refresh: '刷新',
-  dismiss: '关闭',
-} as const
 
 export interface CommittedInfo {
   mode: CommitMode
@@ -90,16 +78,17 @@ function Feedback({ commit, commitStore, onShowConsole, onRefresh }: {
   onShowConsole: () => void
   onRefresh?: (() => void) | undefined
 }): ReactNode {
+  const t = useT()
   if (commit.phase === 'failure' && commit.error !== null) {
-    const view = commitErrorView(commit.error)
+    const view = commitErrorView(commit.error, t)
     return (
       <div role="alert" className={css.error} data-error-code={commit.error.code}>
         <strong className={css.errorTitle}>{view.title}</strong>
         {view.detail === null ? null : <pre className={css.errorDetail}>{view.detail}</pre>}
         <div className={css.errorActions}>
-          {view.action === 'console' ? <Button onClick={onShowConsole}>{TEXT.showConsole}</Button> : null}
-          {view.action === 'refresh' && onRefresh !== undefined ? <Button onClick={onRefresh}>{TEXT.refresh}</Button> : null}
-          <Button onClick={() => commitStore.dismiss()}>{TEXT.dismiss}</Button>
+          {view.action === 'console' ? <Button onClick={onShowConsole}>{t('write.showConsole')}</Button> : null}
+          {view.action === 'refresh' && onRefresh !== undefined ? <Button onClick={onRefresh}>{t('action.refresh')}</Button> : null}
+          <Button onClick={() => commitStore.dismiss()}>{t('action.close')}</Button>
         </div>
       </div>
     )
@@ -107,8 +96,8 @@ function Feedback({ commit, commitStore, onShowConsole, onRefresh }: {
   if (commit.phase === 'success' && commit.lastCommit !== null) {
     return (
       <div role="status" className={css.success} data-committed={commit.lastCommit.sha}>
-        <span>{fillText(STORE_TEXT.committed, { sha: commit.lastCommit.shortSha })}</span>
-        <button type="button" className={css.dismiss} aria-label={TEXT.dismiss} onClick={() => commitStore.dismiss()}>✕</button>
+        <span>{t('commit.committed', { sha: commit.lastCommit.shortSha })}</span>
+        <button type="button" className={css.dismiss} aria-label={t('action.close')} onClick={() => commitStore.dismiss()}>✕</button>
       </div>
     )
   }
@@ -121,6 +110,7 @@ function Feedback({ commit, commitStore, onShowConsole, onRefresh }: {
  * @returns tree, message, actions and feedback.
  */
 export function CommitPanel(props: CommitPanelProps): ReactNode {
+  const t = useT()
   const { changes, changesStore, commit, commitStore } = props
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const [pushMenuOpen, setPushMenuOpen] = useState(false)
@@ -133,7 +123,7 @@ export function CommitPanel(props: CommitPanelProps): ReactNode {
     message: commit.message,
     amend: commit.amend,
     phase: commit.phase,
-  })
+  }, t)
 
   useEffect(() => {
     if (!pushMenuOpen) return
@@ -187,14 +177,14 @@ export function CommitPanel(props: CommitPanelProps): ReactNode {
           textareaRef={textareaRef}
         />
         <div className={css.actions}>
-          <label className={css.amend} title={TEXT.amendTitle}>
+          <label className={css.amend} title={t('commit.amendTitle')}>
             <input
               type="checkbox"
               checked={commit.amend}
               disabled={gate.blocked || gate.submitting}
               onChange={event => commitStore.setAmend(event.target.checked)}
             />
-            {TEXT.amend}
+            {t('commit.amend')}
           </label>
           <span className={css.spacer} />
           <Button
@@ -205,19 +195,19 @@ export function CommitPanel(props: CommitPanelProps): ReactNode {
             data-commit-submit={gate.mode}
             onClick={() => submit()}
           >
-            {gate.submitting ? TEXT.submitting : gate.submitLabel}
+            {gate.submitting ? t('commit.submitting') : gate.submitLabel}
           </Button>
           <div ref={pushMenuRef} className={css.split}>
             <Button
               disabled={!gate.canPush}
-              title={commit.amend ? STORE_TEXT.reasonPushAmend : (gate.disabledReason ?? undefined)}
+              title={commit.amend ? t('commit.reasonPushAmend') : (gate.disabledReason ?? undefined)}
               data-commit-push=""
               onClick={() => submit(true)}
             >
-              {TEXT.commitAndPush}
+              {t('commit.commitAndPush')}
             </Button>
             <Button
-              aria-label={TEXT.pushMenu}
+              aria-label={t('commit.pushMenu')}
               aria-haspopup="menu"
               aria-expanded={pushMenuOpen}
               disabled={!gate.canPush}
@@ -234,7 +224,7 @@ export function CommitPanel(props: CommitPanelProps): ReactNode {
                       className={css.menuItem}
                       onClick={() => { setPushMenuOpen(false); submit(true, true) }}
                     >
-                      {TEXT.commitAndOpenPush}
+                      {t('commit.commitAndOpenPush')}
                     </button>
                   </div>
                 )

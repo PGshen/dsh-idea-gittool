@@ -20,14 +20,6 @@ import { newRequestId as defaultRequestId } from '../git-client.ts'
 // Shared helpers
 // ---------------------------------------------------------------------------
 
-/** Replace `{name}` placeholders (i18n-ready templates); unknown placeholders are left as is. */
-export function formatText(template: string, params: Readonly<Record<string, string | number>> = {}): string {
-  return template.replace(/\{(\w+)\}/g, (match, name: string) => {
-    const value = params[name]
-    return value === undefined ? match : String(value)
-  })
-}
-
 /** Minimal storage surface (localStorage-compatible). */
 export interface KeyValueStorage {
   getItem(key: string): string | null

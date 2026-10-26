@@ -4,10 +4,11 @@
  * line-level blame data arrives in B2 from the Host RPC.
  */
 import type { ReactNode } from 'react'
-import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 // Loads the SlotMap declarations for 'sidebar.right.pane.tab'.
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import css from './blame-page.module.css'
+import { I18nProvider, useT } from './i18n.tsx'
 
 /** The file a blame page was opened for. */
 export interface BlameTarget {
@@ -17,8 +18,8 @@ export interface BlameTarget {
   readonly repoRelativePath?: string
 }
 
-/** Props of the tab body: the framework's bound tab reader. */
-export type BlamePageProps = PropsRuntime<'sidebar.right.pane.tab'>
+/** Props of the tab body: the framework's bound tab reader and the `gitWorkbench` translator. */
+export type BlamePageProps = PropsRuntime<'sidebar.right.pane.tab'> & PropsLocale<'gitWorkbench'>
 
 /**
  * Narrow the opaque navigation parameters to a blame target.
@@ -42,27 +43,28 @@ export function readBlameTarget(params: unknown): BlameTarget | null {
  */
 export function BlameEmptyState(props: { readonly target: BlameTarget | null }): ReactNode {
   const { target } = props
+  const t = useT()
   return (
     <div className={`git-blame-page ${css.page}`}>
-      <h2 className={`git-blame-page__title ${css.title}`}>Blame 视图将在 B2 实现</h2>
+      <h2 className={`git-blame-page__title ${css.title}`}>{t('blame.title')}</h2>
       {target === null
-        ? <p className={`git-blame-page__missing ${css.body}`}>未提供文件路径，无法定位要标注的文件。</p>
+        ? <p className={`git-blame-page__missing ${css.body}`}>{t('blame.missing')}</p>
         : (
           <div className="git-blame-page__target">
             <p className={css.body}>
-              文件：<code>{target.absolutePath}</code>
+              {t('blame.file')}<code>{target.absolutePath}</code>
             </p>
             {target.repoRelativePath === undefined
               ? null
               : (
                 <p className={css.body}>
-                  仓库相对路径：<code>{target.repoRelativePath}</code>
+                  {t('blame.repoPath')}<code>{target.repoRelativePath}</code>
                 </p>
               )}
           </div>
         )}
       <p className={`git-blame-page__note ${css.muted}`}>
-        M0 只验证文档预览头部动作与 openTab 跳转；行级 blame 数据由 Host RPC 在 B2 提供。
+        {t('blame.note')}
       </p>
     </div>
   )
@@ -73,7 +75,11 @@ export function BlameEmptyState(props: { readonly target: BlameTarget | null }):
  * @param props - framework props carrying the bound `useTabInfo` reader.
  * @returns the empty-state body.
  */
-export function BlamePage({ useTabInfo }: BlamePageProps): ReactNode {
+export function BlamePage({ useTabInfo, t }: BlamePageProps): ReactNode {
   const { tab } = useTabInfo()
-  return <BlameEmptyState target={readBlameTarget(tab.navigation.params)} />
+  return (
+    <I18nProvider t={t}>
+      <BlameEmptyState target={readBlameTarget(tab.navigation.params)} />
+    </I18nProvider>
+  )
 }

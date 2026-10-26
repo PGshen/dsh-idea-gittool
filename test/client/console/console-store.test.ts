@@ -1,5 +1,7 @@
 // T8 控制台数据层：脱敏、截断、argv 拆分、命令复制格式、清空水位、展开/暂停、轮询与过期丢弃。
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { zhT } from '../i18n-helpers.tsx'
+import { render } from '../../../src/client/localized-text.ts'
 import type { ConsoleValue, RpcResult } from '../../../src/shared/protocol.ts'
 import { CONSOLE_OUTPUT_MAX_BYTES } from '../../../src/shared/protocol.ts'
 import {
@@ -80,9 +82,9 @@ describe('argv 展示', () => {
     expect(isFailedRecord(record())).toBe(false)
     expect(isFailedRecord(failedRecord())).toBe(true)
     expect(isFailedRecord(record({ exitCode: null, timedOut: true }))).toBe(true)
-    expect(exitLabel(failedRecord())).toBe('退出码 128')
-    expect(exitLabel(record({ exitCode: null, timedOut: true }))).toBe('超时')
-    expect(exitLabel(record({ exitCode: null, cancelled: true }))).toBe('已取消')
+    expect(render(zhT, exitLabel(failedRecord()))).toBe('退出码 128')
+    expect(render(zhT, exitLabel(record({ exitCode: null, timedOut: true })))).toBe('超时')
+    expect(render(zhT, exitLabel(record({ exitCode: null, cancelled: true })))).toBe('已取消')
     expect(outputSummary(failedRecord())).toBe('fatal: Needed a single revision')
     expect(outputSummary(record())).toBe('aaa111')
   })

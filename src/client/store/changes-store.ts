@@ -3,21 +3,8 @@
 // survive page switches and status refreshes.
 import { useSyncExternalStore } from 'react'
 import type { FileEntry, FileStatusCode, StatusValue } from '../../shared/protocol.ts'
+import type { GitWorkbenchKey } from '../locales.ts'
 
-/** Visible strings of this module; moved into the locale namespace in T7. */
-export const TEXT = {
-  groupConflicts: '冲突',
-  groupModified: '已修改',
-  groupAdded: '新增',
-  groupDeleted: '删除',
-  groupRenamed: '重命名',
-  groupUntracked: '未版本控制',
-} as const
-
-/** Replaces `{name}` placeholders; unknown names are left as-is. */
-export function fillText(template: string, params: Readonly<Record<string, string | number>>): string {
-  return template.replace(/\{(\w+)\}/g, (match, key: string) => (key in params ? String(params[key]) : match))
-}
 
 // ---------------------------------------------------------------------------
 // Entries
@@ -27,13 +14,14 @@ export type ChangeGroupKind = 'conflicts' | 'modified' | 'added' | 'deleted' | '
 
 export const CHANGE_GROUP_ORDER: readonly ChangeGroupKind[] = ['conflicts', 'modified', 'added', 'deleted', 'renamed', 'untracked']
 
-export const CHANGE_GROUP_LABEL: Readonly<Record<ChangeGroupKind, string>> = {
-  conflicts: TEXT.groupConflicts,
-  modified: TEXT.groupModified,
-  added: TEXT.groupAdded,
-  deleted: TEXT.groupDeleted,
-  renamed: TEXT.groupRenamed,
-  untracked: TEXT.groupUntracked,
+/** Group headings (locale keys; the tree translates them). */
+export const CHANGE_GROUP_LABEL: Readonly<Record<ChangeGroupKind, GitWorkbenchKey>> = {
+  conflicts: 'changes.groupConflicts',
+  modified: 'changes.groupModified',
+  added: 'changes.groupAdded',
+  deleted: 'changes.groupDeleted',
+  renamed: 'changes.groupRenamed',
+  untracked: 'changes.groupUntracked',
 }
 
 /** One changed path, merged across the staged/unstaged/untracked/conflict lists. */
@@ -174,7 +162,7 @@ export interface ChangeGroupView {
   kind: ChangeGroupKind
   /** `g:<group>`. */
   key: string
-  label: string
+  label: GitWorkbenchKey
   count: number
   check: CheckState
   checkable: boolean

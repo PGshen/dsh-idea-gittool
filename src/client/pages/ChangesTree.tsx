@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, KeyboardEvent, MouseEvent, ReactNode } from 'react'
 import { StatusLetter } from '../ui/StatusLetter.tsx'
-import { buildChangeGroups, fillText } from '../store/changes-store.ts'
+import { useT } from '../i18n.tsx'
+import { buildChangeGroups } from '../store/changes-store.ts'
 import type {
   ChangeEntry,
   ChangeGroupView,
@@ -16,27 +17,6 @@ import type {
 import { copyText } from './BranchPanel.tsx'
 import css from './ChangesTree.module.css'
 
-/** Visible strings of this module; moved into the locale namespace in T7. */
-export const TEXT = {
-  title: '变更',
-  checkAll: '全选',
-  checkedCount: '已选 {count}',
-  searchPlaceholder: '搜索文件',
-  searchLabel: '搜索变更文件',
-  treeLabel: '变更文件',
-  loading: '读取中…',
-  empty: '没有未提交的改动',
-  noMatch: '没有路径包含「{query}」的文件',
-  truncated: '改动过多，只显示了前 {count} 个文件',
-  conflictHint: '冲突文件需要先解决才能提交（冲突处理将在后续版本提供）',
-  renamedFrom: '{from} → {to}',
-  menuLabel: '{path} 操作',
-  menuCommit: '提交此文件…',
-  menuRollback: '回滚此文件…',
-  menuAddToVcs: '加入 VCS',
-  menuCopyPath: '复制路径',
-  menuResolveLater: '冲突需先解决',
-} as const
 
 export type DiffOpenScope = 'worktree' | 'staged'
 
@@ -141,6 +121,7 @@ export interface ChangeContextMenuProps {
 
 /** Row context menu: commit this file, roll back, add to VCS (untracked only), copy path. */
 export function ChangeContextMenu(props: ChangeContextMenuProps): ReactNode {
+  const t = useT()
   const { entry, writeDisabled, onClose, position } = props
   const ref = useRef<HTMLDivElement>(null)
   useEffect(() => {
@@ -171,7 +152,7 @@ export function ChangeContextMenu(props: ChangeContextMenuProps): ReactNode {
     <div
       ref={ref}
       role="menu"
-      aria-label={fillText(TEXT.menuLabel, { path: entry.path })}
+      aria-label={t('changes.menuLabel', { path: entry.path })}
       className={position === undefined ? css.menu : `${css.menu} ${css.menuFloating}`}
       style={style}
       onKeyDown={(event) => {
@@ -182,12 +163,12 @@ export function ChangeContextMenu(props: ChangeContextMenuProps): ReactNode {
       }}
     >
       {conflict
-        ? item(TEXT.menuResolveLater, undefined, true, 'conflict')
-        : item(TEXT.menuCommit, props.onCommitFile, writeDisabled, 'commit')}
-      {item(TEXT.menuRollback, props.onRollback, writeDisabled || conflict, 'rollback')}
-      {entry.group === 'untracked' ? item(TEXT.menuAddToVcs, props.onAddToVcs, writeDisabled, 'add') : null}
+        ? item(t('changes.menuResolveLater'), undefined, true, 'conflict')
+        : item(t('changes.menuCommit'), props.onCommitFile, writeDisabled, 'commit')}
+      {item(t('changes.menuRollback'), props.onRollback, writeDisabled || conflict, 'rollback')}
+      {entry.group === 'untracked' ? item(t('changes.menuAddToVcs'), props.onAddToVcs, writeDisabled, 'add') : null}
       <div role="separator" className={css.menuSeparator} />
-      {item(TEXT.menuCopyPath, props.onCopyPath, false, 'copy')}
+      {item(t('changes.menuCopyPath'), props.onCopyPath, false, 'copy')}
     </div>
   )
 }
@@ -205,10 +186,11 @@ interface RowHandlers {
 }
 
 function FileRowView({ node, handlers }: { node: ChangeTreeFile; handlers: RowHandlers }): ReactNode {
+  const t = useT()
   const { entry } = node
   const focused = handlers.focused === entry.path
   const stat = statText(entry)
-  const title = entry.origPath === undefined ? entry.path : fillText(TEXT.renamedFrom, { from: entry.origPath, to: entry.path })
+  const title = entry.origPath === undefined ? entry.path : t('changes.renamedFrom', { from: entry.origPath, to: entry.path })
   return (
     <div
       role="treeitem"
@@ -230,7 +212,7 @@ function FileRowView({ node, handlers }: { node: ChangeTreeFile; handlers: RowHa
         state={node.checked ? 'all' : 'none'}
         disabled={node.disabled}
         label={entry.path}
-        {...(node.disabled ? { title: TEXT.conflictHint } : {})}
+        {...(node.disabled ? { title: t('changes.conflictHint') } : {})}
         onToggle={() => handlers.onToggleFile(entry.path)}
       />
       <StatusLetter status={entry.status} />
@@ -278,6 +260,7 @@ function NodesView({ nodes, handlers }: { nodes: readonly ChangeTreeNode[]; hand
  * @returns the tree section of the commit page.
  */
 export function ChangesTree(props: ChangesTreeProps): ReactNode {
+  const t = useT()
   const { state, store, writeDisabled = false } = props
   const [menu, setMenu] = useState<MenuState | null>(null)
   const treeRef = useRef<HTMLDivElement>(null)
@@ -335,12 +318,12 @@ export function ChangesTree(props: ChangesTreeProps): ReactNode {
 
   const query = state.search.trim()
   let body: ReactNode
-  if (!state.loaded) body = <p className={css.message} aria-busy="true">{TEXT.loading}</p>
-  else if (state.entries.length === 0) body = <p className={css.message}>{TEXT.empty}</p>
-  else if (groups.length === 0) body = <p className={css.message}>{fillText(TEXT.noMatch, { query })}</p>
+  if (!state.loaded) body = <p className={css.message} aria-busy="true">{t('state.loading')}</p>
+  else if (state.entries.length === 0) body = <p className={css.message}>{t('changes.empty')}</p>
+  else if (groups.length === 0) body = <p className={css.message}>{t('changes.noMatch', { query })}</p>
   else {
     body = (
-      <div ref={treeRef} role="tree" aria-label={TEXT.treeLabel} aria-multiselectable="true" className={css.tree} onKeyDown={onKeyDown}>
+      <div ref={treeRef} role="tree" aria-label={t('changes.treeLabel')} aria-multiselectable="true" className={css.tree} onKeyDown={onKeyDown}>
         {groups.map(group => (
           <div key={group.key} role="group" className={css.group} data-change-group={group.kind}>
             <div
@@ -353,11 +336,11 @@ export function ChangesTree(props: ChangesTreeProps): ReactNode {
               <TriCheckbox
                 state={group.check}
                 disabled={!group.checkable}
-                label={group.label}
-                {...(group.checkable ? {} : { title: TEXT.conflictHint })}
+                label={t(group.label)}
+                {...(group.checkable ? {} : { title: t('changes.conflictHint') })}
                 onToggle={() => store.toggleNode(group.key)}
               />
-              <span className={css.groupLabel}>{group.label}</span>
+              <span className={css.groupLabel}>{t(group.label)}</span>
               <span className={css.count}>{group.count}</span>
             </div>
             {group.collapsed ? null : <NodesView nodes={group.nodes} handlers={handlers} />}
@@ -373,24 +356,24 @@ export function ChangesTree(props: ChangesTreeProps): ReactNode {
         <TriCheckbox
           state={overall}
           disabled={!groups.some(group => group.checkable)}
-          label={TEXT.checkAll}
-          title={TEXT.checkAll}
+          label={t('changes.checkAll')}
+          title={t('changes.checkAll')}
           onToggle={() => store.checkAll(overall !== 'all')}
         />
-        <span className={css.title}>{TEXT.title}</span>
+        <span className={css.title}>{t('changes.title')}</span>
         <span className={css.count}>{state.entries.length}</span>
-        {checkedCount > 0 ? <span className={css.checked}>{fillText(TEXT.checkedCount, { count: checkedCount })}</span> : null}
+        {checkedCount > 0 ? <span className={css.checked}>{t('changes.checkedCount', { count: checkedCount })}</span> : null}
         <input
           type="search"
           className={css.search}
-          placeholder={TEXT.searchPlaceholder}
-          aria-label={TEXT.searchLabel}
+          placeholder={t('changes.searchPlaceholder')}
+          aria-label={t('changes.searchLabel')}
           value={state.search}
           onChange={event => store.setSearch(event.target.value)}
         />
       </div>
       <div className={css.body}>{body}</div>
-      {state.truncated ? <div className={css.footnote}>{fillText(TEXT.truncated, { count: state.entries.length })}</div> : null}
+      {state.truncated ? <div className={css.footnote}>{t('changes.truncated', { count: state.entries.length })}</div> : null}
       {menu === null
         ? null
         : (

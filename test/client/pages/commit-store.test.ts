@@ -1,5 +1,6 @@
 // T5 commit store: state machine, duplicate-submit de-dup, draft/history persistence, gate, error copy.
 import { describe, expect, it, vi } from 'vitest'
+import { zhT } from '../i18n-helpers.tsx'
 import {
   HISTORY_LIMIT,
   commitErrorView,
@@ -223,64 +224,64 @@ describe('commitGate', () => {
   }
 
   it('enabled for a normal commit', () => {
-    expect(commitGate(base)).toMatchObject({ disabledReason: null, blocked: false, mode: 'files', submitLabel: '提交' })
+    expect(commitGate(base, zhT)).toMatchObject({ disabledReason: null, blocked: false, mode: 'files', submitLabel: '提交' })
   })
 
   it('read-only disables everything with the policy reason', () => {
-    const gate = commitGate({ ...base, writePolicy: { mode: 'read-only', reason: '仓库在工作区之外' } })
+    const gate = commitGate({ ...base, writePolicy: { mode: 'read-only', reason: '仓库在工作区之外' } }, zhT)
     expect(gate).toMatchObject({ blocked: true, disabledReason: '仓库在工作区之外' })
-    expect(commitGate({ ...base, writePolicy: { mode: 'read-only' } }).disabledReason).toContain('只读')
+    expect(commitGate({ ...base, writePolicy: { mode: 'read-only' } }, zhT).disabledReason).toContain('只读')
   })
 
   it('operation in progress disables commit', () => {
-    const gate = commitGate({ ...base, status: statusFixture({ operation: 'merge' }) })
+    const gate = commitGate({ ...base, status: statusFixture({ operation: 'merge' }) }, zhT)
     expect(gate.blocked).toBe(true)
     expect(gate.disabledReason).toContain('合并')
   })
 
   it('pending writes show 等待当前操作完成', () => {
-    expect(commitGate({ ...base, pendingWrites: 1 })).toMatchObject({ blocked: true, disabledReason: '等待当前操作完成' })
+    expect(commitGate({ ...base, pendingWrites: 1 }, zhT)).toMatchObject({ blocked: true, disabledReason: '等待当前操作完成' })
   })
 
   it('no checked files: hint; with amend it becomes message-only amend', () => {
-    expect(commitGate({ ...base, checkedCount: 0 }).disabledReason).toBe('请至少选择一个文件')
-    expect(commitGate({ ...base, checkedCount: 0, amend: true })).toMatchObject({ disabledReason: null, mode: 'amend-message', submitLabel: '仅修改提交信息' })
-    expect(commitGate({ ...base, amend: true }).submitLabel).toBe('修改提交')
+    expect(commitGate({ ...base, checkedCount: 0 }, zhT).disabledReason).toBe('请至少选择一个文件')
+    expect(commitGate({ ...base, checkedCount: 0, amend: true }, zhT)).toMatchObject({ disabledReason: null, mode: 'amend-message', submitLabel: '仅修改提交信息' })
+    expect(commitGate({ ...base, amend: true }, zhT).submitLabel).toBe('修改提交')
   })
 
   it('empty message disables', () => {
-    expect(commitGate({ ...base, message: '  \n' }).disabledReason).toBe('请填写提交信息')
+    expect(commitGate({ ...base, message: '  \n' }, zhT).disabledReason).toBe('请填写提交信息')
   })
 
   it('no repository status disables without a crash', () => {
-    expect(commitGate({ ...base, status: null }).blocked).toBe(true)
+    expect(commitGate({ ...base, status: null }, zhT).blocked).toBe(true)
   })
 
   it('rewrite-history warning only for amend when HEAD is pushed (upstream and ahead 0)', () => {
     const pushed = statusFixture({ upstream: 'origin/main', ahead: 0 })
-    expect(commitGate({ ...base, amend: true, status: pushed }).rewriteWarning).toContain('改写已推送的历史')
-    expect(commitGate({ ...base, amend: false, status: pushed }).rewriteWarning).toBeNull()
-    expect(commitGate({ ...base, amend: true, status: statusFixture({ upstream: 'origin/main', ahead: 2 }) }).rewriteWarning).toBeNull()
-    expect(commitGate({ ...base, amend: true, status: statusFixture({ upstream: null, ahead: 0 }) }).rewriteWarning).toBeNull()
+    expect(commitGate({ ...base, amend: true, status: pushed }, zhT).rewriteWarning).toContain('改写已推送的历史')
+    expect(commitGate({ ...base, amend: false, status: pushed }, zhT).rewriteWarning).toBeNull()
+    expect(commitGate({ ...base, amend: true, status: statusFixture({ upstream: 'origin/main', ahead: 2 }) }, zhT).rewriteWarning).toBeNull()
+    expect(commitGate({ ...base, amend: true, status: statusFixture({ upstream: null, ahead: 0 }) }, zhT).rewriteWarning).toBeNull()
   })
 
   it('detached HEAD hint; push needs the push page without upstream or when detached; no push for amend', () => {
-    const detached = commitGate({ ...base, status: statusFixture({ detached: true, branch: null, upstream: null }) })
+    const detached = commitGate({ ...base, status: statusFixture({ detached: true, branch: null, upstream: null }) }, zhT)
     expect(detached.detachedHint).toContain('游离')
     expect(detached.pushNeedsPage).toBe(true)
-    expect(commitGate({ ...base, status: statusFixture({ upstream: null }) }).pushNeedsPage).toBe(true)
-    expect(commitGate(base)).toMatchObject({ pushNeedsPage: false, canPush: true })
-    expect(commitGate({ ...base, amend: true }).canPush).toBe(false)
+    expect(commitGate({ ...base, status: statusFixture({ upstream: null }) }, zhT).pushNeedsPage).toBe(true)
+    expect(commitGate(base, zhT)).toMatchObject({ pushNeedsPage: false, canPush: true })
+    expect(commitGate({ ...base, amend: true }, zhT).canPush).toBe(false)
   })
 
   it('while submitting the submit stays disabled without a reason (loading)', () => {
-    expect(commitGate({ ...base, phase: 'submitting' })).toMatchObject({ disabledReason: null, submitting: true, canSubmit: false })
+    expect(commitGate({ ...base, phase: 'submitting' }, zhT)).toMatchObject({ disabledReason: null, submitting: true, canSubmit: false })
   })
 })
 
 describe('commitErrorView', () => {
   it('hook failure: title, output summary, console action', () => {
-    const view = commitErrorView({ code: 'git/hook-failed', message: 'pre-commit failed', details: { stdout: 'running lint', stderr: 'error: 3 problems' } })
+    const view = commitErrorView({ code: 'git/hook-failed', message: 'pre-commit failed', details: { stdout: 'running lint', stderr: 'error: 3 problems' } }, zhT)
     expect(view.title).toBe('提交被 Git hook 阻止')
     expect(view.detail).toContain('error: 3 problems')
     expect(view.detail).toContain('running lint')
@@ -288,22 +289,22 @@ describe('commitErrorView', () => {
   })
 
   it('caps long hook output', () => {
-    const view = commitErrorView({ code: 'git/hook-failed', message: 'x', details: { output: 'y'.repeat(5000) } })
+    const view = commitErrorView({ code: 'git/hook-failed', message: 'x', details: { output: 'y'.repeat(5000) } }, zhT)
     expect(view.detail?.length).toBeLessThanOrEqual(801)
   })
 
   it('paths changed → refresh and retry', () => {
-    expect(commitErrorView({ code: 'git/paths-changed', message: 'x' })).toMatchObject({ title: '文件已变化，刷新后重试', action: 'refresh' })
+    expect(commitErrorView({ code: 'git/paths-changed', message: 'x' }, zhT)).toMatchObject({ title: '文件已变化，刷新后重试', action: 'refresh' })
   })
 
   it('index not clean, sandbox, locked, operation, timeout and fallback', () => {
-    expect(commitErrorView({ code: 'git/index-not-clean', message: 'x' }).title).toContain('暂存区')
-    expect(commitErrorView({ code: 'git/sandbox-denied', message: 'x' }).title).toContain('只读')
-    expect(commitErrorView({ code: 'git/locked', message: 'x' })).toMatchObject({ action: 'console' })
-    expect(commitErrorView({ code: 'git/locked', message: 'x' }).title).toContain('锁定')
-    expect(commitErrorView({ code: 'git/operation-in-progress', message: 'x' }).title).toContain('进行中')
-    expect(commitErrorView({ code: 'git/timeout', message: 'x' }).action).toBe('console')
-    expect(commitErrorView({ code: 'git/exec-failed', message: 'boom' })).toMatchObject({ title: '提交失败', detail: 'git/exec-failed：boom', action: 'console' })
+    expect(commitErrorView({ code: 'git/index-not-clean', message: 'x' }, zhT).title).toContain('暂存区')
+    expect(commitErrorView({ code: 'git/sandbox-denied', message: 'x' }, zhT).title).toContain('只读')
+    expect(commitErrorView({ code: 'git/locked', message: 'x' }, zhT)).toMatchObject({ action: 'console' })
+    expect(commitErrorView({ code: 'git/locked', message: 'x' }, zhT).title).toContain('锁定')
+    expect(commitErrorView({ code: 'git/operation-in-progress', message: 'x' }, zhT).title).toContain('进行中')
+    expect(commitErrorView({ code: 'git/timeout', message: 'x' }, zhT).action).toBe('console')
+    expect(commitErrorView({ code: 'git/exec-failed', message: 'boom' }, zhT)).toMatchObject({ title: '提交失败', detail: 'git/exec-failed：boom', action: 'console' })
   })
 })
 
@@ -315,8 +316,8 @@ describe('message helpers', () => {
   })
 
   it('subject longer than 72 gives a soft hint', () => {
-    expect(subjectHint('x'.repeat(72))).toBeNull()
-    expect(subjectHint(`${'x'.repeat(80)}\n\nbody`)).toContain('80')
+    expect(subjectHint('x'.repeat(72), zhT)).toBeNull()
+    expect(subjectHint(`${'x'.repeat(80)}\n\nbody`, zhT)).toContain('80')
   })
 
   it('Cmd/Ctrl+Enter submits; plain Enter and IME composition do not', () => {

@@ -5,6 +5,8 @@
  */
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
+import { zh } from '../../../src/client/locales.ts'
+import { zhT } from '../i18n-helpers.tsx'
 import type { CommitSummary, GitError, PushPreviewValue, PushRejectedDetails, PushRejectReason } from '../../../src/shared/protocol.ts'
 import { defaultPushForm } from '../../../src/client/store/push-store.ts'
 import type { PushState } from '../../../src/client/store/push-store.ts'
@@ -13,12 +15,10 @@ import {
   handlePushOutcome,
   PushPage,
   PushPageView,
-  TEXT as PUSH_TEXT,
 } from '../../../src/client/pages/PushPage.tsx'
 import type { PushPageViewProps } from '../../../src/client/pages/PushPage.tsx'
 import {
   PushRejectedView,
-  TEXT as REJECTED_TEXT,
   WriteErrorNotice,
 } from '../../../src/client/pages/PushRejectedPage.tsx'
 import type { PushRejectedViewProps } from '../../../src/client/pages/PushRejectedPage.tsx'
@@ -81,6 +81,7 @@ function readyState(overrides: Partial<PushState> = {}, value: PushPreviewValue 
 
 function pushProps(state: PushState, overrides: Partial<PushPageViewProps> = {}): PushPageViewProps {
   return {
+    t: zhT,
     state,
     readOnlyReason: null,
     onClose: vi.fn(),
@@ -105,6 +106,7 @@ function rejection(reason: PushRejectReason, overrides: Partial<PushRejectedDeta
 
 function rejectedProps(details: PushRejectedDetails, overrides: Partial<PushState> = {}, props: Partial<PushRejectedViewProps> = {}): PushRejectedViewProps {
   return {
+    t: zhT,
     state: readyState({ view: 'rejected', rejected: details, rejectedFromPush: true, ...overrides }),
     readOnlyReason: null,
     onBack: vi.fn(),
@@ -150,8 +152,8 @@ describe('PushPageView', () => {
     const tree = PushPageView(props)
     const html = renderToStaticMarkup(<PushPageView {...props} />)
     expect(html).toContain('data-force-risk')
-    expect(html).toContain(PUSH_TEXT.forceRisk)
-    expect(html).toContain(PUSH_TEXT.block['risk-unconfirmed'])
+    expect(html).toContain(zh['push.forceRisk'])
+    expect(html).toContain(zh['push.block.risk-unconfirmed'])
     expect(primaryOf(tree)?.props.disabled).toBe(true)
     expect(primaryOf(tree)?.props.tone).toBe('danger')
     invoke(findAll(tree, element => element.type === 'form')[0], 'onSubmit', { preventDefault: vi.fn() })
@@ -172,8 +174,8 @@ describe('PushPageView', () => {
     const value = preview({ branch: null, detached: true })
     const props = pushProps(readyState({}, value))
     const html = renderToStaticMarkup(<PushPageView {...props} />)
-    expect(html).toContain(PUSH_TEXT.detachedHint)
-    expect(html).toContain(PUSH_TEXT.block['detached-branch'])
+    expect(html).toContain(zh['push.detachedHint'])
+    expect(html).toContain(zh['push.block.detached-branch'])
     expect(html).toContain('HEAD（detached） → origin/?')
     expect(primaryOf(PushPageView(props))?.props.disabled).toBe(true)
   })
@@ -190,22 +192,22 @@ describe('PushPageView', () => {
     const tree = PushPageView(props)
     expect(primaryOf(tree)?.props.disabled).toBe(true)
     expect(primaryOf(tree)?.props['aria-busy']).toBe(true)
-    expect(renderToStaticMarkup(<PushPageView {...props} />)).toContain(PUSH_TEXT.submitting)
+    expect(renderToStaticMarkup(<PushPageView {...props} />)).toContain(zh['push.submitting'])
   })
 
   it('loading, error and no-remote states', () => {
     const loading = readyState({ previewStatus: 'loading', preview: null })
-    expect(renderToStaticMarkup(<PushPageView {...pushProps(loading)} />)).toContain(PUSH_TEXT.loading)
+    expect(renderToStaticMarkup(<PushPageView {...pushProps(loading)} />)).toContain(zh['push.loading'])
     const failed = readyState({ previewStatus: 'error', preview: null, previewError: { code: 'git/exec-failed', message: 'boom' } })
     const html = renderToStaticMarkup(<PushPageView {...pushProps(failed)} />)
-    expect(html).toContain(PUSH_TEXT.loadFailed)
+    expect(html).toContain(zh['push.loadFailed'])
     expect(html).toContain('boom')
     const none = preview({ remotes: [], defaultRemote: null })
-    expect(renderToStaticMarkup(<PushPageView {...pushProps(readyState({}, none))} />)).toContain(PUSH_TEXT.noRemotes)
+    expect(renderToStaticMarkup(<PushPageView {...pushProps(readyState({}, none))} />)).toContain(zh['push.noRemotes'])
   })
 
   it('empty and truncated commit lists', () => {
-    expect(renderToStaticMarkup(<PushPageView {...pushProps(readyState({}, preview({ commits: [] })))} />)).toContain(PUSH_TEXT.noCommits)
+    expect(renderToStaticMarkup(<PushPageView {...pushProps(readyState({}, preview({ commits: [] })))} />)).toContain(zh['push.noCommits'])
     expect(renderToStaticMarkup(<PushPageView {...pushProps(readyState({}, preview({ truncated: true })))} />)).toContain('仅显示前 2 个提交')
   })
 
@@ -214,7 +216,7 @@ describe('PushPageView', () => {
     const html = renderToStaticMarkup(<PushPageView {...pushProps(readyState({ error }))} />)
     expect(html).toContain('data-auth-command')
     expect(html).toContain('git push -u origin feat/login')
-    expect(html).toContain(REJECTED_TEXT.errorTitle['git/auth-required'])
+    expect(html).toContain(zh['write.error.git/auth-required'])
   })
 })
 
@@ -223,6 +225,7 @@ describe('WriteErrorNotice', () => {
     const onCopy = vi.fn()
     const onShowConsole = vi.fn()
     const tree = WriteErrorNotice({
+      t: zhT,
       error: { code: 'git/auth-required', message: '', details: { command: 'git push origin main' } },
       onCopy,
       onShowConsole,
@@ -235,12 +238,12 @@ describe('WriteErrorNotice', () => {
   })
 
   it('other codes get an actionable title and no command', () => {
-    const html = renderToStaticMarkup(<WriteErrorNotice error={{ code: 'git/locked', message: 'index.lock exists' }} onCopy={vi.fn()} />)
-    expect(html).toContain(REJECTED_TEXT.errorTitle['git/locked'])
+    const html = renderToStaticMarkup(<WriteErrorNotice t={zhT} error={{ code: 'git/locked', message: 'index.lock exists' }} onCopy={vi.fn()} />)
+    expect(html).toContain(zh['write.error.git/locked'])
     expect(html).toContain('index.lock exists')
     expect(html).not.toContain('data-auth-command')
-    const unknown = renderToStaticMarkup(<WriteErrorNotice error={{ code: 'git/exec-failed', message: 'x' }} onCopy={vi.fn()} />)
-    expect(unknown).toContain(REJECTED_TEXT.errorTitle.fallback)
+    const unknown = renderToStaticMarkup(<WriteErrorNotice t={zhT} error={{ code: 'git/exec-failed', message: 'x' }} onCopy={vi.fn()} />)
+    expect(unknown).toContain(zh['write.error.fallback'])
   })
 })
 
@@ -249,7 +252,7 @@ describe('PushRejectedView', () => {
 
   it.each(reasons)('renders the reason text for %s', (reason) => {
     const html = renderToStaticMarkup(<PushRejectedView {...rejectedProps(rejection(reason))} />)
-    expect(html).toContain(REJECTED_TEXT.reason[reason])
+    expect(html).toContain(zh[`rejected.reason.${reason}`])
     expect(html).toContain(`data-reason="${reason}"`)
   })
 
@@ -259,14 +262,14 @@ describe('PushRejectedView', () => {
     expect(html).toContain('fix: remote change')
     expect(html).toContain('[rejected] feat/login (non-fast-forward)')
     expect(html).toContain('checked="" value="rebase"')
-    expect(html).toContain(REJECTED_TEXT.submitPull)
+    expect(html).toContain(zh['rejected.submitPull'])
   })
 
   it('protected branches get no force option', () => {
     const tree = PushRejectedView(rejectedProps(rejection('protected')))
     const radios = findAll(tree, element => element.type === 'input' && element.props.type === 'radio')
     expect(radios.map(radio => radio.props.value)).toEqual(['rebase', 'merge'])
-    expect(renderToStaticMarkup(<PushRejectedView {...rejectedProps(rejection('protected'))} />)).toContain(REJECTED_TEXT.protectedNoForce)
+    expect(renderToStaticMarkup(<PushRejectedView {...rejectedProps(rejection('protected'))} />)).toContain(zh['rejected.protectedNoForce'])
   })
 
   it('non-protected offers force; choosing reports the choice', () => {
@@ -284,7 +287,7 @@ describe('PushRejectedView', () => {
     expect(primaryOf(tree)?.props.tone).toBe('danger')
     const html = renderToStaticMarkup(<PushRejectedView {...blocked} />)
     expect(html).toContain('将用本地分支覆盖 origin/feat/login，远程上的 1 个提交会从该分支上消失。')
-    expect(html).toContain(REJECTED_TEXT.block['risk-unconfirmed'])
+    expect(html).toContain(zh['rejected.block.risk-unconfirmed'])
     invoke(findAll(tree, element => element.type === 'form')[0], 'onSubmit', { preventDefault: vi.fn() })
     expect(blocked.onSubmit).not.toHaveBeenCalled()
 
@@ -296,14 +299,14 @@ describe('PushRejectedView', () => {
   })
 
   it('busy labels per phase', () => {
-    expect(renderToStaticMarkup(<PushRejectedView {...rejectedProps(rejection('fetch-first'), { busy: 'pull' })} />)).toContain(REJECTED_TEXT.busy.pull)
-    expect(renderToStaticMarkup(<PushRejectedView {...rejectedProps(rejection('fetch-first'), { busy: 'retry' })} />)).toContain(REJECTED_TEXT.busy.retry)
+    expect(renderToStaticMarkup(<PushRejectedView {...rejectedProps(rejection('fetch-first'), { busy: 'pull' })} />)).toContain(zh['rejected.busy.pull'])
+    expect(renderToStaticMarkup(<PushRejectedView {...rejectedProps(rejection('fetch-first'), { busy: 'retry' })} />)).toContain(zh['rejected.busy.retry'])
   })
 
   it('auto-retry rejection notice and auth command', () => {
     const error: GitError = { code: 'git/auth-required', message: 'auth', details: { command: 'git pull --rebase origin feat/login' } }
     const html = renderToStaticMarkup(<PushRejectedView {...rejectedProps(rejection('non-fast-forward'), { autoRetryRejected: true, error })} />)
-    expect(html).toContain(REJECTED_TEXT.autoRetryRejected)
+    expect(html).toContain(zh['rejected.autoRetryRejected'])
     expect(html).toContain('git pull --rebase origin feat/login')
   })
 
@@ -381,7 +384,7 @@ describe('PushPage container (first render)', () => {
     const html = renderToStaticMarkup(
       <PushPage sessionId="s1" repoRoot="/repo" client={client as never} storage={null} onClose={vi.fn()} onPushed={vi.fn()} onConflict={vi.fn()} />,
     )
-    expect(html).toContain(PUSH_TEXT.loading)
+    expect(html).toContain(zh['push.loading'])
     expect(client.push).not.toHaveBeenCalled()
   })
 
@@ -398,7 +401,7 @@ describe('PushPage container (first render)', () => {
         onConflict={vi.fn()}
       />,
     )
-    expect(html).toContain(REJECTED_TEXT.reason['fetch-first'])
+    expect(html).toContain(zh['rejected.reason.fetch-first'])
     expect(client.pullForPush).not.toHaveBeenCalled()
   })
 })

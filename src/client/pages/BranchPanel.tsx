@@ -4,6 +4,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, KeyboardEvent, MouseEvent, ReactNode } from 'react'
 import type { BranchEntry, BranchesValue, GitError } from '../../shared/protocol.ts'
+import { useT } from '../i18n.tsx'
 import { Button } from '../ui/Button.tsx'
 import { EmptyState } from '../ui/EmptyState.tsx'
 import {
@@ -75,6 +76,7 @@ export function drawerEscapeAction(search: string): 'clear-search' | 'close' {
 }
 
 export function BranchPanel(props: BranchPanelProps): ReactNode {
+  const t = useT()
   const { mode, open, collapsed = false } = props
   if (mode !== 'wide' && !open) return null
   if (mode === 'wide' && collapsed) {
@@ -84,8 +86,8 @@ export function BranchPanel(props: BranchPanelProps): ReactNode {
           type="button"
           className={css.railButton}
           aria-expanded="false"
-          aria-label="展开分支面板"
-          title="展开分支面板"
+          aria-label={t('branch.expand')}
+          title={t('branch.expand')}
           onClick={props.onToggleCollapse}
         >
           ⎇
@@ -95,7 +97,7 @@ export function BranchPanel(props: BranchPanelProps): ReactNode {
   }
   if (mode === 'wide') {
     return (
-      <aside className={`${css.panel} ${css.wide}`} data-mode="wide" data-collapsed="false" aria-label="分支">
+      <aside className={`${css.panel} ${css.wide}`} data-mode="wide" data-collapsed="false" aria-label={t('branch.panel')}>
         <BranchPanelBody {...props} />
       </aside>
     )
@@ -115,7 +117,7 @@ export function BranchPanel(props: BranchPanelProps): ReactNode {
       <div
         role="dialog"
         aria-modal="true"
-        aria-label="分支"
+        aria-label={t('branch.panel')}
         className={`${css.panel} ${mode === 'compact' ? css.compact : css.drawer}`}
         onKeyDown={onKeyDown}
       >
@@ -129,6 +131,7 @@ function BranchPanelBody(props: BranchPanelProps): ReactNode {
   const {
     value, mode, search, collapsedGroups, collapsedDirs, flat, loading = false, error = null,
   } = props
+  const t = useT()
   const [menu, setMenu] = useState<MenuState | null>(null)
   // 抽屉/覆盖页打开即把焦点移进来，Esc 与键盘操作才落在面板内（Wide 档常驻，不抢焦点）。
   const autofocus = mode !== 'wide'
@@ -164,18 +167,18 @@ function BranchPanelBody(props: BranchPanelProps): ReactNode {
     content = (
       <EmptyState
         error
-        title="读取分支失败"
-        hint={`${error.code}：${error.message}`}
-        action={{ label: '重试', onClick: props.onRetry ?? (() => {}) }}
+        title={t('branch.loadFailed')}
+        hint={t('error.detail', { code: error.code, message: error.message })}
+        action={{ label: t('action.retry'), onClick: props.onRetry ?? (() => {}) }}
       />
     )
   } else if (value === null) {
-    content = <div className={css.message} aria-busy={loading}>{loading ? '读取中…' : '暂无分支数据'}</div>
+    content = <div className={css.message} aria-busy={loading}>{t(loading ? 'state.loading' : 'branch.empty')}</div>
   } else if (noMatch) {
-    content = <EmptyState title="没有匹配的分支" hint={`没有名称包含「${search.trim()}」的分支或标签`} />
+    content = <EmptyState title={t('branch.noMatch')} hint={t('branch.noMatch.hint', { query: search.trim() })} />
   } else {
     content = (
-      <div role="tree" aria-label="分支" className={css.tree}>
+      <div role="tree" aria-label={t('branch.panel')} className={css.tree}>
         {groups.map(group => (
           <BranchGroupView
             key={group.kind}
@@ -204,8 +207,8 @@ function BranchPanelBody(props: BranchPanelProps): ReactNode {
           type="search"
           {...(autofocus ? { 'data-autofocus': 'true' } : {})}
           className={css.search}
-          placeholder="搜索分支"
-          aria-label="搜索分支"
+          placeholder={t('branch.search')}
+          aria-label={t('branch.search')}
           value={search}
           onChange={event => props.onSearchChange?.(event.target.value)}
         />
@@ -213,8 +216,8 @@ function BranchPanelBody(props: BranchPanelProps): ReactNode {
           type="button"
           className={css.iconButton}
           aria-pressed={flat}
-          title={flat ? '按目录分组' : '扁平显示'}
-          aria-label="扁平显示"
+          title={t(flat ? 'branch.grouped' : 'branch.flat')}
+          aria-label={t('branch.flat')}
           onClick={props.onToggleFlat}
         >
           ≡
@@ -222,7 +225,7 @@ function BranchPanelBody(props: BranchPanelProps): ReactNode {
         {mode === 'wide'
           ? null
           : (
-              <button type="button" className={css.iconButton} aria-label="关闭分支面板" title="关闭" onClick={props.onClose}>
+              <button type="button" className={css.iconButton} aria-label={t('branch.close')} title={t('action.close')} onClick={props.onClose}>
                 ✕
               </button>
             )}
@@ -230,19 +233,19 @@ function BranchPanelBody(props: BranchPanelProps): ReactNode {
       {value !== null && error !== null
         ? (
             <div role="alert" className={css.inlineError}>
-              <span>刷新失败：{error.code}</span>
-              {props.onRetry === undefined ? null : <Button onClick={props.onRetry}>重试</Button>}
-              {props.onOpenConsole === undefined ? null : <Button onClick={props.onOpenConsole}>打开控制台</Button>}
+              <span>{t('refresh.failed', { code: error.code })}</span>
+              {props.onRetry === undefined ? null : <Button onClick={props.onRetry}>{t('action.retry')}</Button>}
+              {props.onOpenConsole === undefined ? null : <Button onClick={props.onOpenConsole}>{t('branch.openConsole')}</Button>}
             </div>
           )
         : null}
       <div className={css.body}>{content}</div>
-      {value?.truncated === true ? <div className={css.footnote}>分支过多，列表已截断</div> : null}
+      {value?.truncated === true ? <div className={css.footnote}>{t('branch.truncated')}</div> : null}
       {mode === 'wide' && props.onToggleCollapse !== undefined
         ? (
             <div className={css.footer}>
               <button type="button" className={css.footerButton} aria-expanded="true" onClick={props.onToggleCollapse}>
-                « 收起
+                {t('branch.collapse')}
               </button>
             </div>
           )
@@ -305,6 +308,7 @@ interface BranchRowViewProps extends Omit<BranchGroupViewProps, 'group' | 'searc
 }
 
 function BranchRowView({ group, row, selected, onToggleDirectory, onClickEntry, onDoubleClickEntry, onContextMenu }: BranchRowViewProps): ReactNode {
+  const t = useT()
   const indent = { '--git-tree-depth': row.depth } as CSSProperties
   if (row.kind === 'directory') {
     const expanded = row.directoryCollapsed !== true
@@ -348,7 +352,7 @@ function BranchRowView({ group, row, selected, onToggleDirectory, onClickEntry, 
       data-behind={row.behind}
       className={classes}
       style={indent}
-      title={entry === undefined ? row.label : `${entry.ref}\n单击：定位到该分支 · 双击：按该分支过滤`}
+      title={entry === undefined ? row.label : t('branch.row.title', { ref: entry.ref })}
       onClick={entry === undefined ? undefined : () => onClickEntry(entry)}
       onDoubleClick={entry === undefined ? undefined : () => onDoubleClickEntry(entry)}
       onContextMenu={entry === undefined ? undefined : event => onContextMenu(entry, event)}
@@ -362,7 +366,7 @@ function BranchRowView({ group, row, selected, onToggleDirectory, onClickEntry, 
       <span className={css.icon} aria-hidden="true">{rowIcon(group, row)}</span>
       <span className={css.name}>{row.label}</span>
       {row.detached ? <span className={css.detachedNote}>detached HEAD</span> : null}
-      {row.current ? <span className={css.check} aria-label="当前分支">✓</span> : null}
+      {row.current ? <span className={css.check} aria-label={t('branch.current')}>✓</span> : null}
       {row.upstream === undefined ? null : <span className={css.upstream}>{row.upstream}</span>}
       {aheadBehind === '' ? null : <span className={css.aheadBehind}>{aheadBehind}</span>}
     </div>
@@ -384,6 +388,7 @@ export interface BranchContextMenuProps {
 
 /** 分支右键菜单（A1 只读子集）。 */
 export function BranchContextMenu({ entry, onCopyName, onCopyRef, onNavigate, onFilter, onClose, position }: BranchContextMenuProps): ReactNode {
+  const t = useT()
   const ref = useRef<HTMLDivElement>(null)
   useEffect(() => {
     if (onClose === undefined) return
@@ -400,18 +405,18 @@ export function BranchContextMenu({ entry, onCopyName, onCopyRef, onNavigate, on
     <div
       ref={ref}
       role="menu"
-      aria-label={`${entry.name} 操作`}
+      aria-label={t('branch.menu', { name: entry.name })}
       className={`${css.menu} ${position === undefined ? '' : css.menuFloating}`}
       style={style}
       onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); onClose?.() } }}
     >
-      <button type="button" role="menuitem" className={css.menuItem} onClick={onNavigate}>跳转到 HEAD</button>
+      <button type="button" role="menuitem" className={css.menuItem} onClick={onNavigate}>{t('branch.menu.jumpHead')}</button>
       {onFilter === undefined
         ? null
-        : <button type="button" role="menuitem" className={css.menuItem} onClick={onFilter}>按此分支过滤日志</button>}
+        : <button type="button" role="menuitem" className={css.menuItem} onClick={onFilter}>{t('branch.menu.filter')}</button>}
       <div role="separator" className={css.menuSeparator} />
-      <button type="button" role="menuitem" className={css.menuItem} onClick={onCopyName}>复制名称</button>
-      <button type="button" role="menuitem" className={css.menuItem} onClick={onCopyRef}>复制完整引用</button>
+      <button type="button" role="menuitem" className={css.menuItem} onClick={onCopyName}>{t('branch.menu.copyName')}</button>
+      <button type="button" role="menuitem" className={css.menuItem} onClick={onCopyRef}>{t('branch.menu.copyRef')}</button>
     </div>
   )
 }

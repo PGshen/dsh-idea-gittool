@@ -161,9 +161,17 @@
   color: var(--dsw-alias-label-tertiary);
 }
 
-.jump {
-  flex: 0 1 160px;
+/* 跳转框与它的失败说明上下排列：说明紧贴输入框下方。 */
+.jumpField {
+  display: flex;
+  flex: 0 1 200px;
+  flex-direction: column;
+  gap: 2px;
   min-width: 100px;
+}
+
+.jump {
+  min-width: 0;
   padding: 3px 6px;
   border: 0.5px solid var(--dsw-alias-border-l2);
   border-radius: 4px;
@@ -185,6 +193,9 @@
 
 .jumpError {
   color: var(--dsw-alias-state-error-primary);
+  font-size: 11px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 
 .chips {

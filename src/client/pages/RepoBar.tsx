@@ -2,6 +2,7 @@
 // A1 只读：获取/拉取/推送等写入口留到 A2。
 import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
+import { useT } from '../i18n.tsx'
 import type { PanelMode } from './branch-store.ts'
 import css from './RepoBar.module.css'
 
@@ -40,6 +41,7 @@ export function repoName(repoRoot: string | null): string {
 }
 
 export function RepoBar(props: RepoBarProps): ReactNode {
+  const t = useT()
   const { repoRoot, refreshing = false, mode = 'wide', maxPathChars = 48 } = props
   const [menuOpen, setMenuOpen] = useState(props.defaultMenuOpen === true)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -63,7 +65,7 @@ export function RepoBar(props: RepoBarProps): ReactNode {
     <div className={css.bar} data-dsh-git-repo-bar="">
       <span className={css.repoIcon} aria-hidden="true">▦</span>
       {repoRoot === null
-        ? <span className={css.placeholder}>未打开仓库</span>
+        ? <span className={css.placeholder}>{t('repo.none')}</span>
         : (
             <span className={css.repo} title={repoRoot}>
               <strong className={css.name}>{repoName(repoRoot)}</strong>
@@ -80,7 +82,7 @@ export function RepoBar(props: RepoBarProps): ReactNode {
               aria-pressed={props.branchesOpen === true}
               onClick={props.onToggleBranches}
             >
-              ⎇ 分支
+              {t('repo.branches')}
             </button>
           )
         : null}
@@ -88,13 +90,13 @@ export function RepoBar(props: RepoBarProps): ReactNode {
         <button
           type="button"
           className={css.button}
-          aria-label="更多操作"
+          aria-label={t('repo.more')}
           aria-haspopup="menu"
           aria-expanded={menuOpen}
           onClick={() => setMenuOpen(open => !open)}
         >
           ⋯
-          {props.consoleHasErrors === true ? <span className={css.dot} data-console-errors="true" aria-label="有失败的 Git 命令" /> : null}
+          {props.consoleHasErrors === true ? <span className={css.dot} data-console-errors="true" aria-label={t('repo.consoleErrors')} /> : null}
         </button>
         {menuOpen
           ? (
@@ -111,10 +113,10 @@ export function RepoBar(props: RepoBarProps): ReactNode {
                   aria-busy={refreshing}
                   onClick={() => choose(props.onRefresh)}
                 >
-                  {refreshing ? '刷新中…' : '刷新'}
+                  {refreshing ? t('repo.refreshing') : t('action.refresh')}
                 </button>
                 <button type="button" role="menuitem" className={css.menuItem} onClick={() => choose(props.onOpenConsole)}>
-                  Git 控制台
+                  {t('console.title')}
                 </button>
               </div>
             )

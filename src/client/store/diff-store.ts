@@ -1,6 +1,8 @@
 // Diff 查看器的数据状态机：一次只有一个在途请求；切换文件/关闭时用 AbortController 中止旧请求，
 // 迟到响应一律丢弃。RPC 由外部注入（Lead 在 src/client/index.ts 接 git-client）。
 import { useSyncExternalStore } from 'react'
+import { text } from '../localized-text.ts'
+import type { LocalizedText } from '../localized-text.ts'
 import {
   DIFF_FILE_MAX_BYTES,
   DIFF_FILE_MAX_LINES,
@@ -170,12 +172,11 @@ export function terminalCommandFor(request: DiffRequest): string {
  * @param value - 服务端返回的 diff。
  * @returns 面向用户的一句提示。
  */
-export function truncationNotice(value: DiffFileValue): string | undefined {
+export function truncationNotice(value: DiffFileValue): LocalizedText | undefined {
   if (!value.truncated || value.truncatedReason === 'binary') return undefined
-  const limit = value.truncatedReason === 'bytes'
-    ? `${Math.round(DIFF_FILE_MAX_BYTES / 1024)}KiB`
-    : `${DIFF_FILE_MAX_LINES} 行`
-  return `文件过大，仅显示前 ${diffLineCount(value)} 行（上限 ${limit}）。`
+  return value.truncatedReason === 'bytes'
+    ? text('diff.truncated.bytes', { count: diffLineCount(value), limit: Math.round(DIFF_FILE_MAX_BYTES / 1024) })
+    : text('diff.truncated.lines', { count: diffLineCount(value), limit: DIFF_FILE_MAX_LINES })
 }
 
 /** 字节数的人类可读形式（二进制文件大小，设计 §9.3）。 */

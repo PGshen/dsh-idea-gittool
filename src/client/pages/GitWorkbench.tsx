@@ -1,4 +1,5 @@
-// Git tab 的 A1 工作台：把日志页、分支面板、提交详情、Diff 覆盖层、状态栏与控制台接到一起。
+// Git tab 的工作台：A1 的日志页、分支面板、提交详情、Diff 覆盖层、状态栏与控制台，
+// A2 的提交页（变更树 + 提交信息）、Push / Push Rejected 覆盖页与回滚确认。
 // 各页面与 store 都是注入式的；这里只负责创建 store、发 RPC、在版本变化时刷新，以及页面间导航。
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
@@ -6,13 +7,28 @@ import type {
   BootstrapValue,
   CommitDetailValue,
   CommitFileEntry,
+  CommitResultValue,
   CommitSummary,
   DiffRequest,
+  FileEntry,
+  PushRejectedDetails,
   RefEntry,
+  StatusValue,
 } from '../../shared/protocol.ts'
 import { ConsoleDrawer, CONSOLE_DEFAULT_HEIGHT } from '../console/ConsoleDrawer.tsx'
 import { createConsoleStore, useConsoleState } from '../console/console-store.ts'
 import type { GitClient } from '../git-client.ts'
+import { newRequestId } from '../git-client.ts'
+import { createChangesStore, uncommittedCount, useChangesState } from '../store/changes-store.ts'
+import { createCommitStore, useCommitState } from '../store/commit-store.ts'
+import { parseRejectedDetails, splitUpstream } from '../store/push-store.ts'
+import type { RollbackTarget } from '../store/push-store.ts'
+import type { DiffOpenScope } from './ChangesTree.tsx'
+import { CommitPanel } from './CommitPanel.tsx'
+import { PageTabs } from './PageTabs.tsx'
+import type { WorkbenchPage } from './PageTabs.tsx'
+import { PushPage } from './PushPage.tsx'
+import { RollbackSheet } from './RollbackSheet.tsx'
 import { ReadOnlyBanner } from '../read-only-banner.tsx'
 import { createDetailStore, useDetailState } from '../store/detail-store.ts'
 import { createLogStore } from '../store/log-store.ts'
@@ -44,6 +60,23 @@ interface OpenDiff {
   request: DiffRequest
   files: CommitFileEntry[]
   source: string[]
+}
+
+/** Push 覆盖页的打开方式：普通打开，或直接停在 Push Rejected（提交并推送被拒）。 */
+interface OpenPush {
+  initialRejection?: PushRejectedDetails
+}
+
+/** 提交页打开工作区/暂存区 diff 时，Diff 覆盖层可切换的同组文件。 */
+export function changeFilesFor(status: StatusValue | null, scope: DiffOpenScope): FileEntry[] {
+  if (status === null) return []
+  return scope === 'staged' ? status.staged : [...status.conflicts, ...status.unstaged, ...status.untracked]
+}
+
+/** 回滚目标：未跟踪文件只能删除，需要危险确认。 */
+export function rollbackTargetsFor(status: StatusValue | null, paths: readonly string[]): RollbackTarget[] {
+  const untracked = new Set(status?.untracked.map(entry => entry.path) ?? [])
+  return paths.map(path => ({ path, untracked: untracked.has(path) }))
 }
 
 /** 合并提交把各父分组展开成一份文件列表（条目带 parentSha）；普通提交直接用 files。 */
@@ -103,6 +136,19 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
   useEffect(() => () => { logStore.dispose() }, [logStore])
   useEffect(() => () => { detailStore.cancel() }, [detailStore])
   useEffect(() => () => { consoleStore.reset() }, [consoleStore])
+
+  const repoRoot = value.repoRoot ?? ''
+  const changesStore = useMemo(() => createChangesStore(), [sessionId])
+  const commitStore = useMemo(
+    () => createCommitStore({ sessionId, repoRoot, client }),
+    [client, repoRoot, sessionId],
+  )
+  useEffect(() => { changesStore.setStatus(status) }, [changesStore, status])
+  const changes = useChangesState(changesStore)
+  const commit = useCommitState(commitStore)
+  const [page, setPage] = useState<WorkbenchPage>('log')
+  const [push, setPush] = useState<OpenPush | null>(null)
+  const [rollback, setRollback] = useState<RollbackTarget[] | null>(null)
 
   const detail = useDetailState(detailStore)
   const branches = useBranchesState(branchesStore)
@@ -230,6 +276,61 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
     logStore.jumpTo(sha)
   }, [logStore])
 
+  // 覆盖层同一时刻只有一个（设计 §5.3）：打开一个就关掉其余。
+  const openPush = useCallback((open: OpenPush) => {
+    setDiff(null)
+    setRollback(null)
+    setPush(open)
+  }, [])
+
+  const openWorktreeDiff = useCallback((path: string, scope: DiffOpenScope) => {
+    setPush(null)
+    setRollback(null)
+    setDiff({
+      request: { sessionId, scope, path },
+      files: changeFilesFor(status, scope),
+      source: ['提交', scope === 'staged' ? '已暂存' : '工作区'],
+    })
+  }, [sessionId, status])
+
+  const onCommitted = useCallback((result: CommitResultValue) => {
+    // 刷新状态与日志后在日志里定位新 HEAD（切回日志页时可见）。
+    void Promise.all([onRefresh(), logStore.refresh()]).then(() => { logStore.jumpTo(result.sha) })
+  }, [logStore, onRefresh])
+
+  /** 提交并推送：有 upstream 直接推送；被拒停在 Push Rejected，其它失败打开 Push 页由用户处理。 */
+  const pushAfterCommit = useCallback(async (openPushPage: boolean): Promise<void> => {
+    const upstream = status?.upstream ?? null
+    if (openPushPage || upstream === null) {
+      openPush({})
+      return
+    }
+    const preview = await client.pushPreview(sessionId)
+    const target = preview.ok ? splitUpstream(upstream, preview.value.remotes) : null
+    if (target === null) {
+      openPush({})
+      return
+    }
+    const result = await client.push({ sessionId, requestId: newRequestId(), ...target })
+    if (result.ok) {
+      void onRefresh()
+      return
+    }
+    if (result.error.code === 'git/rejected') openPush({ initialRejection: parseRejectedDetails(result.error, target) })
+    else openPush({})
+  }, [client, onRefresh, openPush, sessionId, status?.upstream])
+
+  const addToVcs = useCallback(async (paths: string[]): Promise<void> => {
+    const result = await client.addToVcs({ sessionId, requestId: newRequestId(), paths })
+    // 失败原因在 Git 控制台里（每条命令都有记录）。
+    if (!result.ok) setConsoleOpen(true)
+    void onRefresh()
+  }, [client, onRefresh, sessionId])
+
+  const readOnlyReason = value.writePolicy.mode === 'read-only'
+    ? (value.writePolicy.reason ?? '只读模式')
+    : null
+
   const renderDetail = useCallback(() => (
     detail.status === 'idle' ? null : (
       <CommitDetail
@@ -287,18 +388,43 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
         onOpenConsole={() => { setConsoleOpen(true) }}
         onToggleBranches={() => { branchesStore.setOpen(!branches.open) }}
       />
+      <PageTabs page={page} onChange={setPage} uncommittedCount={uncommittedCount(status)} />
       <div className={css.content}>
-        <LogPage
-          store={logStore}
-          {...(refsBySha === undefined ? {} : { refsBySha })}
-          headSha={status?.head ?? null}
-          currentBranch={status?.branch ?? null}
-          onSelect={onSelect}
-          onOpenCommit={onOpenCommit}
-          renderDetail={renderDetail}
-          {...(wide ? { sidebar: branchPanel } : {})}
-        />
-        {wide ? null : branchPanel}
+        {page === 'log' ? (
+          <LogPage
+            store={logStore}
+            {...(refsBySha === undefined ? {} : { refsBySha })}
+            headSha={status?.head ?? null}
+            currentBranch={status?.branch ?? null}
+            onSelect={onSelect}
+            onOpenCommit={onOpenCommit}
+            renderDetail={renderDetail}
+            {...(wide ? { sidebar: branchPanel } : {})}
+          />
+        ) : (
+          <CommitPanel
+            changesStore={changesStore}
+            changes={changes}
+            commitStore={commitStore}
+            commit={commit}
+            status={status}
+            writePolicy={value.writePolicy}
+            {...(value.pendingWrites === undefined ? {} : { pendingWrites: value.pendingWrites })}
+            onOpenDiff={openWorktreeDiff}
+            onRollback={paths => {
+              setDiff(null)
+              setPush(null)
+              setRollback(rollbackTargetsFor(status, paths))
+            }}
+            onAddToVcs={paths => { void addToVcs(paths) }}
+            onCopyPath={path => { void globalThis.navigator?.clipboard?.writeText(path) }}
+            onCommitted={onCommitted}
+            onPushAfterCommit={(_result, options) => { void pushAfterCommit(options.openPushPage) }}
+            onShowConsole={() => { setConsoleOpen(true) }}
+            onRefresh={() => { void onRefresh() }}
+          />
+        )}
+        {page === 'log' && !wide ? branchPanel : null}
         {diff === null ? null : (
           <DiffViewer
             request={diff.request}
@@ -311,6 +437,35 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
                 : { path: file.path, parentSha: request.parent })
             }}
             onClose={() => { setDiff(null) }}
+          />
+        )}
+        {push === null || value.repoRoot === null ? null : (
+          <PushPage
+            sessionId={sessionId}
+            repoRoot={value.repoRoot}
+            client={client}
+            readOnlyReason={readOnlyReason}
+            {...(push.initialRejection === undefined ? {} : { initialRejection: push.initialRejection })}
+            onClose={() => { setPush(null) }}
+            onPushed={() => { void onRefresh() }}
+            onConflict={() => {
+              void onRefresh()
+              setConsoleOpen(true)
+            }}
+            onShowConsole={() => { setConsoleOpen(true) }}
+            onCopy={text => { void globalThis.navigator?.clipboard?.writeText(text) }}
+          />
+        )}
+        {rollback === null ? null : (
+          <RollbackSheet
+            sessionId={sessionId}
+            targets={rollback}
+            client={client}
+            readOnlyReason={readOnlyReason}
+            onClose={() => { setRollback(null) }}
+            onDone={() => { void onRefresh() }}
+            onShowConsole={() => { setConsoleOpen(true) }}
+            onCopy={text => { void globalThis.navigator?.clipboard?.writeText(text) }}
           />
         )}
       </div>

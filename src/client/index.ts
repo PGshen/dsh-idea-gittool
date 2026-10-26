@@ -54,7 +54,7 @@ export function apply(ctx: ClientContext): void {
   )), 'git: tab body')
 
   ctx.effect(() => ctx.slots.inject('sidebar.right.pane.tab.title', () => ctx.slots.register(
-    { name: 'sidebar.right.pane.tab.title', key: GIT_ID },
+    { name: 'sidebar.right.pane.tab.title', key: GIT_ID, inject: () => ({ bootstrapCache }) },
     GitTitle,
   )), 'git: tab title')
 

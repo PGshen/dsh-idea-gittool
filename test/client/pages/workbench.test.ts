@@ -1,7 +1,7 @@
 // A1 工作台接线：日志选择 → 详情动作、Diff 文件列表展开。
 import { describe, expect, it } from 'vitest'
-import { detailActionFor, diffFilesOf, logRefreshKey } from '../../../src/client/pages/GitWorkbench.tsx'
-import type { CommitDetailValue, CommitSummary } from '../../../src/shared/protocol.ts'
+import { changeFilesFor, detailActionFor, diffFilesOf, logRefreshKey, rollbackTargetsFor } from '../../../src/client/pages/GitWorkbench.tsx'
+import type { CommitDetailValue, CommitSummary, StatusValue } from '../../../src/shared/protocol.ts'
 
 function summary(sha: string): CommitSummary {
   return { sha, shortSha: sha.slice(0, 7), parents: [], author: 'a', email: 'a@x', date: '2026-10-25T00:00:00Z', subject: sha }
@@ -75,5 +75,33 @@ describe('logRefreshKey', () => {
     const a = logRefreshKey('h', { x: [ref('a', 'x')], y: [ref('b', 'y')] })
     const b = logRefreshKey('h', { y: [ref('b', 'y')], x: [ref('a', 'x')] })
     expect(a).toBe(b)
+  })
+})
+
+function status(): StatusValue {
+  return {
+    branch: 'main', detached: false, head: 'h', upstream: null, ahead: 0, behind: 0,
+    staged: [{ path: 's.txt', status: 'M' }],
+    unstaged: [{ path: 'u.txt', status: 'M' }],
+    untracked: [{ path: 'n.txt', status: '?' }],
+    conflicts: [{ path: 'c.txt', status: 'U' }],
+    operation: null, truncated: false,
+  }
+}
+
+describe('changeFilesFor', () => {
+  it('暂存区 diff 只在已暂存文件间切换；工作区 diff 覆盖冲突、未暂存与未跟踪', () => {
+    expect(changeFilesFor(status(), 'staged').map(f => f.path)).toEqual(['s.txt'])
+    expect(changeFilesFor(status(), 'worktree').map(f => f.path)).toEqual(['c.txt', 'u.txt', 'n.txt'])
+    expect(changeFilesFor(null, 'worktree')).toEqual([])
+  })
+})
+
+describe('rollbackTargetsFor', () => {
+  it('按 status 标记未跟踪文件（需要删除确认）', () => {
+    expect(rollbackTargetsFor(status(), ['u.txt', 'n.txt'])).toEqual([
+      { path: 'u.txt', untracked: false },
+      { path: 'n.txt', untracked: true },
+    ])
   })
 })

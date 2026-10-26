@@ -44,6 +44,8 @@ export interface MergeHeaderProps {
   busy: boolean
   /** Save and close writes a draft: disabled in read-only mode. */
   blockReason: string | null
+  /** The two-choice fallback has no draft to save. */
+  canSave: boolean
   onBack: () => void
   onPrevFile: () => void
   onNextFile: () => void
@@ -65,7 +67,7 @@ export function MergeHeader(props: MergeHeaderProps): ReactNode {
         <Button disabled={!props.hasNext || busy} data-merge-next-file onClick={props.onNextFile}>{t('merge.file.next')}</Button>
         <Button disabled={!props.canUndo || busy} title={t('merge.undo.title')} data-merge-undo onClick={props.onUndo}>{t('merge.undo')}</Button>
         <Button
-          disabled={busy || blockReason !== null}
+          disabled={busy || blockReason !== null || !props.canSave}
           title={blockReason ?? t('merge.saveClose.title')}
           data-merge-save
           onClick={props.onSaveClose}
@@ -171,18 +173,25 @@ export interface MergeConfirmBarProps {
   /** Saving the draft is a write: disabled in read-only mode. */
   blockReason: string | null
   onConfirmApply: () => void
+  onApplyNonConflictingFirst: () => void
   onCancel: () => void
   onLeaveAnswer: (answer: LeaveAnswer) => void
 }
 
-export function MergeConfirmBar({ t, confirm, busy, blockReason, onConfirmApply, onCancel, onLeaveAnswer }: MergeConfirmBarProps): ReactNode {
+export function MergeConfirmBar({ t, confirm, busy, blockReason, onConfirmApply, onApplyNonConflictingFirst, onCancel, onLeaveAnswer }: MergeConfirmBarProps): ReactNode {
   if (confirm.kind === 'apply') {
-    const message = t('merge.apply.confirm', { count: confirm.unresolved })
+    const lines = [
+      ...(confirm.overwrite ? [t('merge.overwrite')] : []),
+      ...(confirm.unresolved > 0 ? [t('merge.apply.confirm', { count: confirm.unresolved })] : []),
+    ]
     return (
-      <div className={css.confirm} role="alertdialog" aria-label={message} data-merge-apply-confirm>
-        <span>{message}</span>
+      <div className={css.confirm} role="alertdialog" aria-label={lines.join(' ')} data-merge-apply-confirm>
+        {lines.map(line => <span key={line}>{line}</span>)}
         <span className={css.confirmActions}>
           <Button data-autofocus onClick={onCancel}>{t('action.cancel')}</Button>
+          {confirm.unresolved > 0 && confirm.nonConflicting
+            ? <Button disabled={busy} data-merge-apply-non-conflicting onClick={onApplyNonConflictingFirst}>{t('merge.apply.nonConflictingFirst')}</Button>
+            : null}
           <Button tone="primary" disabled={busy} onClick={onConfirmApply}>{t('merge.apply.confirmButton')}</Button>
         </span>
       </div>

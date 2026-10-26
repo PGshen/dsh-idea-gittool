@@ -1,11 +1,13 @@
 // B1 T6 merge window behaviour (design §10.3, AC4/AC5/AC11), React-free so it is testable without
 // a DOM: keyboard commands, F7 / Shift+F7 chunk navigation (at the end a second F7 opens the
 // adjacent file), leaving with the save / discard / cancel question, Cmd/Ctrl+S, apply with the
-// "still N unresolved" confirmation (never twice per window session, controller ruling 12) and the
-// notices of resolveSimple / save. The merge store owns the model, undo history and writes.
+// apply question (never twice per window session, controller ruling 12): chunks not taken stay at
+// the base version (ruling 21, with 「先应用非冲突更改」), and a worktree edited without markers would
+// be overwritten (ruling 19); the notices of resolveSimple / save. The merge store owns the model,
+// undo history and writes.
 import { text } from '../localized-text.ts'
 import type { LocalizedText } from '../localized-text.ts'
-import { isChunkResolved, nextUnresolved } from '../merge/merge-model.ts'
+import { applyNonConflicting, isChunkResolved, nextUnresolved } from '../merge/merge-model.ts'
 import type { MergeAction, MergeStore } from '../store/merge-store.ts'
 
 export type MergeCommand = 'nextChunk' | 'prevChunk' | 'back' | 'undo' | 'redo' | 'save'
@@ -42,7 +44,12 @@ export type LeaveAnswer = 'save' | 'discard' | 'cancel'
 export type NavigationDirection = 'next' | 'prev'
 
 export type MergeConfirm =
-  | { kind: 'apply'; unresolved: number }
+  /**
+   * `unresolved`: chunks not taken (they stay at the base version); `overwrite`: the worktree no
+   * longer has conflict markers (edited before loading, ruling 19); `nonConflicting`: applying the
+   * non-conflicting changes would change the Result (offers 「先应用非冲突更改」, ruling 21).
+   */
+  | { kind: 'apply'; unresolved: number; overwrite: boolean; nonConflicting: boolean }
   | { kind: 'leave'; target: LeaveTarget }
 
 export interface MergeWindowUi {
@@ -84,6 +91,8 @@ export interface MergeWindowController {
   answerLeave(answer: LeaveAnswer): void
   requestApply(): void
   confirmApply(): void
+  /** In the apply question: apply the non-conflicting changes, then ask again for what is left (or apply). */
+  applyNonConflictingFirst(): void
   cancelConfirm(): void
 }
 
@@ -151,6 +160,20 @@ export function createMergeWindowController(deps: MergeWindowControllerDeps): Me
     })
   }
 
+  const requestApply = (): void => {
+    const state = store.getState()
+    const model = state.model
+    if (model === null || state.status !== 'ready' || ui.applied || applying) return
+    const unresolved = model.chunks.filter(chunk => !isChunkResolved(chunk)).length
+    const overwrite = state.file?.worktreeHasMarkers === false
+    if (unresolved === 0 && !overwrite) {
+      apply()
+      return
+    }
+    const nonConflicting = applyNonConflicting(model, 'all') !== model
+    set({ confirm: { kind: 'apply', unresolved, overwrite, nonConflicting } })
+  }
+
   const save = (): void => {
     if (!store.getState().dirty) return
     void store.saveAndClose().then((saved) => {
@@ -210,15 +233,15 @@ export function createMergeWindowController(deps: MergeWindowControllerDeps): Me
         if (saved) leave(confirm.target)
       })
     },
-    requestApply: () => {
-      const state = store.getState()
-      if (state.model === null || state.status !== 'ready' || ui.applied || applying) return
-      const unresolved = state.model.chunks.filter(chunk => !isChunkResolved(chunk)).length
-      if (unresolved > 0) set({ confirm: { kind: 'apply', unresolved } })
-      else apply()
-    },
+    requestApply,
     confirmApply: () => {
       if (ui.confirm?.kind === 'apply') apply()
+    },
+    applyNonConflictingFirst: () => {
+      if (ui.confirm?.kind !== 'apply') return
+      store.dispatch({ type: 'applyNonConflicting', which: 'all' })
+      set({ confirm: null })
+      requestApply()
     },
     cancelConfirm: () => { if (ui.confirm !== null) dropConfirm() },
   }

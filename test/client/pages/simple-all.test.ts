@@ -38,6 +38,9 @@ describe('resolveAllSimple', () => {
       bin: file('bin', { ...SIMPLE, ours: null }),
       drafted: file('drafted', SIMPLE, { draft: { version: 1, stages: { base: null, ours: null, theirs: null }, result: '', chunks: [], savedAt: 'x' } }),
       rejected: file('rejected', SIMPLE),
+      // Ruling 19: edited in the worktree (no markers left) — never overwritten automatically.
+      edited: file('edited', SIMPLE, { worktreeHasMarkers: false }),
+      marked: file('marked', SIMPLE, { worktreeHasMarkers: true }),
     }
     const order: string[] = []
     const loadFile = vi.fn(async (path: string) => {
@@ -50,11 +53,11 @@ describe('resolveAllSimple', () => {
         ? { kind: 'failed', error: { code: 'git/stale-target', message: 'x' }, message: text('merge.error.stale') }
         : { kind: 'done', value: { path: payload.path, remaining: 0 } }) as ActionOutcome<never>
     })
-    const entries = ['simple', 'hard', 'bin', 'drafted', 'rejected'].map(path => conflictEntry(path))
+    const entries = ['simple', 'hard', 'bin', 'drafted', 'rejected', 'edited', 'marked'].map(path => conflictEntry(path))
     entries.push(conflictEntry('gone', 'deleted-by-us'))
     const outcome = await resolveAllSimple({ actions: { run } as unknown as Pick<ActionStore, 'run'>, loadFile, trigger: null }, entries)
-    expect(outcome).toEqual({ resolved: ['simple'], manual: ['hard', 'bin', 'drafted', 'rejected', 'gone'] })
-    expect(order).toEqual(['load:simple', 'apply:simple', 'load:hard', 'load:bin', 'load:drafted', 'load:rejected', 'apply:rejected'])
+    expect(outcome).toEqual({ resolved: ['simple', 'marked'], manual: ['hard', 'bin', 'drafted', 'rejected', 'edited', 'gone'] })
+    expect(order).toEqual(['load:simple', 'apply:simple', 'load:hard', 'load:bin', 'load:drafted', 'load:rejected', 'apply:rejected', 'load:edited', 'load:marked', 'apply:marked'])
     expect(run).toHaveBeenCalledWith('mergeApply', {
       path: 'simple',
       result: autoMerge(SIMPLE).result,

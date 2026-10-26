@@ -4,7 +4,7 @@
 // (= merge commit / continue), resolve in terminal (copy a command) and close.
 // B1 T7 (mergeWindow flag, `merge` props; absent = A3 markup): chunk counts per file, row selection,
 // 「全部简单冲突」, the 「逐个解决 / 审查更改」 button (Review Changes queue) and the resolved row menu
-// 「还原冲突解决」.
+// 「还原冲突解决」 (asked first: it replaces the resolved content with markers, ruling 20).
 import { useEffect, useRef, useState } from 'react'
 import type { KeyboardEvent, MouseEvent, ReactNode, Ref } from 'react'
 import type { ConflictCommandValue, ConflictResolution, MergeFileValue, RpcResult } from '../../shared/protocol.ts'
@@ -58,16 +58,20 @@ export interface ConflictMergeViewProps {
   simpleBusy: boolean
   /** Result of the last 「全部简单冲突」. */
   summary: LocalizedText | null
-  /** Resolved row whose menu is open, where it opens, and the failure of its last restore. */
+  /** Resolved row whose menu is open and where it opens. */
   menuPath: string | null
   menuAnchor?: MenuAnchor | undefined
-  menuError: LocalizedText | null
+  /** 「还原冲突解决」 waiting for confirmation (ruling 20): the path, running, the failure of the last try. */
+  unresolve: { path: string; busy: boolean; error: LocalizedText | null } | null
   onSelect: (path: string, mods: SelectMods) => void
   onManual: (trigger: FocusTarget | null) => void
   onSimpleAll: (trigger: FocusTarget | null) => void
   onOpenMenu: (path: string, anchor: MenuAnchor, row: FocusTarget | null) => void
   onCloseMenu: () => void
-  onUnresolve: (path: string) => void
+  /** The menu item: ask before restoring. */
+  onRequestUnresolve: (path: string) => void
+  onConfirmUnresolve: (trigger: FocusTarget | null) => void
+  onCancelUnresolve: () => void
 }
 
 /** Row clicks select, except on the row's own buttons. */
@@ -167,6 +171,7 @@ export function ConflictsPageView(props: ConflictsPageViewProps): ReactNode {
     event.preventDefault()
     event.stopPropagation()
     if (markersPath !== null) props.onCancelMarkers()
+    else if (merge?.unresolve !== null && merge?.unresolve !== undefined) merge.onCancelUnresolve()
     else if (props.abortConfirming === true) props.onAbortCancel?.()
     else if (!busy) props.onClose()
   }
@@ -301,13 +306,10 @@ export function ConflictsPageView(props: ConflictsPageViewProps): ReactNode {
                                   path={path}
                                   anchor={merge.menuAnchor}
                                   disabledReason={blockReason}
-                                  onUnresolve={() => { merge.onUnresolve(path) }}
+                                  onUnresolve={() => { merge.onRequestUnresolve(path) }}
                                   onClose={merge.onCloseMenu}
                                 />
                               )
-                            : null}
-                          {merge.menuPath === path && merge.menuError !== null
-                            ? <span className={css.rowError} role="alert">{t(merge.menuError.key, merge.menuError.params)}</span>
                             : null}
                         </li>
                       ))}
@@ -324,6 +326,28 @@ export function ConflictsPageView(props: ConflictsPageViewProps): ReactNode {
                   <Button data-autofocus onClick={props.onCancelMarkers}>{t('action.cancel')}</Button>
                   <Button tone="danger" disabled={busyPath !== null} data-markers-force onClick={(event) => { props.onConfirmMarkers(triggerOf(event)) }}>
                     {t('conflict.markers.confirm')}
+                  </Button>
+                </span>
+              </div>
+            )}
+        {merge?.unresolve === null || merge?.unresolve === undefined
+          ? null
+          : (
+              <div className={css.confirm} role="alertdialog" aria-label={t('conflict.unresolve.confirmTitle', { path: merge.unresolve.path })} data-unresolve-confirm>
+                <strong>{t('conflict.unresolve.confirmTitle', { path: merge.unresolve.path })}</strong>
+                <span>{t('conflict.unresolve.confirmBody')}</span>
+                {merge.unresolve.error === null ? null : <span className={css.rowError} role="alert">{t(merge.unresolve.error.key, merge.unresolve.error.params)}</span>}
+                <span className={css.confirmActions}>
+                  <Button data-autofocus onClick={merge.onCancelUnresolve}>{t('action.cancel')}</Button>
+                  <Button
+                    tone="danger"
+                    disabled={merge.unresolve.busy || blockReason !== null}
+                    title={blockReason ?? undefined}
+                    aria-busy={merge.unresolve.busy}
+                    data-unresolve-run
+                    onClick={(event) => { merge.onConfirmUnresolve(triggerOf(event)) }}
+                  >
+                    {t('conflict.unresolve')}
                   </Button>
                 </span>
               </div>
@@ -474,14 +498,14 @@ export function ConflictsPage({ store, actions, mergeMessage, blockReason, loadC
   const [simpleBusy, setSimpleBusy] = useState(false)
   const [summary, setSummary] = useState<LocalizedText | null>(null)
   const [menu, setMenu] = useState<RowMenu | null>(null)
-  const [menuError, setMenuError] = useState<LocalizedText | null>(null)
+  const [unresolving, setUnresolving] = useState<{ path: string; busy: boolean; error: LocalizedText | null; row: FocusTarget | null } | null>(null)
   const mergeOn = merge !== undefined
   // Chunk counts load lazily (one file at a time) whenever the list changes.
   useEffect(() => { if (mergeOn && state.value !== null) void store.loadCounts() }, [mergeOn, state.value, store])
   const rootRef = useRef<HTMLDivElement | null>(null)
   const [markersPath, setMarkersPath] = useState<string | null>(null)
   const [abortConfirming, setAbortConfirming] = useState(false)
-  useInitialFocus(rootRef, `${markersPath ?? ''}|${String(abortConfirming)}`)
+  useInitialFocus(rootRef, `${markersPath ?? ''}|${String(abortConfirming)}|${unresolving?.path ?? ''}`)
   const [busyPath, setBusyPath] = useState<string | null>(null)
   const [finishBusy, setFinishBusy] = useState(false)
   const [error, setError] = useState<LocalizedText | null>(null)
@@ -554,20 +578,34 @@ export function ConflictsPage({ store, actions, mergeMessage, blockReason, loadC
   const closeMenu = (): void => {
     const row = menu?.row ?? null
     setMenu(null)
-    setMenuError(null)
     finishRowMenu(row)
   }
 
-  const unresolve = (path: string): void => {
-    setMenuError(null)
-    void unresolveConflictFile({ actions, trigger: menu?.row ?? null }, path).then((result) => {
+  /** The menu item closes the menu and asks first (ruling 20); focus goes back to the row when done. */
+  const requestUnresolve = (path: string): void => {
+    const row = menu?.row ?? null
+    setMenu(null)
+    setUnresolving({ path, busy: false, error: null, row })
+  }
+
+  const cancelUnresolve = (): void => {
+    const row = unresolving?.row ?? null
+    setUnresolving(null)
+    finishRowMenu(row)
+  }
+
+  const unresolve = (trigger: FocusTarget | null): void => {
+    if (unresolving === null || unresolving.busy) return
+    const { path, row } = unresolving
+    setUnresolving({ ...unresolving, busy: true, error: null })
+    void unresolveConflictFile({ actions, trigger: trigger ?? row }, path).then((result) => {
       if (result.kind === 'done' || (result.kind === 'error' && result.stale === true)) {
         store.invalidateCount(path)
         void store.refresh()
       }
       if (!mounted.current) return
-      if (result.kind === 'done') closeMenu()
-      else if (result.kind === 'error') setMenuError(result.message)
+      if (result.kind === 'error') setUnresolving({ path, busy: false, error: result.message, row })
+      else setUnresolving(null)
     })
   }
 
@@ -623,19 +661,18 @@ export function ConflictsPage({ store, actions, mergeMessage, blockReason, loadC
             summary,
             menuPath: menu?.path ?? null,
             menuAnchor: menu?.anchor,
-            menuError,
+            unresolve: unresolving === null ? null : { path: unresolving.path, busy: unresolving.busy, error: unresolving.error },
             onSelect: (path, mods) => { setSelection(current => nextSelection(order, current, path, mods)) },
             onManual: (trigger) => {
               const queue = reviewQueue(inputs.groups, selected, inputs.reviewed)
               if (queue.length > 0) merge.onReview(queue, trigger)
             },
             onSimpleAll: simpleAll,
-            onOpenMenu: (path, anchor, row) => {
-              setMenuError(null)
-              setMenu({ path, anchor, row })
-            },
+            onOpenMenu: (path, anchor, row) => { setMenu({ path, anchor, row }) },
             onCloseMenu: closeMenu,
-            onUnresolve: unresolve,
+            onRequestUnresolve: requestUnresolve,
+            onConfirmUnresolve: unresolve,
+            onCancelUnresolve: cancelUnresolve,
           }}
     />
   )

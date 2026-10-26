@@ -354,17 +354,31 @@ describe('resolved files (T7 Review Changes, ruling 16)', () => {
     }
   })
 
-  it('a stale draft of a resolved file is ignored without reporting it discarded', async () => {
+  it('ruling 20: a draft of a resolved file is restored even when the worktree differs, with a notice', async () => {
     const fresh = setup()
     await fresh.store.open('a.txt')
     const draft = toDraft(fresh.store.getState().model!, STAGES)
-    const stale = setupResolved(resolvedFile(sidesText.ours, { draft }))
-    await stale.store.open('a.txt')
-    expect(stale.store.getState().model?.result).toBe(sidesText.ours)
-    expect(stale.store.getState().draftDiscarded).toBe(false)
+    const differs = setupResolved(resolvedFile(sidesText.ours, { draft }))
+    await differs.store.open('a.txt')
+    expect(differs.store.getState().model?.result).toBe(draft.result)
+    expect(differs.store.getState()).toMatchObject({ draftDiscarded: false, draftDiffers: true, dirty: false })
     const current = setupResolved(resolvedFile(sidesText.base, { draft }))
     await current.store.open('a.txt')
     expect(current.store.getState().model?.chunks.map(c => c.state)).toEqual(draft.chunks.map(c => c.state))
+    expect(current.store.getState().draftDiffers).toBe(false)
+  })
+
+  it('a stale or unusable draft of a resolved file is reported discarded (no longer silent)', async () => {
+    const stale = setupResolved(resolvedFile(sidesText.ours, { draftStale: true }))
+    await stale.store.open('a.txt')
+    expect(stale.store.getState()).toMatchObject({ draftDiscarded: true, draftDiffers: false })
+    expect(stale.store.getState().model?.result).toBe(sidesText.ours)
+    const fresh = setup()
+    await fresh.store.open('a.txt')
+    const broken = { ...toDraft(fresh.store.getState().model!, STAGES), chunks: [] }
+    const unusable = setupResolved(resolvedFile(sidesText.ours, { draft: broken }))
+    await unusable.store.open('a.txt')
+    expect(unusable.store.getState()).toMatchObject({ draftDiscarded: true, draftDiffers: false })
   })
 
   it('a failed mergeFile is reported with its error', async () => {

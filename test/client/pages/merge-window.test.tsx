@@ -53,6 +53,7 @@ const handlers: MergeWindowHandlers = {
   onToggleNonConflicting: noop,
   onApply: noop,
   onConfirmApply: noop,
+  onApplyNonConflictingFirst: noop,
   onCancelConfirm: noop,
   onLeaveAnswer: noop,
   onRetry: noop,
@@ -138,11 +139,33 @@ describe('MergeWindowView: three panes and titles', () => {
 })
 
 describe('MergeWindowView: questions and notices', () => {
-  it('apply with unresolved chunks asks before writing', async () => {
-    const html = view(await loaded(), mergeState(), { ui: { ...UI, confirm: { kind: 'apply', unresolved: 2 } } })
-    expect(html).toContain('仍有 2 处未解决，按当前 Result 应用？')
+  it('ruling 21: apply with unresolved chunks says they stay at the base version, offers 先应用非冲突更改', async () => {
+    const html = view(await loaded(), mergeState(), { ui: { ...UI, confirm: { kind: 'apply', unresolved: 2, overwrite: false, nonConflicting: true } } })
+    expect(html).toContain('2 处改动尚未采用，应用后这些位置保持共同祖先版本')
     expect(html).toContain('仍然应用')
     expect(html).toContain('data-merge-apply-confirm')
+    expect(html).toMatch(/<button[^>]*data-merge-apply-non-conflicting[^>]*>先应用非冲突更改<\/button>/)
+    const conflictsOnly = view(await loaded(), mergeState(), { ui: { ...UI, confirm: { kind: 'apply', unresolved: 1, overwrite: false, nonConflicting: false } } })
+    expect(conflictsOnly).not.toContain('data-merge-apply-non-conflicting')
+    expect(conflictsOnly).not.toContain('应用会覆盖')
+  })
+
+  it('ruling 19: a worktree edited without markers shows the overwrite warning and asks on apply', async () => {
+    expect(view(await loaded())).not.toContain('data-merge-overwrite')
+    expect(view(await loaded(file({ worktreeHasMarkers: true })))).not.toContain('data-merge-overwrite')
+    const state = await loaded(file({ worktreeHasMarkers: false }))
+    const html = view(state)
+    expect(html).toContain('data-merge-overwrite')
+    expect(html).toContain('工作区里的这个文件已被修改（不再含冲突标记），应用会覆盖这些修改')
+    const ask = view(state, mergeState(), { ui: { ...UI, confirm: { kind: 'apply', unresolved: 0, overwrite: true, nonConflicting: false } } })
+    expect(ask).toMatch(/data-merge-apply-confirm[^>]*>.*应用会覆盖这些修改/)
+    expect(ask).not.toContain('尚未采用')
+  })
+
+  it('ruling 20: a restored draft that differs from the worktree says the draft wins', async () => {
+    const state = { ...(await loaded()), draftDiffers: true }
+    expect(view(state)).toContain('草稿与工作区不同，应用后以草稿为准')
+    expect(view(await loaded())).not.toContain('草稿与工作区不同')
   })
 
   it('leaving with unsaved changes asks save / discard / cancel', async () => {
@@ -179,7 +202,7 @@ describe('MergeWindowView: questions and notices', () => {
   })
 
   it('loading and load failure', () => {
-    const base: MergeStoreState = { status: 'loading', path: 'src/a.ts', file: null, model: null, dirty: false, draftDiscarded: false, error: null, canUndo: false, canRedo: false }
+    const base: MergeStoreState = { status: 'loading', path: 'src/a.ts', file: null, model: null, dirty: false, draftDiscarded: false, draftDiffers: false, error: null, canUndo: false, canRedo: false }
     expect(view(base)).toContain('读取中…')
     const failed = view({ ...base, status: 'error', error: { key: 'merge.error.loadFailed', params: { code: 'git/exec-failed' } } })
     expect(failed).toContain('读取合并内容失败：git/exec-failed')
@@ -208,7 +231,30 @@ describe('MergeWindowView: two-choice fallback (AC8)', () => {
     expect(html).toContain('删除文件')
   })
 
+  it('the fallback has no draft to save: 保存并关闭 is disabled', async () => {
+    const state = await loaded(file({ kind: 'deleted-by-them', theirs: null }))
+    expect(view(state)).toMatch(/<button[^>]*disabled=""[^>]*data-merge-save/)
+  })
+
+  it('symlink and submodule conflicts never open the editors (special)', async () => {
+    const symlink = await loaded(file({ special: 'symlink', base: side(null, '1'.repeat(40)), ours: side(null, '2'.repeat(40)), theirs: side(null, '3'.repeat(40)) }))
+    expect(symlink.model).toBeNull()
+    const link = view(symlink)
+    expect(link).toContain('符号链接')
+    expect(link).toContain('采用 main')
+    expect(link).toContain('data-merge-terminal')
+    expect(link).not.toContain('data-merge-pane')
+    // Even if the sides came with text, special wins.
+    expect((await loaded(file({ special: 'symlink' }))).model).toBeNull()
+    const sub = view(await loaded(file({ special: 'submodule', base: side(null, '1'.repeat(40)), ours: side(null, '2'.repeat(40)), theirs: side(null, '3'.repeat(40)) })))
+    expect(sub).toContain('子模块')
+    expect(sub).not.toContain('data-resolution')
+    expect(sub).toContain('data-merge-terminal')
+  })
+
   it('fallbackReason table', () => {
+    expect(fallbackReason(file({ special: 'symlink' }))).toBe('merge.fallback.symlink')
+    expect(fallbackReason(file({ special: 'submodule' }))).toBe('merge.fallback.submodule')
     expect(fallbackReason(file({ tooLarge: true }))).toBe('merge.fallback.tooLarge')
     expect(fallbackReason(file({ kind: 'deleted-by-us', ours: null }))).toBe('merge.fallback.delete')
     expect(fallbackReason(file({ kind: 'both-deleted', ours: null, theirs: null }))).toBe('merge.fallback.delete')
@@ -220,13 +266,19 @@ describe('MergeWindowView: two-choice fallback (AC8)', () => {
 describe('MergeWindowView: English', () => {
   it('renders without Chinese', async () => {
     const html = [
-      view(await loaded(), mergeState(), { nonConflictingOpen: true, ui: { ...UI, confirm: { kind: 'apply', unresolved: 1 }, notice: { key: 'merge.nav.endNext' } } }, enT),
+      view(await loaded(file({ worktreeHasMarkers: false })), mergeState(), { nonConflictingOpen: true, ui: { ...UI, confirm: { kind: 'apply', unresolved: 1, overwrite: true, nonConflicting: true }, notice: { key: 'merge.simple.done', params: { count: 1 } } } }, enT),
+      view({ ...(await loaded()), draftDiffers: true }, mergeState(), { ui: { ...UI, notice: { key: 'merge.nav.endNext' } } }, enT),
+      view(await loaded(file({ special: 'submodule', ours: side(null, '2'.repeat(40)) })), mergeState(), {}, enT),
       view({ ...(await loaded()), draftDiscarded: true }, rebaseState(), { ui: { ...UI, confirm: { kind: 'leave', target: { kind: 'close' } } } }, enT),
       view(await loaded(file({ kind: 'deleted-by-them', theirs: null })), mergeState(), {}, enT),
       view(await loaded(), null, {}, enT),
     ].join('\n')
     expect(html).toContain('Resolve conflicts: src/a.ts')
     expect(html).toContain('Accept All from main')
+    // Count-neutral wording reads right for one (no "1 changes").
+    expect(html).toContain('Changes not taken: 1')
+    expect(html).toContain('Simple conflicts resolved: 1')
+    expect(html).not.toMatch(/\b1 (changes|conflicts)\b/)
     expect(CJK.test(html)).toBe(false)
   })
 })

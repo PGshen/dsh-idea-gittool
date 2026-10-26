@@ -56,6 +56,8 @@ const DELETE_KINDS = new Set<MergeFileValue['kind']>(['deleted-by-us', 'deleted-
 
 /** Why a file gets the two-choice fallback instead of editors. */
 export function fallbackReason(file: MergeFileValue): GitWorkbenchKey {
+  if (file.special === 'submodule') return 'merge.fallback.submodule'
+  if (file.special === 'symlink') return 'merge.fallback.symlink'
   if (DELETE_KINDS.has(file.kind)) return 'merge.fallback.delete'
   if (file.tooLarge) return 'merge.fallback.tooLarge'
   if ([file.base, file.ours, file.theirs].some(side => side?.binary === true)) return 'merge.fallback.binary'
@@ -72,6 +74,7 @@ export interface MergeWindowHandlers {
   onToggleNonConflicting: () => void
   onApply: () => void
   onConfirmApply: () => void
+  onApplyNonConflictingFirst: () => void
   onCancelConfirm: () => void
   onLeaveAnswer: (answer: LeaveAnswer) => void
   onRetry: () => void
@@ -120,7 +123,8 @@ export function MergeWindowView(props: MergeWindowViewProps): ReactNode {
       <MergeFallback
         t={t}
         reason={fallbackReason(file)}
-        actions={props.operation === null ? [] : conflictRowActions(entry, withStashLabel(props.operation, t('conflict.stashLabel')))}
+        // A submodule conflict is left to the terminal (scope: 子模块冲突显示「在终端解决」兜底).
+        actions={props.operation === null || file.special === 'submodule' ? [] : conflictRowActions(entry, withStashLabel(props.operation, t('conflict.stashLabel')))}
         busy={props.fallback.busy}
         blockReason={blockReason}
         error={props.fallback.error}
@@ -150,7 +154,9 @@ export function MergeWindowView(props: MergeWindowViewProps): ReactNode {
 
   const notices: Array<{ key: string; text: LocalizedText; role: 'status' | 'alert' }> = []
   if (model?.coarse === true) notices.push({ key: 'coarse', text: text('merge.coarse'), role: 'status' })
+  if (model !== null && file?.worktreeHasMarkers === false) notices.push({ key: 'overwrite', text: text('merge.overwrite'), role: 'alert' })
   if (state.draftDiscarded) notices.push({ key: 'draft', text: text('merge.draftDiscarded'), role: 'status' })
+  if (state.draftDiffers) notices.push({ key: 'draftDiffers', text: text('merge.draftDiffers'), role: 'status' })
   if (ui.notice !== null) notices.push({ key: 'notice', text: ui.notice, role: 'status' })
   if (state.error !== null && file !== null) notices.push({ key: 'error', text: state.error, role: 'alert' })
 
@@ -174,6 +180,7 @@ export function MergeWindowView(props: MergeWindowViewProps): ReactNode {
         canUndo={state.canUndo}
         busy={busy}
         blockReason={blockReason}
+        canSave={model !== null}
         onBack={handlers.onBack}
         onPrevFile={handlers.onPrevFile}
         onNextFile={handlers.onNextFile}
@@ -190,6 +197,7 @@ export function MergeWindowView(props: MergeWindowViewProps): ReactNode {
                   className={notice.role === 'alert' ? css.error : css.notice}
                   role={notice.role}
                   {...(notice.key === 'coarse' ? { 'data-merge-coarse': true } : {})}
+                  {...(notice.key === 'overwrite' ? { 'data-merge-overwrite': true } : {})}
                 >
                   {t(notice.text.key, notice.text.params)}
                 </p>
@@ -206,6 +214,7 @@ export function MergeWindowView(props: MergeWindowViewProps): ReactNode {
               busy={busy}
               blockReason={blockReason}
               onConfirmApply={handlers.onConfirmApply}
+              onApplyNonConflictingFirst={handlers.onApplyNonConflictingFirst}
               onCancel={handlers.onCancelConfirm}
               onLeaveAnswer={handlers.onLeaveAnswer}
             />
@@ -448,6 +457,7 @@ function MergeFileSession(props: MergeWindowProps): ReactNode {
     onToggleNonConflicting: () => { setMenuOpen(open => !open) },
     onApply: () => { controller.requestApply() },
     onConfirmApply: () => { controller.confirmApply() },
+    onApplyNonConflictingFirst: () => { controller.applyNonConflictingFirst() },
     onCancelConfirm: () => { controller.cancelConfirm() },
     onLeaveAnswer: (answer) => { controller.answerLeave(answer) },
     onRetry: () => { void store.open(path) },

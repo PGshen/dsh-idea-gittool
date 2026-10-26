@@ -3,7 +3,7 @@
 // its chunk states, anything else is the worktree text with every chunk edited.
 import { describe, expect, it } from 'vitest'
 import { autoMerge, counts, createModel, editedModel, isManuallyEdited, resolveWhole, toDraft } from '../../../src/client/merge/merge-model.ts'
-import { resolvedModel } from '../../../src/client/merge/resolved-replay.ts'
+import { resolvedModel, resolvedReplay } from '../../../src/client/merge/resolved-replay.ts'
 
 // One left-only chunk, one simple conflict (different words of one line), one right-only chunk.
 const TEXTS = {
@@ -29,11 +29,31 @@ describe('resolvedModel', () => {
     expect(resolvedModel(TEXTS, TEXTS.theirs, null)?.result).toBe(TEXTS.theirs)
   })
 
-  it('a draft is used only when its Result is the worktree', () => {
+  it('a draft equal to the worktree restores its chunk states without a notice', () => {
     const drafted = resolveWhole(createModel(TEXTS), 1, 'left')
     const draft = toDraft(drafted, STAGES)
-    expect(resolvedModel(TEXTS, drafted.result, draft)?.chunks.map(c => c.state)).toEqual(drafted.chunks.map(c => c.state))
-    expect(resolvedModel(TEXTS, TEXTS.ours, draft)?.result).toBe(TEXTS.ours)
+    const replay = resolvedReplay(TEXTS, drafted.result, draft)
+    expect(replay?.model.chunks.map(c => c.state)).toEqual(drafted.chunks.map(c => c.state))
+    expect(replay).toMatchObject({ draftDiffers: false, draftUnusable: false })
+  })
+
+  it('ruling 20: a usable draft wins over a different worktree and is flagged draftDiffers', () => {
+    const drafted = resolveWhole(createModel(TEXTS), 1, 'left')
+    const draft = toDraft(drafted, STAGES)
+    const replay = resolvedReplay(TEXTS, TEXTS.ours, draft)
+    expect(replay?.model.result).toBe(drafted.result)
+    expect(replay?.model.chunks.map(c => c.state)).toEqual(drafted.chunks.map(c => c.state))
+    expect(replay).toMatchObject({ draftDiffers: true, draftUnusable: false })
+    // CRLF worktree of the same text (autocrlf) is not "different".
+    expect(resolvedReplay(TEXTS, drafted.result.replace(/\n/g, '\r\n'), draft)?.draftDiffers).toBe(false)
+  })
+
+  it('an unusable draft (chunks do not match) falls back to the worktree and is flagged draftUnusable', () => {
+    const draft = { ...toDraft(createModel(TEXTS), STAGES), chunks: [] }
+    const replay = resolvedReplay(TEXTS, TEXTS.ours, draft)
+    expect(replay?.model.result).toBe(TEXTS.ours)
+    expect(replay).toMatchObject({ draftDiffers: false, draftUnusable: true })
+    expect(resolvedReplay(TEXTS, TEXTS.ours, null)).toMatchObject({ draftDiffers: false, draftUnusable: false })
   })
 
   it('anything else is the worktree text with every chunk edited', () => {

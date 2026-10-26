@@ -23,7 +23,7 @@ import {
   toDraft,
 } from '../merge/merge-model.ts'
 import type { MergeModel, MergeSideName, MergeTexts } from '../merge/merge-model.ts'
-import { resolvedModel } from '../merge/resolved-replay.ts'
+import { resolvedReplay } from '../merge/resolved-replay.ts'
 import type { ActionStore } from './action-store.ts'
 
 export type MergeStatus = 'idle' | 'loading' | 'ready' | 'saving' | 'applying' | 'error'
@@ -38,6 +38,8 @@ export interface MergeStoreState {
   dirty: boolean
   /** A saved draft existed but could not be used (stages changed or chunks mismatch). */
   draftDiscarded: boolean
+  /** Resolved file: the restored draft differs from the worktree; applying writes the draft (ruling 20). */
+  draftDiffers: boolean
   error: LocalizedText | null
   canUndo: boolean
   canRedo: boolean
@@ -98,6 +100,7 @@ const IDLE: MergeStoreState = {
   model: null,
   dirty: false,
   draftDiscarded: false,
+  draftDiffers: false,
   error: null,
   canUndo: false,
   canRedo: false,
@@ -113,6 +116,8 @@ function stagesOf(file: MergeFileValue): MergeStageShas {
 
 /** Texts of a plain text conflict; null when the window must fall back to two choices. */
 export function mergeTexts(file: MergeFileValue): MergeTexts | null {
+  // Symlinks and submodules are never merged as text, whatever the sides carry.
+  if (file.special !== undefined && file.special !== null) return null
   if (file.tooLarge || file.ours === null || file.theirs === null) return null
   if (file.ours.text === null || file.theirs.text === null) return null
   if (file.base !== null && file.base.text === null) return null
@@ -208,16 +213,19 @@ export function createMergeStore(deps: MergeStoreDeps): MergeStore {
       const texts = mergeTexts(file)
       let model: MergeModel | null = null
       let draftDiscarded = file.draftStale
+      let draftDiffers = false
       if (file.resolved) {
-        // Ruling 16: the Result is the worktree text; without text sides or worktree text the
-        // resolved file is not reviewable (the Review queue skips it).
-        model = texts === null ? null : resolvedModel(texts, file.worktreeText, file.draft)
-        if (model === null) {
+        // Ruling 16: the Result is the worktree text (ruling 20: a usable draft wins, with a notice);
+        // without text sides or worktree text the resolved file is not reviewable (the Review queue skips it).
+        const replay = texts === null ? null : resolvedReplay(texts, file.worktreeText, file.draft)
+        if (replay === null) {
           emit({ ...IDLE, status: 'error', path, error: text('merge.error.worktreeUnreadable') })
           deps.onLoadFailed?.(path, null)
           return
         }
-        draftDiscarded = false
+        model = replay.model
+        draftDiffers = replay.draftDiffers
+        draftDiscarded ||= replay.draftUnusable
       } else if (texts !== null) {
         if (file.draft !== null) {
           model = createModel(texts, file.draft)
@@ -226,7 +234,7 @@ export function createMergeStore(deps: MergeStoreDeps): MergeStore {
         model ??= createModel(texts)
       }
       baseline = model
-      emit({ ...IDLE, status: 'ready', path, file, model, draftDiscarded })
+      emit({ ...IDLE, status: 'ready', path, file, model, draftDiscarded, draftDiffers })
       deps.onOpened?.(path)
     },
 

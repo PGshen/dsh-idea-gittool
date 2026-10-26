@@ -185,13 +185,15 @@ describe('B1 T7 conflict list enhancements (mergeWindow flag)', () => {
     simpleBusy: false,
     summary: null,
     menuPath: null,
-    menuError: null,
+    unresolve: null,
     onSelect: noop,
     onManual: noop,
     onSimpleAll: noop,
     onOpenMenu: noop,
     onCloseMenu: noop,
-    onUnresolve: noop,
+    onRequestUnresolve: noop,
+    onConfirmUnresolve: noop,
+    onCancelUnresolve: noop,
     ...over,
   })
 
@@ -239,15 +241,33 @@ describe('B1 T7 conflict list enhancements (mergeWindow flag)', () => {
     expect(html).toContain('已解决 2 个文件，1 个文件需要手动处理')
   })
 
-  it('a resolved row opens a menu with 还原冲突解决 (and shows its failure)', () => {
-    const html = view(mergeState(), { merge: merge({ menuPath: 'src/c.ts', menuError: text('conflict.unresolve.terminal') }) })
+  it('a resolved row opens a menu with 还原冲突解决', () => {
+    const html = view(mergeState(), { merge: merge({ menuPath: 'src/c.ts' }) })
     expect(html).toMatch(/role="menu"[^>]*aria-label="src\/c.ts 的操作"/)
     expect(html).toMatch(/role="menuitem"[^>]*data-unresolve="src\/c.ts"[^>]*>.*还原冲突解决/)
-    expect(html).toContain('请在终端处理')
+    expect(html).not.toContain('data-unresolve-confirm')
+  })
+
+  it('ruling 20: 还原冲突解决 asks first, saying the resolved content is replaced by markers and cannot be undone here', () => {
+    const html = view(mergeState(), { merge: merge({ unresolve: { path: 'src/c.ts', busy: false, error: null } }) })
+    expect(html).toMatch(/role="alertdialog"[^>]*data-unresolve-confirm/)
+    expect(html).toContain('还原「src/c.ts」的冲突解决？')
+    expect(html).toContain('当前已解决的内容会被冲突标记替换')
+    expect(html).toContain('这里无法撤销')
+    expect(html).toMatch(/<button[^>]*data-autofocus[^>]*>取消<\/button>/)
+    expect(html).toMatch(/<button(?![^>]*disabled)[^>]*data-unresolve-run[^>]*>还原冲突解决<\/button>/)
+    // Busy: the button waits; a failure is shown in the question.
+    const failed = view(mergeState(), { merge: merge({ unresolve: { path: 'src/c.ts', busy: true, error: text('conflict.unresolve.terminal') } }) })
+    expect(failed).toMatch(/<button[^>]*disabled=""[^>]*data-unresolve-run/)
+    expect(failed).toContain('请在终端处理')
+    // Read-only: disabled with the reason.
+    expect(view(mergeState(), { blockReason: 'RO', merge: merge({ unresolve: { path: 'src/c.ts', busy: false, error: null } }) }))
+      .toMatch(/<button[^>]*disabled=""[^>]*title="RO"[^>]*data-unresolve-run/)
   })
 
   it('English rendering', () => {
-    const html = view(mergeState(), { t: enT, onOpenFile: noop, merge: merge() })
+    const html = view(mergeState(), { t: enT, onOpenFile: noop, merge: merge({ unresolve: { path: 'src/c.ts', busy: false, error: null } }) })
+    expect(html).toContain('cannot be undone here')
     expect(html).toContain('1/3 resolved')
     expect(html).toContain('All Simple Conflicts')
     expect(html).toContain('Resolve Manually')

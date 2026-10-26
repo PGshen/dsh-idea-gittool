@@ -227,7 +227,7 @@ describe('apply', () => {
     const { controller, run, onApplied } = await setup()
     controller.run({ type: 'accept', id: 0, side: 'left' })
     controller.requestApply()
-    expect(controller.getState().confirm).toEqual({ kind: 'apply', unresolved: 1 })
+    expect(controller.getState().confirm).toEqual({ kind: 'apply', unresolved: 1, overwrite: false, nonConflicting: true })
     expect(run).not.toHaveBeenCalled()
     controller.confirmApply()
     await flush()
@@ -247,6 +247,47 @@ describe('apply', () => {
     expect(controller.getState().confirm).toBeNull()
     await flush()
     expect(run).toHaveBeenCalledWith('mergeApply', expect.objectContaining({ result: 'a\nX\nY\nb\nc\nZ\n' }), { target: 'a.txt' })
+  })
+
+  it('ruling 19: a worktree edited without markers asks before overwriting, even when all is resolved', async () => {
+    const { controller, run } = await setup({ value: { ...twoChunks(), worktreeHasMarkers: false } })
+    controller.run({ type: 'applyNonConflicting', which: 'all' })
+    controller.requestApply()
+    expect(controller.getState().confirm).toEqual({ kind: 'apply', unresolved: 0, overwrite: true, nonConflicting: false })
+    expect(run).not.toHaveBeenCalled()
+    controller.confirmApply()
+    await flush()
+    expect(run).toHaveBeenCalledTimes(1)
+  })
+
+  it('markers still in the worktree (or unknown): no overwrite question', async () => {
+    for (const worktreeHasMarkers of [true, undefined]) {
+      const value = { ...twoChunks(), ...(worktreeHasMarkers === undefined ? {} : { worktreeHasMarkers }) }
+      const { controller, run } = await setup({ value })
+      controller.run({ type: 'applyNonConflicting', which: 'all' })
+      controller.requestApply()
+      expect(controller.getState().confirm).toBeNull()
+      await flush()
+      expect(run).toHaveBeenCalledTimes(1)
+    }
+  })
+
+  it('ruling 21: 先应用非冲突更改 in the question applies them, then applies when nothing is left', async () => {
+    const { controller, run } = await setup()
+    controller.requestApply()
+    expect(controller.getState().confirm).toEqual({ kind: 'apply', unresolved: 2, overwrite: false, nonConflicting: true })
+    controller.applyNonConflictingFirst()
+    await flush()
+    expect(run).toHaveBeenCalledWith('mergeApply', expect.objectContaining({ result: 'a\nX\nY\nb\nc\nZ\n' }), { target: 'a.txt' })
+  })
+
+  it('ruling 21: after 先应用非冲突更改 the question stays for what is left (conflicts, overwrite)', async () => {
+    const { controller, run, store } = await setup({ value: { ...twoChunks(), worktreeHasMarkers: false } })
+    controller.requestApply()
+    controller.applyNonConflictingFirst()
+    expect(store.getState().model?.result).toBe('a\nX\nY\nb\nc\nZ\n')
+    expect(controller.getState().confirm).toEqual({ kind: 'apply', unresolved: 0, overwrite: true, nonConflicting: false })
+    expect(run).not.toHaveBeenCalled()
   })
 
   it('a failed apply can be retried', async () => {

@@ -126,15 +126,18 @@ export interface SimpleAllDeps extends OperationDeps {
 export interface SimpleAllOutcome {
   /** Written back with mergeApply (resolved but not reviewed). */
   resolved: string[]
-  /** Left for the user: not a text conflict, unreadable, has a draft, not fully automatic, or the write failed. */
+  /**
+   * Left for the user: not a text conflict, unreadable, has a draft, edited in the worktree (no
+   * markers left, ruling 19), not fully automatic, or the write failed.
+   */
   manual: string[]
 }
 
 /**
  * 「全部简单冲突」 (design §10.2 P1, AC6): one file after another (serially, through the write queue)
  * load the three sides, replay applyNonConflicting('all') + resolveSimple, and write the Result back
- * only when every chunk is resolved. Nothing else is written (no drafts). A file with a saved draft is
- * someone's work in progress and is left alone.
+ * only when every chunk is resolved. Nothing else is written (no drafts). A file with a saved draft, or
+ * whose worktree no longer has conflict markers (ruling 19), is someone's work in progress and is left alone.
  */
 export async function resolveAllSimple(deps: SimpleAllDeps, entries: readonly FileEntry[]): Promise<SimpleAllOutcome> {
   const outcome: SimpleAllOutcome = { resolved: [], manual: [] }
@@ -152,7 +155,9 @@ export async function resolveAllSimple(deps: SimpleAllDeps, entries: readonly Fi
       continue
     }
     const file = loaded.ok ? loaded.value : null
-    const texts = file === null ? null : mergeTexts(file)
+    // Ruling 19: a worktree without conflict markers was edited after the conflict (by hand, an
+    // agent or rerere); writing the Result would overwrite that work, so it is left to the user.
+    const texts = file === null || file.worktreeHasMarkers === false ? null : mergeTexts(file)
     const model = texts === null || file?.draft !== null ? null : autoMerge(texts)
     if (file === null || model === null || !allResolved(model)) {
       outcome.manual.push(path)

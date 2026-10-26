@@ -358,7 +358,9 @@ describe('restore conflict resolution (AC9)', () => {
     const ctx = contextFor(repo)
     const store = hostStore(ctx)
     await store.open('f.txt')
+    store.dispatch({ type: 'acceptFile', side: 'right' })
     expect(await store.saveAndClose()).toBe(true)
+    expect(draftRefs(repo)).toEqual([mergeDraftRef('f.txt')])
     const again = hostStore(ctx)
     expect(
       await applyThroughStore(again, 'f.txt', [

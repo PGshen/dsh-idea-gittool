@@ -46,6 +46,19 @@ git commit -qam main
 git merge feature   # stops with conflicts: f.txt UU, g.txt UU, bin.dat binary, gone.txt DU
 ```
 
+   变基两步冲突仓库（步骤 12 用，另建一个临时目录）：
+
+```bash
+d=$(mktemp -d) && cd "$d" && git init -q -b main
+printf 'l1\nl2\nl3\n' > f.txt && git add . && git commit -qm base
+git checkout -qb feature
+printf 'l1\nT1\nl3\n' > f.txt && git commit -qam topic1
+printf 'l1\nT2\nl3\n' > f.txt && git commit -qam topic2
+git checkout -q main
+printf 'l1\nMAIN\nl3\n' > f.txt && git commit -qam main
+git checkout -q feature && git rebase main   # stops at topic1; after continue, topic2 conflicts on f.txt again
+```
+
    把该目录作为 DSH 的工作目录打开 Git tab。变基/拣选各另建一份（`git rebase main` 在 feature 上；`git cherry-pick feature` 在 main 上）。再备一个 `core.autocrlf=true` 且文件为 CRLF 的冲突仓库。
 
 ### 步骤与检查项（括号内为验收标准）
@@ -63,7 +76,7 @@ git merge feature   # stops with conflicts: f.txt UU, g.txt UU, bin.dat binary, 
 | 9 | 还有未解决块时点「应用更改」 | 出现二次确认「仍有 N 处未解决…」；确认后应用 | `06-apply-confirm.png` |
 | 10 | 应用后回列表 | `f.txt` 进已解决；`git show :f.txt` 与工作区等于 Result（AC3） | `07-resolved.png` |
 | 11 | 改动后「保存并关闭」；刷新页面；重新打开 `g.txt` | Result 与每块状态完全恢复；`git for-each-ref refs/worktree/dsh-git/merge-draft/` 有一条（AC7） | — |
-| 12 | 用变基冲突仓库（`git rebase main`，多提交且连续两步都改 `f.txt`）：在第一步的 `f.txt` 窗口改动后「保存并关闭」；终端执行 `git checkout --theirs f.txt && git add f.txt && git rebase --continue`（或 `git rebase --skip`）进入第二步冲突；重新打开 `f.txt` | 提示草稿已作废并从头开始（索引三方变了）；`git for-each-ref refs/worktree/dsh-git/merge-draft/` 已不含旧草稿（AC7） | — |
+| 12 | 用变基冲突仓库（建法见下方「变基两步冲突仓库」）：在第一步的 `f.txt` 窗口改动后「保存并关闭」；终端执行 `git checkout --ours f.txt && git add f.txt && git rebase --continue`（或 `git rebase --skip`）进入第二步冲突；重新打开 `f.txt` | 打开时提示草稿已作废、从 base 重新开始（索引三方变了）。旧草稿 ref 可能还在，直到操作经 DSH 继续/跳过/中止/提交时才清理（AC7） | — |
 | 13 | 窗口有未保存改动时点横幅「解决冲突…」/ 仓库栏「获取」「推送」 | 先出现 保存/丢弃/取消；取消后留在窗口；`Esc` 同理（AC11） | `08-leave-guard.png` |
 | 14 | 打开 `bin.dat`、`gone.txt` | 只有二选一 + 「在终端解决」，与 A3 列表行为一致（AC8） | `09-binary-fallback.png` |
 | 15 | 列表「全部简单冲突」 | 提示「已解决 N 个文件，M 个文件需要手动处理」；只写回全部块可自动解决的文件，且标「未审查」（AC6、AC14） | `10-resolve-all-simple.png` |

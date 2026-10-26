@@ -2,7 +2,7 @@
 // (reusing ChangedFilesTree; double click opens the diff overlay) and the actions create / apply /
 // pop / delete. Everything addresses a stash by sha. The view is hook-free; StashPage owns the
 // transient state (delete confirmation, selected file) and runs the writes.
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { KeyboardEvent, MouseEvent, ReactNode } from 'react'
 import type { CommitFileEntry, DiffRequest, StashEntry, StashFilesValue } from '../../shared/protocol.ts'
 import type { FocusTarget } from '../focus.ts'
@@ -11,13 +11,14 @@ import { useT } from '../i18n.tsx'
 import { text } from '../localized-text.ts'
 import type { LocalizedText } from '../localized-text.ts'
 import type { ActionStore } from '../store/action-store.ts'
-import { adjacentStash, stashDiffRequest, stashKeyAction, stashRelativeTime, stashSummary, useStashState } from '../store/stash-store.ts'
+import { canDropStash, stashDiffRequest, stashRelativeTime, stashRowKeyDecision, stashSummary, useStashState } from '../store/stash-store.ts'
 import type { StashFileKind, StashStore, StashStoreState } from '../store/stash-store.ts'
 import { Button } from '../ui/Button.tsx'
 import { EmptyState } from '../ui/EmptyState.tsx'
 import type { ActionNotice } from './branch-actions.ts'
 import { ChangedFilesTree } from './ChangedFilesTree.tsx'
 import type { DiffSourcePart } from './DiffViewer.tsx'
+import { escapeHandler } from './integrate-parts.tsx'
 import { applyStash, dropStash, stashOutcomeEffect } from './stash-actions.ts'
 import css from './StashPage.module.css'
 
@@ -85,25 +86,22 @@ interface RowProps {
   onSelect: (sha: string) => void
   onPreview: (entry: StashEntry, trigger: FocusTarget | null) => void
   onAskDrop: (sha: string) => void
+  canDrop: boolean
 }
 
-function StashRow({ entry, selected, now, state, onSelect, onPreview, onAskDrop }: RowProps): ReactNode {
+function StashRow({ entry, selected, now, state, onSelect, onPreview, onAskDrop, canDrop }: RowProps): ReactNode {
   const t = useT()
   const relative = stashRelativeTime(entry.date, now)
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
-    const move = adjacentStash(state.list.entries, entry.sha, event.key)
-    if (move !== null) {
-      event.preventDefault()
-      onSelect(move)
-      event.currentTarget.parentElement?.querySelector<HTMLElement>(`[data-sha="${move}"]`)?.focus()
-      return
-    }
-    const action = stashKeyAction(event.key)
-    if (action === 'preview') {
-      event.preventDefault()
+    const decision = stashRowKeyDecision(state.list.entries, entry.sha, event.key, canDrop)
+    if (decision.kind === 'none') return
+    event.preventDefault()
+    if (decision.kind === 'move') {
+      onSelect(decision.sha)
+      event.currentTarget.parentElement?.querySelector<HTMLElement>(`[data-sha="${decision.sha}"]`)?.focus()
+    } else if (decision.kind === 'preview') {
       onPreview(entry, triggerOf(event))
-    } else if (action === 'delete') {
-      event.preventDefault()
+    } else {
       onSelect(entry.sha)
       onAskDrop(entry.sha)
     }
@@ -131,6 +129,40 @@ function StashRow({ entry, selected, now, state, onSelect, onPreview, onAskDrop 
   )
 }
 
+interface DropConfirmProps {
+  summary: string
+  sha: string
+  canDrop: boolean
+  onCancel: () => void
+  onConfirm: (trigger: FocusTarget | null) => void
+}
+
+/** Delete confirmation: focus lands on Cancel (Enter never destroys), Esc cancels, focus returns to the row. */
+function DropConfirm({ summary, sha, canDrop, onCancel, onConfirm }: DropConfirmProps): ReactNode {
+  const t = useT()
+  const rootRef = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    const root = rootRef.current
+    root?.querySelector<HTMLElement>('[data-drop-confirm-cancel]')?.focus()
+    const scope = root?.closest('section') ?? null
+    return () => {
+      // After the bar unmounted: back to the stash row (gone after a delete: nothing to focus).
+      scope?.querySelector<HTMLElement>(`[data-sha="${sha}"]`)?.focus()
+    }
+  }, [sha])
+  return (
+    <div ref={rootRef} className={css.confirm} role="alert" data-drop-confirm onKeyDown={escapeHandler(false, onCancel)}>
+      <span>{t('stash.dropConfirm', { summary })}</span>
+      <span className={css.confirmActions}>
+        <Button onClick={onCancel} data-drop-confirm-cancel>{t('stash.dropConfirm.cancel')}</Button>
+        <Button tone="danger" disabled={!canDrop} onClick={event => onConfirm(event.currentTarget)} data-drop-confirm-ok>
+          {t('stash.dropConfirm.ok')}
+        </Button>
+      </span>
+    </div>
+  )
+}
+
 export function StashPageView(props: StashPageViewProps): ReactNode {
   const t = useT()
   const { state, busy, block, dropBlock, confirmingSha } = props
@@ -145,6 +177,7 @@ export function StashPageView(props: StashPageViewProps): ReactNode {
   const createReason = reasonOf(block, false)
   const applyReason = reasonOf(block, true)
   const dropReason = reasonOf(dropBlock, true)
+  const canDrop = canDropStash(busy, dropBlock)
 
   let list: ReactNode
   if (state.list.status === 'error' && entries.length === 0) {
@@ -179,6 +212,7 @@ export function StashPageView(props: StashPageViewProps): ReactNode {
             onSelect={props.onSelect}
             onPreview={props.onPreview}
             onAskDrop={props.onAskDrop}
+            canDrop={canDrop}
           />
         ))}
       </div>
@@ -270,15 +304,13 @@ export function StashPageView(props: StashPageViewProps): ReactNode {
       {confirming === null
         ? null
         : (
-            <div className={css.confirm} role="alert" data-drop-confirm>
-              <span>{t('stash.dropConfirm', { summary: stashSummary(confirming.message) })}</span>
-              <span className={css.confirmActions}>
-                <Button onClick={props.onCancelDrop} data-drop-confirm-cancel>{t('stash.dropConfirm.cancel')}</Button>
-                <Button tone="danger" disabled={busy} onClick={event => props.onConfirmDrop(event.currentTarget)} data-drop-confirm-ok>
-                  {t('stash.dropConfirm.ok')}
-                </Button>
-              </span>
-            </div>
+            <DropConfirm
+              summary={stashSummary(confirming.message)}
+              sha={confirming.sha}
+              canDrop={canDrop}
+              onCancel={props.onCancelDrop}
+              onConfirm={props.onConfirmDrop}
+            />
           )}
       {state.list.status === 'error' && entries.length > 0
         ? (
@@ -356,11 +388,11 @@ export function StashPage(props: StashPageProps): ReactNode {
         onNotice(null)
         void applyStash({ actions, trigger }, sha, pop).then(finish)
       }}
-      onAskDrop={setConfirmingSha}
+      onAskDrop={(sha) => { if (canDropStash(props.busy, props.dropBlock)) setConfirmingSha(sha) }}
       onCancelDrop={() => { setConfirmingSha(null) }}
       onConfirmDrop={(trigger) => {
         const sha = confirmingSha
-        if (sha === null) return
+        if (sha === null || !canDropStash(props.busy, props.dropBlock)) return
         setConfirmingSha(null)
         onNotice(null)
         void dropStash({ actions, trigger }, sha).then(finish)

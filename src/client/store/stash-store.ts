@@ -199,3 +199,29 @@ export function stashKeyAction(key: string): StashKeyAction | null {
   if (key === 'Delete') return 'delete'
   return null
 }
+
+/** Delete is available only when nothing blocks it (read-only) and no stash write is running. */
+export function canDropStash(busy: boolean, dropBlock: unknown): boolean {
+  return !busy && dropBlock === undefined
+}
+
+export type StashRowKeyDecision =
+  | { kind: 'move'; sha: string }
+  | { kind: 'preview' }
+  | { kind: 'askDrop' }
+  | { kind: 'none' }
+
+/** What a key on a focused stash row does; Delete does nothing while delete is gated off. */
+export function stashRowKeyDecision(
+  entries: readonly StashEntry[],
+  current: string,
+  key: string,
+  canDrop: boolean,
+): StashRowKeyDecision {
+  const move = adjacentStash(entries, current, key)
+  if (move !== null) return { kind: 'move', sha: move }
+  const action = stashKeyAction(key)
+  if (action === 'preview') return { kind: 'preview' }
+  if (action === 'delete' && canDrop) return { kind: 'askDrop' }
+  return { kind: 'none' }
+}

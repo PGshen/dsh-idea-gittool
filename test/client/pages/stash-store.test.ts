@@ -2,6 +2,8 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
   adjacentStash,
+  canDropStash,
+  stashRowKeyDecision,
   createStashStore,
   stashDiffRequest,
   stashKeyAction,
@@ -166,5 +168,22 @@ describe('stash helpers', () => {
     expect(stashKeyAction('Enter')).toBe('preview')
     expect(stashKeyAction('Delete')).toBe('delete')
     expect(stashKeyAction('Backspace')).toBeNull()
+  })
+})
+
+describe('delete gating', () => {
+  const entries = [entry(SHA_A, 0), entry(SHA_B, 1)]
+  it('delete needs no block and no running write', () => {
+    expect(canDropStash(false, undefined)).toBe(true)
+    expect(canDropStash(true, undefined)).toBe(false)
+    expect(canDropStash(false, text('branch.disabled.readOnly'))).toBe(false)
+  })
+
+  it('the Delete key asks only when delete is allowed; other keys are unaffected', () => {
+    expect(stashRowKeyDecision(entries, SHA_A, 'Delete', true)).toEqual({ kind: 'askDrop' })
+    expect(stashRowKeyDecision(entries, SHA_A, 'Delete', false)).toEqual({ kind: 'none' })
+    expect(stashRowKeyDecision(entries, SHA_A, 'Enter', false)).toEqual({ kind: 'preview' })
+    expect(stashRowKeyDecision(entries, SHA_A, 'ArrowDown', false)).toEqual({ kind: 'move', sha: SHA_B })
+    expect(stashRowKeyDecision(entries, SHA_A, 'x', true)).toEqual({ kind: 'none' })
   })
 })

@@ -1,6 +1,7 @@
 // A3 T10 stash page and create sheet (views are hook-free, so static rendering shows their gating).
 import { renderToStaticMarkup } from 'react-dom/server'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+import { escapeHandler } from '../../../src/client/pages/integrate-parts.tsx'
 import { StashCreateSheetView, stashCreateCanSubmit } from '../../../src/client/pages/StashCreateSheet.tsx'
 import { StashPageView, stashFileOpen } from '../../../src/client/pages/StashPage.tsx'
 import { ActionNotice } from '../../../src/client/pages/ActionNotice.tsx'
@@ -122,6 +123,26 @@ describe('StashPageView', () => {
   it('shows loading and failure of the files area', () => {
     expect(view({}, state({ files: { status: 'loading', sha: SHA_A, value: null, error: null } }))).toContain('读取中…')
     expect(view({}, state({ files: { status: 'error', sha: SHA_A, value: null, error: { code: 'git/stale-target', message: 'x' } } }))).toContain('git/stale-target')
+  })
+})
+
+describe('delete confirmation gating and keys', () => {
+  it('the confirm button is disabled while blocked or busy, enabled otherwise', () => {
+    const open = view({ confirmingSha: SHA_A })
+    expect(open).not.toMatch(/data-drop-confirm-ok[^>]*disabled|disabled[^>]*data-drop-confirm-ok/)
+    for (const extra of [{ busy: true }, { dropBlock: text('branch.disabled.readOnly') }]) {
+      expect(view({ confirmingSha: SHA_A, ...extra })).toMatch(/disabled=""[^>]*data-drop-confirm-ok|data-drop-confirm-ok[^>]*disabled=""/)
+    }
+  })
+
+  it('Esc on the confirmation cancels it and is consumed', () => {
+    const cancel = vi.fn()
+    const event = { key: 'Escape', defaultPrevented: false, preventDefault: vi.fn(), stopPropagation: vi.fn() }
+    escapeHandler(false, cancel)(event as never)
+    expect(cancel).toHaveBeenCalledOnce()
+    expect(event.stopPropagation).toHaveBeenCalled()
+    escapeHandler(false, cancel)({ ...event, key: 'Enter' } as never)
+    expect(cancel).toHaveBeenCalledOnce()
   })
 })
 

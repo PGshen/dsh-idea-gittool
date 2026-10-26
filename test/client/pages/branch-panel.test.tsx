@@ -1,9 +1,11 @@
 // T7 分支面板：分组建模、当前分支标记、响应式三档、空态/错误态、右键只读菜单。
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
+import { branchActions } from '../../../src/client/pages/branch-actions.ts'
 import { BranchContextMenu, BranchPanel, drawerEscapeAction } from '../../../src/client/pages/BranchPanel.tsx'
 import type { BranchPanelProps } from '../../../src/client/pages/BranchPanel.tsx'
 import { DEFAULT_COLLAPSED_GROUPS } from '../../../src/client/pages/branch-store.ts'
+import { withLocale } from '../i18n-helpers.tsx'
 import { branchesFixture, detachedBranchesFixture } from './branch-fixtures.ts'
 
 const ALL_EXPANDED = { head: false, local: false, remote: false, tags: false } as const
@@ -153,17 +155,20 @@ describe('BranchContextMenu', () => {
   const entry = branchesFixture().local[1]
   if (entry === undefined) throw new Error('fixture missing feat/login')
 
-  it('只有复制与跳转等只读项', () => {
-    const html = renderToStaticMarkup(
-      <BranchContextMenu entry={entry} onCopyName={() => {}} onCopyRef={() => {}} onNavigate={() => {}} />,
-    )
+  it('菜单项来自 branchActions：写动作可用，复制与跳转仍在', () => {
+    const items = branchActions(entry, { writable: true, operation: null, current: 'main', dirty: false })
+    const html = renderToStaticMarkup(withLocale(<BranchContextMenu entry={entry} items={items} onSelect={() => {}} />))
     expect(html).toContain('role="menu"')
-    expect(html).toContain('复制名称')
-    expect(html).toContain('复制完整引用')
-    expect(html).toContain('跳转到 HEAD')
-    for (const writeAction of ['签出', '删除', '合并', '变基']) {
-      expect(html).not.toContain(writeAction)
+    for (const label of ['签出', '合并到当前分支', '重命名', '删除', '复制名称', '复制完整引用', '在日志中显示', '按此分支过滤日志']) {
+      expect(html).toContain(label)
     }
+  })
+
+  it('只读时写动作带原因而不可用', () => {
+    const items = branchActions(entry, { writable: false, operation: null, current: 'main', dirty: false })
+    const html = renderToStaticMarkup(withLocale(<BranchContextMenu entry={entry} items={items} onSelect={() => {}} />))
+    expect(html).toContain('aria-disabled="true"')
+    expect(html).toContain('只读模式，不能修改仓库')
   })
 })
 

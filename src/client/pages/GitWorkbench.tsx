@@ -19,6 +19,7 @@ import { createConsoleStore, useConsoleState } from '../console/console-store.ts
 import type { GitClient } from '../git-client.ts'
 import { newRequestId } from '../git-client.ts'
 import { createActionStore, useActionState } from '../store/action-store.ts'
+import type { ActionOutcome } from '../store/action-store.ts'
 import { createChangesStore, uncommittedCount, useChangesState } from '../store/changes-store.ts'
 import { createCommitStore, useCommitState } from '../store/commit-store.ts'
 import type { CommitPhase } from '../store/commit-store.ts'
@@ -34,7 +35,13 @@ import { readOnlyMessage } from '../localized-text.ts'
 import { ReadOnlyBanner } from '../read-only-banner.tsx'
 import { createDetailStore, useDetailState } from '../store/detail-store.ts'
 import { createLogStore } from '../store/log-store.ts'
+import { ActionNotice } from './ActionNotice.tsx'
 import { BranchPanel } from './BranchPanel.tsx'
+import { BranchSheet } from './BranchSheets.tsx'
+import { BranchesPage } from './BranchesPage.tsx'
+import { SmartCheckoutSheet } from './SmartCheckoutSheet.tsx'
+import { FETCH_ALL, branchActionContext, createBranchActionRunner, outcomeNotice } from './branch-actions.ts'
+import type { ActionNotice as ActionNoticeValue, BranchActionRunnerDeps, QuickActionId } from './branch-actions.ts'
 import { createBranchesStore, useBranchesState } from './branch-store.ts'
 import { CommitDetail } from './CommitDetail.tsx'
 import { DiffViewer } from './DiffViewer.tsx'
@@ -200,6 +207,8 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
   }, [commitStore, committedSha, statusHead])
   const [page, setPage] = useState<WorkbenchPage>('log')
   const [consoleOpen, setConsoleOpen] = useState(false)
+  const [branchesSearch, setBranchesSearch] = useState('')
+  const [notice, setNotice] = useState<ActionNoticeValue | null>(null)
 
   // 写动作框架（A3 T6）：回调经 ref 取最新值，store 只随会话重建。
   const actionCallbacks = useRef<{
@@ -382,6 +391,60 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
     void onRefresh()
   }, [clearStaleCommitNotice, client, onRefresh, sessionId])
 
+  // Branch actions (A3 T7): the runner is created once per action store and reads the latest
+  // callbacks through a ref, so menus and sheets never act on a stale log store or page setter.
+  const branchContext = branchActionContext(status, value.writePolicy)
+  const runnerDeps = useRef<BranchActionRunnerDeps | null>(null)
+  runnerDeps.current = {
+    actions,
+    openOverlay: overlays.open,
+    copy: text => { void globalThis.navigator?.clipboard?.writeText(text) },
+    showInLog: (entry) => {
+      setPage('log')
+      navigateTo(entry.ref === 'HEAD' ? entry.sha : entry.ref)
+    },
+    filterLog: (entry) => {
+      setPage('log')
+      logStore.setFilter({ branches: [entry.name] })
+    },
+    openPush: () => { openPush({}) },
+    onOutcome: (outcome) => { setNotice(outcomeNotice(outcome)) },
+  }
+  const branchRunner = useMemo(() => createBranchActionRunner({
+    actions,
+    openOverlay: (overlay, trigger) => { runnerDeps.current?.openOverlay(overlay, trigger) },
+    copy: (text) => { runnerDeps.current?.copy(text) },
+    showInLog: (entry) => { runnerDeps.current?.showInLog(entry) },
+    filterLog: (entry) => { runnerDeps.current?.filterLog(entry) },
+    openPush: () => { runnerDeps.current?.openPush() },
+    onOutcome: (outcome) => { runnerDeps.current?.onOutcome(outcome) },
+  }), [actions])
+  const reportOutcome = useCallback((outcome: ActionOutcome<unknown>) => { setNotice(outcomeNotice(outcome)) }, [])
+  const runQuickAction = useCallback((id: QuickActionId, trigger: FocusTarget | null) => {
+    setNotice(null)
+    switch (id) {
+      case 'update':
+        overlays.open({ kind: 'updateProject' }, trigger)
+        return
+      case 'commit':
+        setPage('commit')
+        return
+      case 'push':
+        openPush({})
+        return
+      case 'continue':
+      case 'abort':
+        void branchRunner.control(id, trigger)
+        return
+      case 'newBranch':
+        overlays.open({ kind: 'branchSheet', mode: 'new', startPoint: status?.branch ?? 'HEAD' }, trigger)
+        return
+      case 'checkoutRevision':
+        overlays.open({ kind: 'branchSheet', mode: 'checkoutRevision' }, trigger)
+        return
+    }
+  }, [branchRunner, openPush, overlays.open, status?.branch])
+
   const readOnlyReason = readOnlyMessage(t, value.writePolicy, 'readOnly.title')
 
   const renderDetail = useCallback(() => (
@@ -423,6 +486,11 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
       onToggleFlat={() => { branchesStore.setFlat(!branches.flat) }}
       onRetry={() => { void loadSideData() }}
       onOpenConsole={() => { setConsoleOpen(true) }}
+      actionContext={branchContext}
+      onAction={(id, entry, trigger) => {
+        setNotice(null)
+        void branchRunner.run(id, entry, trigger)
+      }}
     />
   )
   const wide = branches.mode === 'wide'
@@ -444,6 +512,7 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
         ahead={status?.ahead ?? 0}
       />
       <PageTabs page={page} onChange={setPage} uncommittedCount={uncommittedCount(status)} />
+      <ActionNotice notice={notice} onDismiss={() => { setNotice(null) }} />
       <div className={css.content} onKeyDown={event => { handleOverlayEscape(event, overlays.route(), overlays.close) }}>
         {page === 'log' ? (
           <LogPage
@@ -455,6 +524,32 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
             onOpenCommit={onOpenCommit}
             renderDetail={renderDetail}
             {...(wide ? { sidebar: branchPanel } : {})}
+          />
+        ) : page === 'branches' ? (
+          <BranchesPage
+            value={branches.value}
+            loading={branches.loading}
+            error={branches.error}
+            context={branchContext}
+            search={branchesSearch}
+            collapsedGroups={branches.collapsedGroups}
+            collapsedDirs={branches.collapsedDirs}
+            flat={branches.flat}
+            fetching={actions.isRunning('fetch', FETCH_ALL)}
+            onSearchChange={setBranchesSearch}
+            onToggleGroup={kind => { branchesStore.toggleGroup(kind) }}
+            onToggleDirectory={path => { branchesStore.toggleDirectory(path) }}
+            onAction={(id, entry, trigger) => {
+              setNotice(null)
+              void branchRunner.run(id, entry, trigger)
+            }}
+            onQuickAction={runQuickAction}
+            onFetch={(trigger) => {
+              setNotice(null)
+              void branchRunner.fetch(trigger)
+            }}
+            onRetry={() => { void loadSideData() }}
+            onOpenConsole={() => { setConsoleOpen(true) }}
           />
         ) : (
           <CommitPanel
@@ -520,6 +615,26 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
             onDone={() => { void onRefresh() }}
             onShowConsole={() => { setConsoleOpen(true) }}
             onCopy={text => { void globalThis.navigator?.clipboard?.writeText(text) }}
+          />
+        )}
+        {overlay?.kind !== 'branchSheet' ? null : (
+          <BranchSheet
+            key={`${overlay.mode}:${overlay.branch ?? ''}:${overlay.startPoint ?? ''}`}
+            overlay={overlay}
+            actions={actions}
+            runner={branchRunner}
+            onOutcome={reportOutcome}
+            onClose={() => { overlays.closeIf('branchSheet') }}
+          />
+        )}
+        {overlay?.kind !== 'smartCheckout' ? null : (
+          <SmartCheckoutSheet
+            key={`${overlay.target.kind}:${overlay.target.name}`}
+            target={overlay.target}
+            paths={overlay.paths}
+            actions={actions}
+            onOutcome={reportOutcome}
+            onClose={() => { overlays.closeIf('smartCheckout') }}
           />
         )}
         {overlay?.kind !== 'dirtyWorktree' || actionState.ask === null ? null : (

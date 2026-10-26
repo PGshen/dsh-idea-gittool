@@ -3,6 +3,7 @@
 import type {} from '@deepseek-ai/dsh-client-ui-slots'
 import type { RepoOperation, WritePolicyReasonCode } from '../shared/protocol.ts'
 import { enActions, zhActions } from './locales/actions.ts'
+import { enBranch, zhBranch } from './locales/branch.ts'
 import { enCommit, zhCommit } from './locales/commit.ts'
 import { enCommon, zhCommon } from './locales/common.ts'
 import { enCore, zhCore } from './locales/core.ts'
@@ -30,6 +31,7 @@ export const zh = {
   ...zhPush,
   ...zhDocument,
   ...zhActions,
+  ...zhBranch,
 }
 
 export type GitWorkbenchKey = keyof typeof zh
@@ -45,6 +47,7 @@ export const en = {
   ...enPush,
   ...enDocument,
   ...enActions,
+  ...enBranch,
 } satisfies Record<GitWorkbenchKey, string>
 
 /** In-progress repository operation → its display name. */

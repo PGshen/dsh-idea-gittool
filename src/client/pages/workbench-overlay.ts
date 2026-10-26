@@ -30,11 +30,13 @@ export type WorkbenchOverlay =
   | { kind: 'conflicts' }
   | { kind: 'merge'; ref?: string }
   | { kind: 'rebase'; onto?: string }
-  | { kind: 'pull' }
+  /** Pull page; `remote`/`branch` prefill it when opened from a branch row. */
+  | { kind: 'pull'; remote?: string; branch?: string }
   | { kind: 'updateProject' }
   | { kind: 'reset'; sha: string }
   | { kind: 'stashCreate' }
-  | { kind: 'branchSheet'; mode: BranchSheetMode; branch?: string; startPoint?: string }
+  /** `sha` is the branch tip the user saw (delete sends it as `expectedSha`). */
+  | { kind: 'branchSheet'; mode: BranchSheetMode; branch?: string; startPoint?: string; sha?: string }
   | { kind: 'smartCheckout'; target: CheckoutTarget; paths: string[] }
   /** "Uncommitted changes" question of the action store (DirtyWorktreeSheet reads the ask). */
   | { kind: 'dirtyWorktree' }

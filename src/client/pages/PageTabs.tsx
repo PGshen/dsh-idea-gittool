@@ -1,15 +1,19 @@
-// Level 0 page switcher (design §5.2/§5.3): Log / Commit, with the uncommitted-files badge.
-// Branch and stash pages arrive in A3; no empty tabs before then.
+// Level 0 page switcher (design §5.2/§5.3): Log / Commit / Branches, with the uncommitted-files
+// badge. The stash tab (and its badge) arrives with the stash page; no empty tabs before then.
 import type { KeyboardEvent, ReactNode } from 'react'
 import { useT } from '../i18n.tsx'
 import type { GitWorkbenchKey } from '../locales.ts'
 import css from './PageTabs.module.css'
 
-export type WorkbenchPage = 'log' | 'commit'
+export type WorkbenchPage = 'log' | 'commit' | 'branches'
 
-export const WORKBENCH_PAGES: readonly WorkbenchPage[] = ['log', 'commit']
+export const WORKBENCH_PAGES: readonly WorkbenchPage[] = ['log', 'commit', 'branches']
 
-const LABEL: Record<WorkbenchPage, GitWorkbenchKey> = { log: 'tabs.log', commit: 'tabs.commit' }
+const LABEL: Record<WorkbenchPage, GitWorkbenchKey> = {
+  log: 'tabs.log',
+  commit: 'tabs.commit',
+  branches: 'tabs.branches',
+}
 
 /** Badge text: hidden at 0, capped at `99+`. */
 export function badgeText(count: number): string | null {

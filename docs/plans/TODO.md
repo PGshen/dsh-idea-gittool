@@ -27,7 +27,15 @@
 | P2 | 冲突列表「已解决」组只列本次操作中曾冲突、现已解决的文件；合并干净带入的新文件不应出现（D1） | A3 验收演示，2026-10-26 | 现在 `resolved` = 相对 HEAD 有暂存改动且不在冲突中的路径，见 `src/host/git/operation.ts` |
 | P2 | 贮藏列表「N 个文件」把未跟踪文件（`^3`）也计入，或分开显示（D3） | A3 验收演示 / T5 评审，2026-10-26 | 现在只数 `^1..sha` 的已跟踪改动 |
 | P2 | 合并窗口底栏与头部按钮的可访问名称改为与可见文字一致（现在是 `title` 全文，如「把 Result 写回工作区并标记为已解决」，可见文字是「应用更改」；WCAG 2.5.3 label-in-name） | B1 L4，2026-10-27 | Minor；可用 `aria-label` = 可见文字、`title` 留作说明，或改用 `aria-describedby` |
-| P2 | 合并窗口降级视图（二进制/删除类）头部「保存并关闭」应隐藏或禁用：没有可保存的草稿 | B1 L4，2026-10-27 | Minor |
+| P2 | RPC 载荷上限：`mergeApply`/`mergeDraftSave` 的 Result 最多约 8 MiB，未经真实 HTTP 验证宿主 RPC 层能否接受；考虑把上限降到与单侧 2 MiB 相当 | B1 终审，2026-10-27 | `src/host/git/merge-write.ts` `MERGE_APPLY_RESULT_MAX_BYTES`；验收时按 runbook「尚未覆盖」实测 |
+| P2 | 合并窗口有未保存改动时没有 `beforeunload` 守卫：刷新/关闭页面直接丢失改动 | B1 终审，2026-10-27 | 可在窗口 dirty 时注册 `beforeunload` |
+| P2 | 贮藏恢复冲突（没有进行中的操作）时保存的草稿永远不会被清理 | B1 终审，2026-10-27 | 清理只挂在 continue/abort/operationCommit；草稿 stages 不会再匹配，无害但残留 ref |
+| P2 | continue/abort 失败时仍会清理草稿 | B1 终审，2026-10-27 | `operation.ts` 的清理在失败路径也执行；应只在成功后清理 |
+| P2 | 切换 DSH 语言会重挂载三个编辑器（标签参与 effect 依赖），丢失滚动位置与选区 | B1 终审，2026-10-27 | 把 gutter/栏标签改为可更新的 facet，不重建编辑器 |
+| P2 | 「应用非冲突更改 ▾」菜单点外部不关闭（只有 Esc 与菜单项会关） | B1 终审，2026-10-27 | 复用 `useFloatingMenu` 的外部点击处理 |
+| P2 | 冲突列表块计数加载失败后每次刷新都会重试同一文件 | B1 终审，2026-10-27 | 失败结果按 stages 缓存，或退避 |
+| P2 | `answerLeave('save')` 保存失败、或 `closeIf` 关窗时，被拦住的「未提交改动」询问（`dirtyWorktree`）一直挂起 | B1 终审，2026-10-27 | 保存失败时保留询问可再答；`closeIf` 时按取消回应 |
+| P2 | 补测试：continue 失败后的草稿、忙碌时 dispatch 被忽略、conflict/cancelled 结果文案、`dirtyWorktree` → `cancelStash` 接线、`git-client` 新端点的请求体断言 | B1 终审，2026-10-27 | B1 终审列出的缺口 |
 
 ## 已完成
 

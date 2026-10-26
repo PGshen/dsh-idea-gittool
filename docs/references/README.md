@@ -37,6 +37,6 @@ M0/A1 已逐条确认，结论与证据见 [可行性调研 §13](dsh-integratio
 
 A2 新增（T1 spike 已用等价 Seatbelt profile 复现，见 §13「写执行与沙箱」）：
 
-- [ ] 经 3081 Host 的 `sandbox.confine` 端到端执行 commit/push（A2 T8）
+- [x] 经 3081 Host 的 `sandbox.confine` 端到端执行 commit/push（2026-10-26，见 A2 计划验证记录）
 
 升级 DSH 后重跑 §13 清单。

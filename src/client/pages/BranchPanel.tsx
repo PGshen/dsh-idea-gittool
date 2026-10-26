@@ -19,6 +19,8 @@ import {
 } from './branch-store.ts'
 import type { BranchGroup, BranchGroupKind, BranchRow, CollapsedGroups, PanelMode } from './branch-store.ts'
 import css from './BranchPanel.module.css'
+import { useMenuPlacement } from './menu-position.ts'
+import type { MenuAnchor } from './menu-position.ts'
 
 export interface BranchPanelProps {
   value: BranchesValue | null
@@ -79,7 +81,7 @@ function rowIcon(group: BranchGroupKind, row: BranchRow): string {
   return KIND_ICON.local
 }
 
-interface MenuState { entry: BranchEntry; x: number; y: number; trigger: FocusTarget | null }
+interface MenuState { entry: BranchEntry; anchor: MenuAnchor; trigger: FocusTarget | null }
 
 /** 抽屉内 Esc：有搜索词先清空（同 input[type=search] 习惯），否则关闭抽屉/覆盖页。 */
 export function drawerEscapeAction(search: string): 'clear-search' | 'close' {
@@ -204,7 +206,7 @@ function BranchPanelBody(props: BranchPanelProps): ReactNode {
               event.preventDefault()
               const row = event.currentTarget
               const trigger = typeof HTMLElement !== 'undefined' && row instanceof HTMLElement ? row : activeFocusTarget()
-              setMenu({ entry, x: event.clientX, y: event.clientY, trigger })
+              setMenu({ entry, anchor: { kind: 'point', x: event.clientX, y: event.clientY }, trigger })
             }}
           />
         ))}
@@ -269,7 +271,7 @@ function BranchPanelBody(props: BranchPanelProps): ReactNode {
             <BranchContextMenu
               entry={menu.entry}
               items={branchActions(menu.entry, props.actionContext ?? READ_ONLY_CONTEXT)}
-              position={{ x: menu.x, y: menu.y }}
+              anchor={menu.anchor}
               onClose={() => setMenu(null)}
               onSelect={(id) => {
                 const { entry, trigger } = menu
@@ -384,7 +386,7 @@ function BranchRowView({ group, row, selected, onToggleDirectory, onClickEntry, 
     >
       <span className={css.icon} aria-hidden="true">{rowIcon(group, row)}</span>
       <span className={css.name}>{row.label}</span>
-      {row.detached ? <span className={css.detachedNote}>detached HEAD</span> : null}
+      {row.detached ? <span className={css.detachedNote}>{t('branch.detachedNote')}</span> : null}
       {row.current ? <span className={css.check} aria-label={t('branch.current')}>✓</span> : null}
       {row.upstream === undefined ? null : <span className={css.upstream}>{row.upstream}</span>}
       {aheadBehind === '' ? null : <span className={css.aheadBehind}>{aheadBehind}</span>}
@@ -398,12 +400,12 @@ export interface BranchContextMenuProps {
   items: BranchActionItem[]
   onSelect: (id: BranchActionId) => void
   onClose?: () => void
-  /** 视口坐标；不传时按文档流渲染（测试/静态渲染、分支页的行内菜单）。 */
-  position?: { x: number; y: number }
+  /** 打开位置（右键点或 `›` 按钮）；渲染后量尺寸并收进视口与 Git 面板。不传时按文档流渲染（测试/静态渲染）。 */
+  anchor?: MenuAnchor
 }
 
 /** 分支/标签右键菜单（分支面板与分支页共用）。 */
-export function BranchContextMenu({ entry, items, onSelect, onClose, position }: BranchContextMenuProps): ReactNode {
+export function BranchContextMenu({ entry, items, onSelect, onClose, anchor }: BranchContextMenuProps): ReactNode {
   const t = useT()
   const ref = useRef<HTMLDivElement>(null)
   useEffect(() => {
@@ -416,7 +418,7 @@ export function BranchContextMenu({ entry, items, onSelect, onClose, position }:
     ref.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus()
     return () => document.removeEventListener('pointerdown', onPointerDown, true)
   }, [onClose])
-  const style = position === undefined ? undefined : { left: `${position.x}px`, top: `${position.y}px` }
+  const style = useMenuPlacement(ref, anchor)
   const nodes: ReactNode[] = []
   let previousSection: number | null = null
   for (const item of items) {
@@ -446,7 +448,7 @@ export function BranchContextMenu({ entry, items, onSelect, onClose, position }:
       ref={ref}
       role="menu"
       aria-label={t('branch.menu', { name: entry.name })}
-      className={`${css.menu} ${position === undefined ? '' : css.menuFloating}`}
+      className={`${css.menu} ${anchor === undefined ? '' : css.menuFloating}`}
       style={style}
       onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); onClose?.() } }}
     >

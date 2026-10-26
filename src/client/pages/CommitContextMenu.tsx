@@ -6,23 +6,26 @@ import type { CommitSummary } from '../../shared/protocol.ts'
 import { useT } from '../i18n.tsx'
 import type { CommitActionId, CommitActionItem } from './commit-actions.ts'
 import css from './CommitContextMenu.module.css'
+import { useMenuPlacement } from './menu-position.ts'
+import type { MenuAnchor } from './menu-position.ts'
 
 export interface CommitContextMenuProps {
   commit: CommitSummary
   items: CommitActionItem[]
   onSelect: (id: CommitActionId) => void
   onClose?: () => void
-  /** Viewport position (already clamped); without it the menu renders in the document flow. */
-  position?: { x: number; y: number }
+  /** Where it opens; measured after render and kept inside the viewport and the Git panel. Without it the menu renders in the document flow. */
+  anchor?: MenuAnchor
 }
 
-export function CommitContextMenu({ commit, items, onSelect, onClose, position }: CommitContextMenuProps): ReactNode {
+export function CommitContextMenu({ commit, items, onSelect, onClose, anchor }: CommitContextMenuProps): ReactNode {
   const t = useT()
   const ref = useRef<HTMLDivElement>(null)
   // The parent re-renders (log refresh) with a new onClose each time; the listener must not re-arm.
   const closeRef = useRef(onClose)
   closeRef.current = onClose
   const closable = onClose !== undefined
+  const style = useMenuPlacement(ref, anchor)
   useEffect(() => {
     if (!closable) return
     const onPointerDown = (event: PointerEvent): void => {
@@ -70,8 +73,8 @@ export function CommitContextMenu({ commit, items, onSelect, onClose, position }
       ref={ref}
       role="menu"
       aria-label={t('commit.menu', { sha: commit.shortSha })}
-      className={`${css.menu} ${position === undefined ? '' : css.floating}`}
-      style={position === undefined ? undefined : { left: `${position.x}px`, top: `${position.y}px` }}
+      className={`${css.menu} ${anchor === undefined ? '' : css.floating}`}
+      style={style}
       onKeyDown={(event) => {
         if (event.key === 'Escape') {
           event.preventDefault()

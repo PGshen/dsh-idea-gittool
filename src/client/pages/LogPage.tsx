@@ -13,7 +13,8 @@ import { EmptyState } from '../ui/EmptyState.tsx'
 import { FilterBar, hasActiveFilter } from './FilterBar.tsx'
 import type { BranchOption } from './FilterBar.tsx'
 import { CommitContextMenu } from './CommitContextMenu.tsx'
-import { childOf, clampMenuPosition, commitActionContext, commitActions } from './commit-actions.ts'
+import { childOf, commitActionContext, commitActions } from './commit-actions.ts'
+import type { MenuAnchor } from './menu-position.ts'
 import type { CommitActionId } from './commit-actions.ts'
 import { LogTable } from './LogTable.tsx'
 import type { RowMenuRequest } from './LogTable.tsx'
@@ -35,13 +36,10 @@ export interface CommitMenuConfig {
   onAction(id: CommitActionId, commit: CommitSummary, trigger: FocusTarget | null, childSha: string | null): void
 }
 
-/** 菜单大小的估计值（用于贴边时挪回视口内）。 */
-const MENU_SIZE = { width: 260, height: 300 }
-
 interface MenuState {
   commit: CommitSummary
-  x: number
-  y: number
+  /** Where the menu opens; the menu measures itself and stays inside the viewport and the panel. */
+  anchor: MenuAnchor
   trigger: FocusTarget | null
 }
 
@@ -170,9 +168,7 @@ export function LogPage({
     if (commit === undefined) return
     // 右键一个没选中的行时先选中它，菜单和详情指向同一个提交。
     if (!store.getState().selection.includes(commit.sha)) store.selectIndex(request.index)
-    const viewport = typeof window === 'undefined' ? { width: 1024, height: 768 } : { width: window.innerWidth, height: window.innerHeight }
-    const position = clampMenuPosition({ x: request.x, y: request.y }, viewport, MENU_SIZE)
-    setMenu({ commit, x: position.x, y: position.y, trigger: request.trigger })
+    setMenu({ commit, anchor: { kind: 'point', x: request.x, y: request.y }, trigger: request.trigger })
   }
 
   function closeMenu(refocus: boolean): void {
@@ -289,7 +285,7 @@ export function LogPage({
             <CommitContextMenu
               commit={menu.commit}
               items={commitActions(menu.commit, commitActionContext(state.commits, menu.commit, commitMenu))}
-              position={{ x: menu.x, y: menu.y }}
+              anchor={menu.anchor}
               onClose={() => { closeMenu(true) }}
               onSelect={(id) => {
                 const { commit, trigger } = menu

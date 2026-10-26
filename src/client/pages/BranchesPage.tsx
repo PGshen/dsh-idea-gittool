@@ -17,6 +17,7 @@ import type { BranchActionContext, BranchActionId, QuickActionId, QuickActionIte
 import { formatAheadBehind, groupBranches } from './branch-store.ts'
 import type { BranchGroup, BranchGroupKind, BranchRow, CollapsedGroups } from './branch-store.ts'
 import css from './BranchesPage.module.css'
+import type { MenuAnchor } from './menu-position.ts'
 
 export interface BranchesPageProps {
   value: BranchesValue | null
@@ -58,7 +59,7 @@ function pageGroups(
   }).filter(group => group.kind !== 'head' || value?.head.detached === true)
 }
 
-interface MenuState { entry: BranchEntry; x: number; y: number; trigger: FocusTarget | null }
+interface MenuState { entry: BranchEntry; anchor: MenuAnchor; trigger: FocusTarget | null }
 
 function triggerOf(event: MouseEvent): FocusTarget | null {
   const element = event.currentTarget
@@ -157,7 +158,7 @@ export function BranchesPage(props: BranchesPageProps): ReactNode {
                   onCheckout={(entry, trigger) => {
                     if (doubleClickAction(entry, context) === 'checkout') props.onAction('checkout', entry, trigger)
                   }}
-                  onOpenMenu={(entry, x, y, trigger) => setMenu({ entry, x, y, trigger })}
+                  onOpenMenu={(entry, anchor, trigger) => setMenu({ entry, anchor, trigger })}
                 />
               ))}
             </div>
@@ -241,7 +242,7 @@ export function BranchesPage(props: BranchesPageProps): ReactNode {
             <BranchContextMenu
               entry={menu.entry}
               items={branchActions(menu.entry, context)}
-              position={{ x: menu.x, y: menu.y }}
+              anchor={menu.anchor}
               onClose={() => setMenu(null)}
               onSelect={(id) => {
                 const { entry, trigger } = menu
@@ -260,7 +261,7 @@ interface PageRowProps {
   onSelect: (entry: BranchEntry) => void
   onToggleDirectory: (path: string) => void
   onCheckout: (entry: BranchEntry, trigger: FocusTarget | null) => void
-  onOpenMenu: (entry: BranchEntry, x: number, y: number, trigger: FocusTarget | null) => void
+  onOpenMenu: (entry: BranchEntry, anchor: MenuAnchor, trigger: FocusTarget | null) => void
 }
 
 function PageRow({ row, selected, onSelect, onToggleDirectory, onCheckout, onOpenMenu }: PageRowProps): ReactNode {
@@ -310,14 +311,14 @@ function PageRow({ row, selected, onSelect, onToggleDirectory, onCheckout, onOpe
         : (event) => {
             event.preventDefault()
             onSelect(entry)
-            onOpenMenu(entry, event.clientX, event.clientY, triggerOf(event))
+            onOpenMenu(entry, { kind: 'point', x: event.clientX, y: event.clientY }, triggerOf(event))
           }}
       onKeyDown={(event) => {
         if (entry !== undefined && event.key === 'Enter') { event.preventDefault(); onSelect(entry) }
       }}
     >
       <span className={css.name}>{row.label}</span>
-      {row.detached ? <span className={css.detachedNote}>detached HEAD</span> : null}
+      {row.detached ? <span className={css.detachedNote}>{t('branch.detachedNote')}</span> : null}
       {row.current ? <span className={css.check} aria-label={t('branch.current')}>✓</span> : null}
       {row.upstream === undefined ? null : <span className={css.upstream}>{row.upstream}</span>}
       {aheadBehind === '' ? null : <span className={css.aheadBehind}>{aheadBehind}</span>}
@@ -334,8 +335,9 @@ function PageRow({ row, selected, onSelect, onToggleDirectory, onCheckout, onOpe
               onClick={(event) => {
                 event.stopPropagation()
                 onSelect(entry)
+                // Hang from the button's right edge; the menu flips above when there is no room below.
                 const rect = event.currentTarget.getBoundingClientRect()
-                onOpenMenu(entry, rect.left, rect.bottom, triggerOf(event))
+                onOpenMenu(entry, { kind: 'button', left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom }, triggerOf(event))
               }}
             >
               ›

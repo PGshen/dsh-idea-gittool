@@ -124,16 +124,3 @@ export function commitActionEffect(id: CommitActionId, commit: CommitSummary, ch
 export function isContextMenuKey(event: { key: string; shiftKey: boolean }): boolean {
   return event.key === 'ContextMenu' || (event.key === 'F10' && event.shiftKey)
 }
-
-const MENU_MARGIN = 8
-
-/** Keep a fixed-position menu of `size` inside the viewport. */
-export function clampMenuPosition(
-  position: { x: number; y: number },
-  viewport: { width: number; height: number },
-  size: { width: number; height: number },
-): { x: number; y: number } {
-  const clamp = (value: number, extent: number, limit: number): number =>
-    Math.max(MENU_MARGIN, Math.min(value, limit - extent - MENU_MARGIN))
-  return { x: clamp(position.x, size.width, viewport.width), y: clamp(position.y, size.height, viewport.height) }
-}

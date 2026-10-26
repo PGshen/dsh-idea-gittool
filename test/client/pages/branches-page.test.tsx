@@ -1,5 +1,6 @@
 // A3 T7 Branches page (design §8.3): search over branches and actions, quick actions, grouped rows,
 // `›` menu entry, current branch on top, operation-only continue/abort, and the shared action menu.
+import { readFileSync } from 'node:fs'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
 import { ActionNotice } from '../../../src/client/pages/ActionNotice.tsx'
@@ -75,7 +76,14 @@ describe('BranchesPage layout', () => {
 
   it('shows a detached row in the HEAD group when HEAD is detached', () => {
     const value = { ...branchesFixture(), head: { branch: null, detached: true, sha: 'deadbee11112222333344445555666677778888' } }
-    expect(page({ value, context: context({ current: null }) })).toContain('detached HEAD')
+    expect(page({ value, context: context({ current: null }) })).toContain('分离 HEAD')
+    expect(en['branch.detachedNote']).toBe('detached HEAD')
+  })
+
+  it('rows are not text-selectable (double-click checks out; W4)', () => {
+    const source = readFileSync(new URL('../../../src/client/pages/BranchesPage.module.css', import.meta.url), 'utf8')
+    const row = /\n\.row \{([^}]*)\}/.exec(source)?.[1] ?? ''
+    expect(row).toContain('user-select: none;')
   })
 
   it('collapsed groups hide their rows', () => {

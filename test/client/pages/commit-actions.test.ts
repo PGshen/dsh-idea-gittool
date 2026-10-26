@@ -2,7 +2,6 @@
 import { describe, expect, it } from 'vitest'
 import {
   childOf,
-  clampMenuPosition,
   commitActionContext,
   commitActionEffect,
   commitActions,
@@ -102,15 +101,6 @@ describe('isContextMenuKey', () => {
     expect(isContextMenuKey({ key: 'ContextMenu', shiftKey: false })).toBe(true)
     expect(isContextMenuKey({ key: 'F10', shiftKey: true })).toBe(true)
     expect(isContextMenuKey({ key: 'F10', shiftKey: false })).toBe(false)
-  })
-})
-
-describe('clampMenuPosition', () => {
-  it('keeps the menu inside the viewport', () => {
-    const size = { width: 200, height: 300 }
-    expect(clampMenuPosition({ x: 50, y: 60 }, { width: 800, height: 600 }, size)).toEqual({ x: 50, y: 60 })
-    expect(clampMenuPosition({ x: 790, y: 590 }, { width: 800, height: 600 }, size)).toEqual({ x: 592, y: 292 })
-    expect(clampMenuPosition({ x: -5, y: -5 }, { width: 800, height: 600 }, size)).toEqual({ x: 8, y: 8 })
   })
 })
 

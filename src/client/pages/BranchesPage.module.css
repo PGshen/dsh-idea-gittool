@@ -155,6 +155,7 @@
   min-width: 0;
   padding: 3px 8px 3px calc(20px + var(--git-tree-depth, 0) * 14px);
   cursor: pointer;
+  user-select: none;
 }
 
 .row:hover,

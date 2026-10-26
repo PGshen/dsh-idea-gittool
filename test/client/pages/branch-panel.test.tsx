@@ -83,6 +83,7 @@ describe('BranchPanel 结构', () => {
     const html = render({ value: detachedBranchesFixture() })
     expect(html).toContain('data-detached="true"')
     expect(html).toContain('deadbee')
+    expect(html).toContain('分离 HEAD')
   })
 
   it('搜索框受控且显示当前搜索词', () => {

@@ -15,7 +15,7 @@
 
 | 优先级 | 事项 | 来源 | 备注 |
 |---|---|---|---|
-| P1 | 按 A3 → B1 → B2 → B3 → B4 依次拆分计划（下一个：A3 分支/贮藏/冲突闭环） | [设计决策 v0.2](../design/2026-10-25-产品设计决策-v0.2.md) §4 | 每个里程碑一份计划，执行前批准；A3 计划草稿：[a3-分支贮藏冲突](active/a3-分支贮藏冲突.md)（待批准） |
+| P1 | 按 A3 → B1 → B2 → B3 → B4 依次拆分计划（下一个：A3 分支/贮藏/冲突闭环） | [设计决策 v0.2](../design/2026-10-25-产品设计决策-v0.2.md) §4 | 每个里程碑一份计划，执行前批准；A3 计划草稿：[a3-分支贮藏冲突](active/a3-分支贮藏冲突.md)（执行中） |
 | P2 | 筛选/仓库栏/分支右键菜单改用 ui-primitives `MenuSurface`/`Menu` | A1 走查，2026-10-25 | 当前按 [ADR 0006](../decisions/0006-浮层菜单材质例外.md) 手写菜单材质，迁移后废弃该 ADR |
 | P2 | 向 DSH 反馈：`workspace-write` 的 Seatbelt profile 放行 `DARWIN_USER_CACHE_DIR`，否则 osxkeychain 凭据助手在 confine 下不可用 | A2 T1 spike，2026-10-26 | 见 [references §13](../references/dsh-integration-feasibility.md)「写执行与沙箱」；只反馈不改 DSH 仓库，由负责人决定是否提 |
 | P2 | TD-5 嵌套 refs（`feature/x`）监听缺口 | [tech-debt](../quality/tech-debt.md) | A3 分支写操作之前处理 |

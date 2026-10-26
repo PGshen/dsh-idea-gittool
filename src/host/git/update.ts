@@ -9,7 +9,8 @@
 //   upstream 是本地分支（remote '.'）时不 fetch。
 // - resetToRemote：不贮藏；有已跟踪改动 → `git/dirty-worktree`（不带 operation）。backup 默认 true：
 //   先在当前 HEAD 建 `backup/<branch>-<YYYYMMDD-HHmmss>`（Host 本地时间；重名追加 -2、-3…），
-//   再 `reset --hard <upstream 的 sha>`。会被覆盖的未跟踪/忽略文件 → 同样 `git/dirty-worktree`（不建备份、不重置）。
+//   再 `reset --hard <upstream 的 sha>`。会被覆盖的未跟踪/忽略文件 → 同样 `git/dirty-worktree`
+//   + `reason: 'untracked-in-the-way'`（不建备份、不重置）。
 // - 上游改写的判定（修复轮 1）：fetch 前后比较 + 远程跟踪 ref 的 reflog fork point（见 reflogForkPoint）。
 
 import type { FetchValue, IntegrateValue, PullMode, ResetToRemoteValue } from '../../shared/protocol.ts'
@@ -295,7 +296,7 @@ export function createResetToRemoteOperation(
       const dirty = await dirtyTrackedPaths(ctx)
       if (dirty.length > 0) throw dirtyWorktree(dirty)
       const inTheWay = await untrackedInTheWay(ctx, target)
-      if (inTheWay.length > 0) throw dirtyWorktree(inTheWay)
+      if (inTheWay.length > 0) throw dirtyWorktree(inTheWay, undefined, 'untracked-in-the-way')
 
       let backupBranch: string | undefined
       if (input.backup) {

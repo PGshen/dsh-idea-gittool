@@ -206,21 +206,26 @@ async function assertStashListed(ctx: WriteContext, sha: string): Promise<void> 
 }
 
 /**
- * Drop the stash with this sha. Resolves its current `stash@{n}`, drops it, and checks the sha
- * git reports; when the list moved in between and another entry was dropped, that entry is
- * stored back at once and the result is 'moved'. 'missing' when the sha is not listed.
+ * Drop the stash with this sha. Resolves its current `stash@{n}`, drops it, and decides from
+ * the list afterwards (fix round 1: never from git's output format): the sha gone → 'dropped';
+ * still there → the list moved in between and another entry went instead, so every entry that
+ * was listed before and is gone now is stored back at once → 'moved'. 'missing' when the sha
+ * is not listed to begin with.
  */
 async function dropBySha(ctx: WriteContext, sha: string): Promise<'dropped' | 'missing' | 'moved'> {
-  const index = (await listStashes(ctx)).findIndex((stash) => stash.sha === sha)
+  const before = (await listStashes(ctx)).map((stash) => stash.sha)
+  const index = before.indexOf(sha)
   if (index < 0) return 'missing'
   const result = await ctx.git([...GIT_BASE_ARGV, 'stash', 'drop', `stash@{${String(index)}}`])
   if (result.exitCode !== 0) throw redactedFailure(result, 'git stash drop')
-  const dropped = /\(([0-9a-f]{40,64})\)\s*$/.exec(result.stdout.trim())?.[1]
-  if (dropped === undefined || dropped === sha) return 'dropped'
-  // Wrong entry: put it back (the stash commit's subject is its reflog message).
-  const subject = (await queryOk(ctx, ['log', '-1', '--format=%s', dropped], 'git log')).trim()
-  const stored = await ctx.git([...GIT_BASE_ARGV, 'stash', 'store', `--message=${subject}`, dropped])
-  if (stored.exitCode !== 0) throw redactedFailure(stored, 'git stash store')
+  const after = new Set((await listStashes(ctx)).map((stash) => stash.sha))
+  if (!after.has(sha)) return 'dropped'
+  // Wrong entry: put it back (a stash commit's subject is its reflog message).
+  for (const lost of before.filter((candidate) => !after.has(candidate))) {
+    const subject = (await queryOk(ctx, ['log', '-1', '--format=%s', lost], 'git log')).trim()
+    const stored = await ctx.git([...GIT_BASE_ARGV, 'stash', 'store', `--message=${subject}`, lost])
+    if (stored.exitCode !== 0) throw redactedFailure(stored, 'git stash store')
+  }
   return 'moved'
 }
 
@@ -309,8 +314,14 @@ export const stashApplyOperation: WriteOperation<StashApplyInput, Omit<StashAppl
     }
     let dropped = false
     if (input.pop) {
-      dropped = (await dropBySha(ctx, input.sha)) === 'dropped'
-      if (dropped) await clearPendingFor(ctx, input.sha)
+      // The changes are applied: a failed drop must not read as a failed pop (a retry would
+      // apply twice). Report success with the entry kept instead (fix round 1).
+      try {
+        dropped = (await dropBySha(ctx, input.sha)) === 'dropped'
+      } catch {
+        dropped = false
+      }
+      if (dropped) await clearPendingFor(ctx, input.sha).catch(() => undefined)
     }
     return { sha: input.sha, dropped, indexRestored }
   },

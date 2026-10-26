@@ -318,7 +318,7 @@ describe('resetToRemote', () => {
 
     const failure = await failureOf(runOn(resetToRemoteOperation, contextFor(remote.local), {}))
     expect(failure.code).toBe('git/dirty-worktree')
-    expect(failure.details).toEqual({ paths: ['ignored.log', 'new.txt'], count: 2 })
+    expect(failure.details).toEqual({ paths: ['ignored.log', 'new.txt'], count: 2, reason: 'untracked-in-the-way' })
     expect(sha(remote.local)).toBe(before)
     expect(remote.local.git('branch', '--list', 'backup/*').trim()).toBe('')
     expect(readFileSync(join(remote.local.root, 'new.txt'), 'utf8')).toBe('my untracked\n')

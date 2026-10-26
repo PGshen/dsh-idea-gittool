@@ -15,7 +15,7 @@
 
 import { join } from 'node:path'
 
-import type { RepoOperation, SmartOperationKind, SmartStashOutcome } from '../../shared/protocol.ts'
+import type { DirtyWorktreeDetails, RepoOperation, SmartOperationKind, SmartStashOutcome } from '../../shared/protocol.ts'
 import { DIRTY_PATHS_LIMIT } from '../../shared/protocol.ts'
 import type { GitRunResult, WriteContext } from '../git-executor.ts'
 import { GIT_BASE_ARGV, GitCommandFailure, messageOf } from '../git-executor.ts'
@@ -177,11 +177,20 @@ export async function dirtyTrackedPaths(ctx: WriteContext): Promise<string[]> {
 }
 
 /** `git/dirty-worktree` details for a list of changed paths. */
-export function dirtyWorktree(paths: readonly string[], operation?: SmartOperationKind): GitCommandFailure {
-  return new GitCommandFailure('git/dirty-worktree', 'there are uncommitted changes to tracked files', {
+export function dirtyWorktree(
+  paths: readonly string[],
+  operation?: SmartOperationKind,
+  reason?: DirtyWorktreeDetails['reason'],
+): GitCommandFailure {
+  const message =
+    reason === 'untracked-in-the-way'
+      ? 'untracked or ignored files would be overwritten'
+      : 'there are uncommitted changes to tracked files'
+  return new GitCommandFailure('git/dirty-worktree', message, {
     ...(operation === undefined ? {} : { operation }),
     paths: paths.slice(0, DIRTY_PATHS_LIMIT),
     count: paths.length,
+    ...(reason === undefined ? {} : { reason }),
   })
 }
 

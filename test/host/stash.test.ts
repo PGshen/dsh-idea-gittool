@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { STASH_FILE_COUNT_LIMIT } from '../../src/shared/protocol.ts'
 import { GitCommandFailure, createGitRunner } from '../../src/host/git-executor.ts'
-import type { GitRunner } from '../../src/host/git-executor.ts'
+import type { GitRunner, WriteContext } from '../../src/host/git-executor.ts'
 import { readDiff } from '../../src/host/git/diff.ts'
 import { PENDING_STASH_META_REF, PENDING_STASH_REF } from '../../src/host/git/smart-stash.ts'
 import {
@@ -502,14 +502,24 @@ describe('drop races (scripted git)', () => {
   const parent = 'c'.repeat(40)
   const listLine = (sha: string): string => `${sha}\0${parent} ${'d'.repeat(40)}\0On main: x\0${'2026-10-26T00:00:00Z'}\n`
 
-  it('stores a wrongly dropped entry back and reports git/stale-target', async () => {
-    const { ctx, calls } = scriptedContext((args) => {
-      if (args[0] === 'stash' && args[1] === 'list') return { stdout: listLine(wanted) }
-      // Another stash was pushed between list and drop: stash@{0} is now someone else's.
-      if (args[0] === 'stash' && args[1] === 'drop') return { stdout: `Dropped stash@{0} (${other})\n` }
+  /** A stash list that the scripted `stash drop` changes to `afterDrop`. */
+  function scripted(afterDrop: string[], dropStdout = '') {
+    let listed = [other, wanted]
+    return scriptedContext((args) => {
+      if (args[0] === 'stash' && args[1] === 'list') return { stdout: listed.map(listLine).join('') }
+      if (args[0] === 'stash' && args[1] === 'drop') {
+        listed = afterDrop
+        return { stdout: dropStdout }
+      }
       if (args[0] === 'log') return { stdout: 'On main: theirs\n' }
+      if (args[0] === 'rev-parse') return { exitCode: 1 }
       return {}
     })
+  }
+
+  it('decides from the list, not the output: the wrong entry is stored back and the drop is git/stale-target', async () => {
+    // Another stash moved the indices between list and drop: `other` was dropped instead.
+    const { ctx, calls } = scripted([wanted], `Dropped stash@{1} (${wanted})\n`)
 
     const failure = await failureOf(stashDropOperation.run(ctx, { sha: wanted }))
 
@@ -518,18 +528,50 @@ describe('drop races (scripted git)', () => {
     expect(store).toEqual(['stash', 'store', '--message=On main: theirs', other])
   })
 
+  it('treats unreadable drop output as success when the list confirms the drop', async () => {
+    const { ctx, calls } = scripted([other], 'something git 3.x might print\n')
+    expect(await stashDropOperation.run(ctx, { sha: wanted })).toEqual({ sha: wanted })
+    expect(calls.some((args) => args[0] === 'stash' && args[1] === 'store')).toBe(false)
+  })
+
   it('pop keeps the applied changes and reports dropped false when the drop hit another entry', async () => {
-    const { ctx, calls } = scriptedContext((args) => {
-      if (args[0] === 'stash' && args[1] === 'list') return { stdout: listLine(wanted) }
-      if (args[0] === 'stash' && args[1] === 'drop') return { stdout: `Dropped stash@{0} (${other})\n` }
-      if (args[0] === 'log') return { stdout: 'On main: theirs\n' }
-      if (args[0] === 'rev-parse') return { exitCode: 1 }
-      return {}
-    })
+    const { ctx, calls } = scripted([wanted])
 
     const value = await stashApplyOperation.run(ctx, { sha: wanted, pop: true })
 
     expect(value).toEqual({ sha: wanted, dropped: false, indexRestored: true })
     expect(calls.some((args) => args[0] === 'stash' && args[1] === 'store')).toBe(true)
+  })
+})
+
+describe('pop whose drop fails after a successful apply', () => {
+  it('succeeds with dropped false and keeps the stash listed', async () => {
+    const repo = baseRepo()
+    repo.write('a.txt', 'stashed\n')
+    repo.git('stash', 'push', '-q')
+    const sha = stashShas(repo)[0] ?? ''
+    const real = contextFor(repo)
+    const ctx: WriteContext = {
+      ...real,
+      git: async (argv, options) =>
+        argv.includes('drop')
+          ? { exitCode: 1, stdout: '', stderr: 'error: simulated drop failure' }
+          : await real.git(argv, options),
+    }
+
+    const value = await stashApplyOperation.run(ctx, { sha, pop: true })
+
+    expect(value).toEqual({ sha, dropped: false, indexRestored: true })
+    expect(read(repo, 'a.txt')).toBe('stashed\n')
+    expect(stashShas(repo)).toEqual([sha])
+  })
+
+  it('a normal pop still drops', async () => {
+    const repo = baseRepo()
+    repo.write('a.txt', 'stashed\n')
+    repo.git('stash', 'push', '-q')
+    const sha = stashShas(repo)[0] ?? ''
+    expect(await apply(repo, sha, true)).toEqual({ sha, dropped: true, indexRestored: true })
+    expect(stashShas(repo)).toEqual([])
   })
 })

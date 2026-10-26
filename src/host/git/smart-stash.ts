@@ -2,7 +2,8 @@
 // - 有未提交的「已跟踪」改动且请求没带 `stash: true` → `git/dirty-worktree`（未跟踪文件不算、也不贮藏）；
 // - `stash: true`：`stash push -m 'dsh-git: before <operation>'`，记下贮藏 sha，执行操作；
 //   操作结束后按 sha `stash pop --index`（暂存与未暂存原样恢复），不行就只恢复内容，
-//   再不行就保留贮藏并报 `git/conflict` + `stashKept: true`；
+//   再不行就保留贮藏：真冲突报 `git/conflict` + `stashKept: true`，其他失败（如「本地改动会被覆盖」）
+//   按操作成功返回 `stashKept` + `stashError`（终审 2c：不再报一个没有冲突文件的 git/conflict）；
 // - 操作停在冲突（或成功但仍有操作进行中，如 `--no-commit`）时贮藏保留，并记下待恢复标记：
 //   `refs/worktree/dsh-git/pending-stash` → 贮藏提交（顺带让它保持可达），
 //   `refs/worktree/dsh-git/pending-stash-meta` → JSON blob `{ operation, branch, headSha, createdAt }`。
@@ -215,9 +216,17 @@ function keptConflict(output: string): GitCommandFailure {
   })
 }
 
+/** Whether restoring left unmerged paths (a real conflict, as opposed to a refusal). */
+async function hasUnmerged(ctx: WriteContext): Promise<boolean> {
+  const unmerged = await ctx.git([...GIT_BASE_ARGV, 'diff', '--name-only', '--diff-filter=U'], { mode: 'read' })
+  return unmerged.stdout.trim() !== ''
+}
+
 /**
  * Put a stash back by sha with the staging area intact. When the exact index cannot be
  * rebuilt, fall back to restoring the content; a conflict keeps the stash (`git/conflict`).
+ * Any other failure (e.g. "local changes would be overwritten") keeps the stash too but is
+ * raised as a plain failure, never as a conflict with nothing to resolve (final review 2c).
  * Returns false when no stash with this sha exists any more.
  */
 async function popStash(ctx: WriteContext, sha: string): Promise<boolean> {
@@ -225,14 +234,14 @@ async function popStash(ctx: WriteContext, sha: string): Promise<boolean> {
   if (selector === undefined) return false
   const exact = await ctx.git([...GIT_BASE_ARGV, 'stash', 'pop', '--index', '--quiet', selector])
   if (exact.exitCode === 0) return true
-  const unmerged = await ctx.git([...GIT_BASE_ARGV, 'diff', '--name-only', '--diff-filter=U'], { mode: 'read' })
-  if (unmerged.stdout.trim() !== '') throw keptConflict(outputSummary(exact))
+  if (await hasUnmerged(ctx)) throw keptConflict(outputSummary(exact))
   // A failed pop keeps the entry; look it up again rather than trusting the old index.
   const again = await stashSelector(ctx, sha)
-  if (again === undefined) throw keptConflict(outputSummary(exact))
+  if (again === undefined) throw redactedFailure(exact, 'git stash pop')
   const contentOnly = await ctx.git([...GIT_BASE_ARGV, 'stash', 'pop', '--quiet', again])
   if (contentOnly.exitCode === 0) return true
-  throw keptConflict(outputSummary(contentOnly))
+  if (await hasUnmerged(ctx)) throw keptConflict(outputSummary(contentOnly))
+  throw redactedFailure(contentOnly, 'git stash pop')
 }
 
 /** Whether an operation (other than bisect) is open in the repository. */
@@ -314,7 +323,15 @@ export async function withSmartStash<V>(
   }
   if (options.keepStashOnSuccess?.(value) === true) return { value, outcome: { stashKept: true } }
   // The stash may have been dropped meanwhile (e.g. by the Agent): report it, never claim a restore.
-  const restored = await popStash(ctx, stashSha)
+  // A real conflict stays `git/conflict` (the list has files to resolve); any other restore
+  // failure is the operation's success with the stash kept and the reason told (final review 2c).
+  let restored: boolean
+  try {
+    restored = await popStash(ctx, stashSha)
+  } catch (restoreError) {
+    if (isConflict(restoreError)) throw restoreError
+    return { value, outcome: { stashKept: true, stashError: messageOf(restoreError) } }
+  }
   return { value, outcome: restored ? { stashRestored: true } : { stashMissing: true } }
 }
 

@@ -641,6 +641,8 @@ export interface SmartStashOutcome {
   stashKept?: boolean
   /** T3 修复轮追加：操作期间贮藏已不在列表里（例如被手动删除），无从恢复；不算错误。 */
   stashMissing?: boolean
+  /** A3 终审追加：操作成功、但恢复贮藏时遇到冲突以外的 git 错误（随 `stashKept: true`，贮藏保留）。 */
+  stashError?: string
 }
 
 // --- 错误 details 形状 -------------------------------------------------------
@@ -851,6 +853,8 @@ export interface CheckoutValue {
   stashKept?: boolean
   /** T3 修复轮追加：mode=stash 时贮藏在签出期间消失，无从恢复。 */
   stashMissing?: boolean
+  /** A3 终审追加：mode=stash 时恢复遇到冲突以外的 git 错误（随 `stashKept: true`）。 */
+  stashError?: string
   version?: number
 }
 

@@ -260,6 +260,26 @@ describe('withSmartStash / stash and restore', () => {
     expect(failure.details).toMatchObject({ stashKept: true })
     expect(stashShas(repo)).toHaveLength(1)
   })
+
+  it('reports success with stashKept + stashError (not git/conflict) when the restore fails without conflicts (final review 2c)', async () => {
+    const repo = makeRepo()
+    branches(repo, false)
+    repo.write('README.md', '# stashed edit\n')
+    const ctx = contextFor(repo)
+
+    // The operation leaves an unstaged edit to the stashed file: `stash pop` refuses to
+    // overwrite it ("local changes would be overwritten"), which is not a conflict.
+    const result = await withSmartStash(ctx, { stash: true, operation: 'checkout' }, async () => {
+      repo.write('README.md', '# changed by the operation\n')
+      return 'done'
+    })
+
+    expect(result.value).toBe('done')
+    expect(result.outcome).toMatchObject({ stashKept: true })
+    expect(result.outcome.stashError).toEqual(expect.any(String))
+    expect(repo.git('diff', '--name-only', '--diff-filter=U').trim()).toBe('')
+    expect(stashShas(repo)).toHaveLength(1)
+  })
 })
 
 describe('restorePendingStash', () => {

@@ -9,11 +9,11 @@
 
 | 项 | 值 |
 |---|---|
-| 状态 | 待验收 |
+| 状态 | 已完成（2026-10-27 负责人验收通过） |
 | 里程碑 | B2：历史与 Blame |
 | 设计依据 | [产品设计 v0.2](../../design/2026-10-25-产品设计-v0.2.md) §5.2–5.3（覆盖层）、§6.2（日志/分支/Diff 的 P1 行）、§8.1.5 第 10 条（变更文件右键）、§8.1.7（与此提交比较）、§8.3.4（与当前分支/工作区比较）、§9.6、§9.7、§14.2（多选比较）；[设计决策 v0.2](../../design/2026-10-25-产品设计决策-v0.2.md) §3.3–3.5、§4（B2 行） |
 | 分支 | `b2-history-blame`（独立 worktree） |
-| 批准记录 | 2026-10-27 负责人批准计划：待确认 1–5 按推荐执行，执行方式内联（当前会话，executing-plans），收尾做一次整分支评审 |
+| 批准记录 | 2026-10-27 负责人批准计划：待确认 1–5 按推荐执行，执行方式内联（当前会话，executing-plans），收尾做一次整分支评审；2026-10-27 负责人验收演示后确认验收通过 |
 
 ## 目标
 
@@ -186,11 +186,11 @@ Host 约束（各任务共用）：
 - 2026-10-27 — T6/T7 完整关口绿（1888 测试）。整分支终审（新上下文评审者，opus）：Critical 1、Important 3、Minor 10，结论「修完再合」。
 - 2026-10-27 — 终审修复（一轮）：C1 `node_modules` 软链与被改写的 `pnpm-lock.yaml` 误入 T1 提交 → `3ddceda` 撤回，`.gitignore` 补 `/node_modules`，验证 `git ls-tree HEAD node_modules` 为空、lockfile 与 base 无差异；I2 blame 未加 `--no-textconv` → `test/host/blame.test.ts`「ignores textconv drivers…」RED→GREEN；I3 range diff 扫描整棵树（远距比较时超 2 MiB 输出上限）→ 只扫描本文件与 `origPath`，`test/host/diff.test.ts`「终审 I3」与 `history-stores.test.ts`「sends the old path…」RED→GREEN（`6a35084`）；I4 新列表不可键盘操作 → `list-keys.ts` + 三个列表单一 Tab 停靠点、方向键/Home/End/Enter/菜单键，`list-keys.test.ts` 与页面静态断言 RED→GREEN
 - 2026-10-27 — 自验证 L4 完成（隔离 DSH 3081，23 张截图在 `.evidence/b2/`）：AC1–AC9 实机通过，AC10/AC11 由单测覆盖；走查发现 6 处问题（F1–F6，见「意外与发现」），修复后复验通过。
+- 2026-10-27 — 负责人验收演示（3081，面板可见，按 runbook「B2 走查要点」1–9 逐项演示）全部符合预期，负责人确认验收通过；按 SOP §7 收尾，合并到 main。
 
 ## 下一步
 
-- 收尾清单（ARCHITECTURE/QUALITY/TODO 移到已完成），然后请负责人验收演示；验收后 rebase 到 main、完整 `make check`、`--no-ff` 合并（SOP §8，合并由负责人确认）。
-- 在 worktree 里运行 pnpm/make/git commit 时带 `pnpm_config_verify_deps_before_run=false`（见决策记录），提交时只 `git add` 具体路径。
+- 无（已完成）。后续：B3（见 [TODO](../TODO.md)）；B2 的 Minor 已登记在 TODO。
 
 ## 决策记录
 
@@ -222,7 +222,7 @@ Host 约束（各任务共用）：
 - 2026-10-27 终审 — 裁定：worktree 内运行 pnpm 一律带环境变量 `pnpm_config_verify_deps_before_run=false`，不改仓库配置 — pnpm 11 在 `pnpm run` 前自动安装，会把 lockfile 里相对 `link:` 的 `version` 按 worktree 深度改写（C1 的根因）；pnpm 11 不从 `.npmrc` 读这项设置（实测）。代价：忘带变量时 lockfile 会再被改写，提交前看 `git status`。
 - 2026-10-27 终审 — Minor 10 条不进修复轮，登记到 TODO（P2）：未提交行双击 diff 应为 HEAD→工作区；修订版 Blame 的「文件不存在」文案与「文件历史」按钮；文件历史翻页后合并条目路径退回新名；头部在 bootstrap 未到时误报「不在仓库」；`openTab` 失败后意图仍在队列；分支比较用 `entry.name` 遇同名标签；被该提交删除的文件「与工作区比较」可用；窄头部 `⋯` 不自动收起；`git.blame` 页吞 Esc；`historyStore` 卸载未 close。
 - 2026-10-27 — B2 不加 feature flag — 全部为只读视图，没有写回风险；出问题可直接隐藏入口。
-- 2026-10-27 — 修订号先解析为 sha 再参与后续 git 调用 — 同时解决参数注入与「同一请求内 ref 移动」的竞态。
+- 2026-10-27 — 修订号先解析为 sha 再参与后续 git 调用 — 同时解决参数注入与「同一请求内 ref 移动」的竞态。收尾时写成 [ADR 0010](../../decisions/0010-修订号先解析为sha.md)，约束之后所有接收修订号的端点。
 
 ## 意外与发现
 
@@ -259,3 +259,4 @@ Host 约束（各任务共用）：
   - AC10 / AC11：Host 单测与 store 单测（L4 未单独构造）。
   - AC12 ✅ `pnpm build && pnpm smoke` 通过；体积见「进度」T7；中英键集一致由 `locales.test.ts` 覆盖。
   - 变更树：未跟踪文件右键「文件历史」「Blame」禁用并说明「文件还没有提交过」（`06`）。
+- 2026-10-27 负责人验收演示：隔离 DSH 3081（同 L4 环境，构建为 L4 修复之后），负责人在旁观看。要点 1–9 全部符合预期：变更文件菜单五项；跨重命名文件历史（M/R/A、旧路径 diff、短哈希、「历史可能不连续」）；Blame（此版本）→ 返回保留选中与 diff；工作区 Blame 的未提交行、不透明 hover card、双击改动、方向键逐行；4500 行分页到底后 Esc 关闭；二进制空状态不显示行数；分支比较/交换/与工作区比较；日志单选时比较禁用、双选可用；文档头部宽布局全部显示、历史跳转、同一 Blame 标签换文件、干净文件 Diff 禁用、状态徽标选中变更。演示中一次误点到相邻菜单项（截图与布局偏差），改用元素定位重做，不影响结论。负责人确认：验收通过。

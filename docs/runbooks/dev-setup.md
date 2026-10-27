@@ -49,6 +49,11 @@ pnpm dsh web --patch /Users/peng/Me/Ai/dsh-idea-gittool/dev.patch.yml
 - 修改 `lib/client.js` 后由 `dsh-client-hmr` 轮询热换（按内容 rev，只 `touch` 不触发；约 0.5s 生效，CSS 同步替换）；Host 改动、首次安装、`engines.dsh` 变化需要重启 `dsh web`。
 - **不要修改 DSH checkout**；需要对照实验时用临时目录或本仓库内的副本。
 
+## 在 git worktree 中开发（B2 起）
+
+- `package.json` 的 DSH 依赖是 `link:` 到本机 checkout 的路径；pnpm 写进 lockfile 的 `version` 是相对 lockfile 所在目录算的，在 `.claude/worktrees/<分支>/` 里 `pnpm install` 会把它改写成更深的相对路径（`--frozen-lockfile` 直接失败）。
+- 做法：worktree 里 `ln -s <主 checkout>/node_modules node_modules`（`.gitignore` 的 `/node_modules` 会忽略这个软链），之后在 worktree 里运行 pnpm / make / git commit 时一律带 `pnpm_config_verify_deps_before_run=false`（pnpm 11 在 `pnpm run` 前的自动安装会改写 lockfile；这项设置不从 `.npmrc` 读）。提交前看一眼 `git status`，lockfile 不应出现在改动里。
+
 ## 安装态复验（仅负责人在场时执行）
 
 ```bash

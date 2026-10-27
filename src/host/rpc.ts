@@ -13,6 +13,8 @@ import type {
 } from '@deepseek-ai/dsh-client-connection'
 
 import type {
+  BlameRequest,
+  BlameValue,
   BootstrapValue,
   BranchesValue,
   CommitDetailValue,
@@ -78,6 +80,7 @@ import { createWriteQueue } from './write-queue.ts'
 import { readBranches } from './git/branches.ts'
 import { readCommit } from './git/commit.ts'
 import type { DiffQuery } from './git/diff.ts'
+import { readBlame } from './git/blame.ts'
 import { readDiff, validateRepoPath } from './git/diff.ts'
 import type { LogQuery } from './git/log.ts'
 import { logFilterSignature, normalizeLogFilters, readLog } from './git/log.ts'
@@ -102,6 +105,7 @@ const OPERATION_STATE_CACHE_KEY = 'operationState'
 const RESET_PREVIEW_CACHE_PREFIX = 'resetPreview'
 const STASH_LIST_CACHE_KEY = 'stashList'
 const STASH_FILES_CACHE_PREFIX = 'stashFiles'
+const BLAME_CACHE_PREFIX = 'blame'
 /** Longest accepted requestId (client-generated UUIDs are 36). */
 const MAX_REQUEST_ID_LENGTH = 100
 
@@ -382,6 +386,18 @@ export function createRpcRuntime(deps: RpcDeps): RpcRuntime {
           const version = runtime.cache().versionOf(root)
           const ctx = bindWriteContext(deps.runner, root, { kind: 'unconfined' }, signal)
           return ok<MergeFileValue>({ ...(await readMergeFile(ctx, path)), version })
+        }
+        case 'blame': {
+          parseSessionId(payload)
+          const request = payload as BlameRequest
+          return await handleCached<BlameValue>(
+            deps,
+            runtime,
+            payload,
+            signal,
+            `${BLAME_CACHE_PREFIX}:${JSON.stringify([request.path, request.rev ?? null, request.start ?? 1, request.limit ?? null])}`,
+            (root) => readBlame(deps.runner, root, request, { signal }),
+          )
         }
         default:
           if (isWriteEndpoint(endpoint)) {

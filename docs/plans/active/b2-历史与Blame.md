@@ -107,7 +107,7 @@ Host 约束（各任务共用）：
 - **测试**：协议层 `RPC_ENDPOINTS` 包含新端点且不在 `WRITE_ENDPOINTS`；`git-client` 新方法的 URL 与请求体断言；新端点在 Host 返回 `not implemented` 的路由测试。
 - **完成标准**：类型冻结、spike 两问有实测结论（截图放 `.evidence/b2/`）；`make check` 绿。
 
-### T2：Host `blame`（待开始）
+### T2：Host `blame`（完成）
 
 - **目标**：实现 `blame` 端点与解析。
 - **涉及文件**：新建 `src/host/git/blame.ts`、`test/host/git/blame.test.ts`；修改 `src/host/rpc.ts`；必要时把工作区只读读取从 `merge-file.ts` 提到 `src/host/git/worktree-read.ts`。
@@ -176,11 +176,12 @@ Host 约束（各任务共用）：
 <!-- 每完成一步追加一行：日期 — 任务 — 结果（commit 短哈希） -->
 
 - 2026-10-27 — 预检：T2/T3 产出端点实现、T4 消费 T1 的类型与 `git-client` 方法；T5/T6 消费 T4 的 store；T7 消费 T5/T6 的覆盖层类型（T1 已在 `workbench-overlay.ts` 定义）。未发现冲突。
-- 2026-10-27 — T1 完成：`protocol.ts` B2 类型与 `DiffScope` `range`、`git-client` 三个方法、`workbench-overlay.ts` 三种覆盖层（含一级 `back`）、references §15 spike 两问（源码查证）
+- 2026-10-27 — T1 完成（补提交：覆盖层层级清单测试 `336a0c7`）：`protocol.ts` B2 类型与 `DiffScope` `range`、`git-client` 三个方法、`workbench-overlay.ts` 三种覆盖层（含一级 `back`）、references §15 spike 两问（源码查证）
+- 2026-10-27 — T2 完成：`src/host/git/{blame,revision,worktree-read}.ts`，`blame` 进 `RPC_ENDPOINTS` 并路由（按 path/rev/start/limit 缓存）；`merge-file.ts` 的工作区读取改用共用 `readWorktreeFile`
 
 ## 下一步
 
-- T2：在 `test/host/blame.test.ts` 先写 `parseLinePorcelain` 与 `readBlame` 的真实仓库测试，再实现 `src/host/git/blame.ts`，同时把 `blame` 加入 `RPC_ENDPOINTS`/`RpcEndpointTypes` 并在 `rpc.ts` 路由（worktree `.claude/worktrees/b2-history-blame`）。
+- T3：先写 `test/host/file-history.test.ts`、`test/host/compare.test.ts` 与 `diff.test.ts` 的 `scope: 'range'` 用例，再实现 `src/host/git/{file-history,compare}.ts` 与 `diff.ts` 的 range；修订号用 T2 的 `resolveRevision`（`src/host/git/revision.ts`）。两个端点进 `RPC_ENDPOINTS`/`RpcEndpointTypes` 并在 `rpc.ts` 路由（worktree `.claude/worktrees/b2-history-blame`）。
 
 ## 决策记录
 
@@ -191,6 +192,9 @@ Host 约束（各任务共用）：
 - 2026-10-27 T1 — 裁定：端点不在 T1 登记，`blame` 随 T2、`fileHistory`/`compare` 随 T3 与实现一起进 `RPC_ENDPOINTS`/`RpcEndpointTypes` — 现有测试 `rpc.test.ts`「implements every registered endpoint」禁止「not implemented」占位，T1 登记会让 `make check` 红；`git-client` 的 `call` 接受任意端点名，客户端方法可先行。代价：无（T2/T3 本来就要改这两处）。
 - 2026-10-27 T1 — 裁定：spike 以 DSH 源码查证代替截图，浏览器实测并入自验证 L4 — 两问都能从 `service.ts`/`tab-domain.ts` 读出确定答案；代价：若运行时行为与源码不符，T5 的 `git.blame` 换文件逻辑需改用 `replaceTab`。
 - 2026-10-27 T1 — 裁定：意图不走 `openTab` 的 `params` — 见 references §15 (b)，避免刷新后重放一次性动作。
+- 2026-10-27 T2 — 裁定：`BlameValue` 追加可选字段 `unavailable?: 'untracked' | 'missing'`（未跟踪 = HEAD 中没有该路径，含已暂存的新文件；missing = 工作区/该修订中没有该文件，或不是普通文件） — 实测 `git blame` 对两者都直接报错，没有现成错误码能让 UI 给出「文件还没有提交过」这样的空状态；代价：一个可选字段，T5 的空状态读它。
+- 2026-10-27 T2 — 裁定：加 `--root`，浅克隆边界改从 `rev-parse --git-path shallow` 列出的提交标记 — 不加 `--root` 时根提交也被标成 boundary；加了以后浅克隆的嫁接提交又会被当成根提交（实测）。代价：浅克隆时多一次 `rev-parse` 与一次只读读文件。
+- 2026-10-27 T2 — 裁定：`BlameCommit.shortSha` 取 sha 前 7 位，不按仓库 `core.abbrev` 算 — porcelain 不给缩写；逐个 `rev-parse --short` 太贵。代价：极大仓库里 7 位可能与日志的 `%h` 长度不同（只影响显示）。
 - 2026-10-27 — B2 不加 feature flag — 全部为只读视图，没有写回风险；出问题可直接隐藏入口。
 - 2026-10-27 — 修订号先解析为 sha 再参与后续 git 调用 — 同时解决参数注入与「同一请求内 ref 移动」的竞态。
 
@@ -198,6 +202,8 @@ Host 约束（各任务共用）：
 
 <!-- 和预期不一致的事、SDK 的新发现（同时写进 references/）、临时绕过的问题（同时登记到 tech-debt）。 -->
 
+- 2026-10-27 T1 — T1 提交时只跑了 pre-commit 的 check-fast，完整 `make check` 之后才出结果：`workbench-overlay.test.ts` 的覆盖层清单没有新增三种 kind，红了一次，`336a0c7` 补上。之后每个任务等完整关口绿了再记完成。
+- 2026-10-27 T2 — `git blame` 实测（git 2.50.1）：未跟踪文件 `no such path '<p>' in HEAD`（128）；工作区已删除 `Cannot lstat`；`-L` 越界 `file has only N lines`（128）；工作区 CRLF 行在 porcelain 文本里不带 `\r`（仍按 `\r$` 去掉以防 `core.autocrlf` 等设置）。
 - 2026-10-27 T1 — spike (a)：已打开的同 kind 页再 `openTab` 会经 `tabDomain.navigate` 收到新 `params`（`revision` 递增），所以 `git.blame` 换文件只需跟随 `navigation`，不需要 `replaceTab`；去重只在目标 pane 内。(b)：`openTab('git')` 未打开则新开、已打开则聚焦。详见 [references §15](../../references/dsh-integration-feasibility.md)。
 
 ## 阻塞

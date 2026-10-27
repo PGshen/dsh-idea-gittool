@@ -60,6 +60,8 @@ export const RPC_ENDPOINTS = [
   'mergeDraftSave',
   'mergeApply',
   'unresolveConflict',
+  // B2 读端点（T2 blame；T3 fileHistory/compare）
+  'blame',
 ] as const
 
 export type RpcEndpoint = (typeof RPC_ENDPOINTS)[number]
@@ -512,6 +514,11 @@ export interface BlameValue {
   next?: number
   binary: boolean
   tooLarge: boolean
+  /**
+   * 无法逐行注解（T2 追加）：`untracked` 文件还没有提交过；`missing` 工作区（或该修订）里没有这个文件。
+   * 此时 `lines`/`segments` 为空。
+   */
+  unavailable?: 'untracked' | 'missing'
   /** `tooLarge` 时给出可复制的终端命令。 */
   terminalCommand?: string
   version?: number
@@ -1431,6 +1438,7 @@ export interface RpcEndpointTypes {
   mergeDraftSave: { request: MergeDraftSaveRequest; value: MergeDraftSaveValue }
   mergeApply: { request: MergeApplyRequest; value: ResolveConflictValue }
   unresolveConflict: { request: UnresolveConflictRequest; value: UnresolveConflictValue }
+  blame: { request: BlameRequest; value: BlameValue }
 }
 
 /** 编译期检查：{@link RpcEndpointTypes} 恰好覆盖 {@link RpcEndpoint}，写端点请求都带 requestId。 */

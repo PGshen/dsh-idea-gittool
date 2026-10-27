@@ -9,6 +9,7 @@ import type {
 import type { SandboxMode } from '@deepseek-ai/dsh-sandbox'
 
 import type {
+  BlameValue,
   BootstrapValue,
   BranchesValue,
   CommitDetailValue,
@@ -556,6 +557,14 @@ describe('endpoint registry (A3 T1)', () => {
     )
     const error = errorOf(await handler('mergeFile', { sessionId: 'session-1', path: 'README.md' }, SIGNAL))
     expect(error).toMatchObject({ code: 'git/stale-target', details: { target: 'conflict' } })
+  })
+
+  it('serves blame (B2 T2) as a versioned read and validates path and revision', async () => {
+    const { handler } = makeHandler()
+    const value = okValue<BlameValue>(await handler('blame', { sessionId: 'session-1', path: 'README.md' }, SIGNAL))
+    expect(value).toMatchObject({ path: 'README.md', rev: null, totalLines: 1, lines: ['# fixture'], version: 0 })
+    expect(errorOf(await handler('blame', { sessionId: 'session-1', path: '/etc/passwd' }, SIGNAL)).code).toBe('git/invalid-payload')
+    expect(errorOf(await handler('blame', { sessionId: 'session-1', path: 'README.md', rev: '-p' }, SIGNAL)).code).toBe('git/invalid-payload')
   })
 
   it('serves stashList and stashFiles (T5) as versioned reads and validates the sha', async () => {

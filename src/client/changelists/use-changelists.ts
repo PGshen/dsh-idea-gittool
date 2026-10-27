@@ -12,16 +12,16 @@ function browserStorage(): Pick<Storage, 'getItem' | 'setItem'> | null {
   }
 }
 
-export function useChangelists(repoRoot: string | null, changedPaths: readonly string[]): {
+export function useChangelists(repoRoot: string | null, changedPaths: readonly string[] | null): {
   state: ChangelistState
   update: (change: (state: ChangelistState) => ChangelistState) => void
 } {
   const [state, setState] = useState<ChangelistState>(() => loadChangelists(browserStorage(), repoRoot ?? ''))
   useEffect(() => { setState(loadChangelists(browserStorage(), repoRoot ?? '')) }, [repoRoot])
-  const key = changedPaths.join('\0')
+  const key = changedPaths === null ? null : changedPaths.join('\0')
   useEffect(() => {
     setState((current) => {
-      const next = syncPaths(current, key === '' ? [] : key.split('\0'))
+      const next = syncPaths(current, key === null ? null : key === '' ? [] : key.split('\0'))
       if (next !== current && repoRoot !== null) saveChangelists(browserStorage(), repoRoot, next)
       return next
     })

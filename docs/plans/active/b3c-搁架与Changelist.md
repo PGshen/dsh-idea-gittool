@@ -43,13 +43,13 @@
 
 ## 验收标准
 
-- [ ] AC1：搁置勾选的 2 个已修改文件 + 1 个未跟踪文件后，这 3 个路径回到 HEAD 状态（未跟踪文件被删除），其余改动不变；`shelfList` 出现该条目，文件列表与名字正确；`shelfPatch` 的补丁能用 `git apply` 原样重建改动（含二进制文件）（Host 真实仓库测试）。
-- [ ] AC2：取回到干净工作区后改动完全恢复；取回后条目被删除，「取回并保留」不删除；与当前改动冲突时不改动任何文件并返回「不能干净应用」，「三方合并应用」后冲突文件出现在冲突列表（Host 测试）。
-- [ ] AC3：搁架 ref 在 `refs/worktree/dsh-git/shelf/` 下；`git stash list` 不受影响；路径注入（`-x`、`..`、绝对路径）被拒绝；名字含引号/中文/换行时原样保存（Host 测试）。
-- [ ] AC4：贮藏页「搁架」分段列出条目、选中预览补丁、取回/删除（删除需确认）；提交页「搁置…」只带勾选的文件，没有勾选时禁用并说明（组件测试 + L4）。
-- [ ] AC5：Changelist 模型：新增/重命名/删除（默认列表不可删）、设为活动、移动文件、新出现的改动进入活动列表、消失的路径被清掉、存储损坏或不可用时回到默认（单测）。
-- [ ] AC6：提交页按 Changelist 分组：每组可折叠、组头三态勾选只影响本组文件、拖放与右键「移到 Changelist…」生效、刷新后分组保持（组件测试 + L4）。
-- [ ] AC7：L4 截图 `.evidence/b3c/`；`make check` 绿；中英文案一致。
+- [x] AC1：搁置勾选的 2 个已修改文件 + 1 个未跟踪文件后，这 3 个路径回到 HEAD 状态（未跟踪文件被删除），其余改动不变；`shelfList` 出现该条目，文件列表与名字正确；`shelfPatch` 的补丁能用 `git apply` 原样重建改动（含二进制文件）（Host 真实仓库测试）。
+- [x] AC2：取回到干净工作区后改动完全恢复；取回后条目被删除，「取回并保留」不删除；与当前改动冲突时不改动任何文件并返回「不能干净应用」，「三方合并应用」后冲突文件出现在冲突列表（Host 测试）。
+- [x] AC3：搁架 ref 在 `refs/worktree/dsh-git/shelf/` 下；`git stash list` 不受影响；路径注入（`-x`、`..`、绝对路径）被拒绝；名字含引号/中文/换行时原样保存（Host 测试）。
+- [x] AC4：贮藏页「搁架」分段列出条目、选中预览补丁、取回/删除（删除需确认）；提交页「搁置…」只带勾选的文件，没有勾选时禁用并说明（组件测试 + L4）。
+- [x] AC5：Changelist 模型：新增/重命名/删除（默认列表不可删）、设为活动、移动文件、新出现的改动进入活动列表、消失的路径被清掉、存储损坏或不可用时回到默认（单测）。
+- [x] AC6：提交页按 Changelist 分组：每组可折叠、组头三态勾选只影响本组文件、拖放与右键「移到 Changelist…」生效、刷新后分组保持（组件测试 + L4）。
+- [x] AC7：L4 截图 `.evidence/b3c/`；`make check` 绿；中英文案一致。
 
 ## 契约（T1 冻结）
 
@@ -88,7 +88,7 @@ interface ShelfEntry { id: string /* 时间戳 + 随机，[0-9a-z-]{1,64} */; na
 - `ChangesTree` 分组模式、组头勾选、右键、拖放、列表管理浮层。
 - 测试：AC6 的纯函数与静态渲染部分。
 
-### T6：自验证与文档（进行中）
+### T6：自验证与文档（完成）
 - L4、runbook、ARCHITECTURE、QUALITY、references。
 
 ## 进度
@@ -97,10 +97,11 @@ interface ShelfEntry { id: string /* 时间戳 + 随机，[0-9a-z-]{1,64} */; na
 - 2026-10-28 — T3 — `shelf-store`、`ShelfPanel`（列表、预览、取回/取回并保留/删除、不能干净应用时的三方合并）、`ShelveSheet`、贮藏页「贮藏 | 搁架」分段、提交页文件右键「搁置…」（勾选中的行带上全部勾选文件）
 - 2026-10-28 — T4 — `changelist-model`（增删改、活动列表、移动、跟随当前改动、按仓库持久化与损坏回退）
 - 2026-10-28 — T5 — `changelistSections`、`ChangelistView`/`ChangelistPanel`（分段、三态勾选、拖放、「移到…」菜单、内联新建/重命名、设为活动、删除）、提交页「按 Changelist 分组」开关（`settings.ts` 记住）、`useChangelists`
+- 2026-10-28 — T6 — L4 走查（`.evidence/b3c/`），修复两处走查发现：三方合并取回在本地改动未暂存时失败、刷新后 Changelist 分配丢失；runbook/ARCHITECTURE/QUALITY/references
 
 ## 下一步
 
-- T6：L4 走查（重启 3081 DSH 指向 b3c worktree），截图 `.evidence/b3c/`；runbook、ARCHITECTURE、QUALITY；然后整分支评审。
+- 整分支评审与修复；之后等负责人统一验收 B3。
 
 ## 决策记录
 
@@ -113,7 +114,9 @@ interface ShelfEntry { id: string /* 时间戳 + 随机，[0-9a-z-]{1,64} */; na
 
 ## 意外与发现
 
-- 无
+- 2026-10-28 L4：`git apply --3way` 拒绝工作区与索引不一致的文件（`does not match index`），整体不应用。取回的「三方合并应用」改为先 `git add` 这些文件的当前改动再合并（按钮文案说明会加入暂存区）；`test/host/shelf.test.ts` 先红后绿。
+- 2026-10-28 L4：刷新页面后 Changelist 分配丢失——首个 status 到达前同步用了空路径表，把所有分配清掉并保存。改为改动列表未加载时不同步（`syncPaths(state, null)` 原样返回）；先红后绿并实机复验。
+- 2026-10-28 L4：没有进行中操作时的冲突列表文案写着「这些冲突来自恢复贮藏」，三方合并取回搁架时也会显示这句（Minor，登记 TODO）。
 
 ## 阻塞
 
@@ -121,4 +124,8 @@ interface ShelfEntry { id: string /* 时间戳 + 随机，[0-9a-z-]{1,64} */; na
 
 ## 验证记录
 
-- 无
+- L1：每个任务 `make check`（T4 只跑了 pre-commit，见决策记录）。
+- L2：`test/host/shelf.test.ts`（AC1–AC3：部分搁置与回滚、补丁可重建含二进制与未跟踪、干净取回/保留/删除、拒绝不干净并三方合并、未暂存改动上的三方合并、路径与 id 校验）、`rpc.test.ts`（已登记端点）。
+- 组件/纯函数：`test/client/shelf/shelf.test.tsx`（AC4）、`test/client/changelists/*.test.ts(x)`（AC5、AC6）。
+- L4（2026-10-28，隔离 DSH 3081，b3c 构建）：右键「搁置…」带上勾选的 2 个文件、工作区撤下、ref 写入（`refs/worktree/dsh-git/shelf/<id>`）；搁架分段列表与补丁预览（`01-shelf-panel.jpg`）；本地有不同改动时「取回」被拒并提示，三方合并后进入冲突列表（`02-unshelve-threeway-conflicts.jpg`）；按 Changelist 分组、新建列表、右键移动、刷新后保持（`03-changelists.jpg`）。
+- 未在 L4 验证：拖放（内置浏览器的合成拖放不可靠；拖放的处理与右键移动走同一个 `onMove`）。

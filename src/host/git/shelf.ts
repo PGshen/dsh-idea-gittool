@@ -191,6 +191,16 @@ export interface ShelfApplyInput {
   threeWay: boolean
 }
 
+/** Paths a stored patch touches (`apply --numstat -z`; renames give both names). */
+async function patchPaths(ctx: WriteContext, patch: string): Promise<string[]> {
+  const result = await ctx.git([...GIT_BASE_ARGV, 'apply', '--numstat', '-z'], { mode: 'read', stdin: patch })
+  if (result.exitCode !== 0) throw redactedFailure(result, 'git apply --numstat')
+  return [...new Set(result.stdout.split('\0').flatMap(token => {
+    const fields = token.split('\t')
+    return fields.length >= 3 ? [fields[2] ?? ''] : [token]
+  }).filter(path => path !== '' && !/^\d+$|^-$/u.test(path)))]
+}
+
 async function unmergedPaths(ctx: WriteContext): Promise<string[]> {
   const result = await query(ctx, ['diff', '--name-only', '--diff-filter=U', '-z'])
   return result.exitCode === 0 ? [...new Set(result.stdout.split('\0').filter(path => path !== ''))].sort() : []
@@ -207,9 +217,21 @@ export const shelfApplyOperation: WriteOperation<ShelfApplyInput, Omit<ShelfAppl
     const patch = await readShelfPatch(async (argv, options) => await ctx.git(argv, { ...options, mode: 'read' }), ctx.repoRoot, input.id)
     let conflicts: string[] = []
     if (input.threeWay) {
+      // `apply --3way` refuses files whose working copy differs from the index ("does not match
+      // index"); stage the current changes of the touched files first (L4 finding, plan b3c).
+      const touched = await patchPaths(ctx, patch)
+      const unstaged = (await query(ctx, ['diff', '--name-only', '-z', '--', ...touched])).stdout.split('\0').filter(path => path !== '')
+      if (unstaged.length > 0) {
+        const spec = pathspecArgs(unstaged)
+        const staged = await ctx.git([...GIT_BASE_ARGV, 'add', ...spec.args], { stdin: spec.stdin })
+        if (staged.exitCode !== 0) throw redactedFailure(staged, 'git add')
+      }
       const merged = await ctx.git([...GIT_BASE_ARGV, 'apply', '--3way'], { stdin: patch })
       conflicts = await unmergedPaths(ctx)
-      if (merged.exitCode !== 0 && conflicts.length === 0) throw new GitCommandFailure('git/exec-failed', 'the shelf could not be applied', { output: outputSummary(merged) })
+      if (merged.exitCode !== 0 && conflicts.length === 0) {
+        const failure = redactedFailure(merged, 'git apply --3way')
+        throw new GitCommandFailure(failure.code, failure.message, { ...failure.details, output: outputSummary(merged) })
+      }
     } else {
       // Clean application only: a check first, so a refused shelf leaves every file untouched.
       const check = await ctx.git([...GIT_BASE_ARGV, 'apply', '--check'], { stdin: patch })

@@ -127,6 +127,17 @@ describe('shelfApply and shelfDrop', () => {
     expect(read(repo, 'a.txt')).toContain('<<<<<<<')
   })
 
+  it('merges three-way over an unstaged local change by staging it first (L4 finding)', async () => {
+    const repo = makeRepo()
+    repo.write('a.txt', 'a changed\n')
+    const { entry } = await write(shelfCreateOperation, repo, { name: 'x', paths: ['a.txt'] })
+    repo.write('a.txt', 'a different\n')
+    const merged = await write(shelfApplyOperation, repo, { id: entry.id, threeWay: true, keep: true })
+    expect(merged).toMatchObject({ applied: true, conflicts: ['a.txt'] })
+    expect(read(repo, 'a.txt')).toContain('a different')
+    expect(read(repo, 'a.txt')).toContain('a changed')
+  })
+
   it('drops an entry and refuses unknown or malformed ids', async () => {
     const repo = makeRepo()
     repo.write('a.txt', 'z\n')

@@ -27,4 +27,6 @@
 | `src/client/{rebase/rebase-model.ts,store/rebase-store.ts,pages/InteractiveRebasePage.tsx}`（B3a） | B | 模型（分组、默认 squash 信息、改写已推送判定、预览即 Host todo）与 store（过期响应、防重复提交）有单测；视图静态渲染与键盘判定有单测；拖拽、焦点、下拉的 DOM 行为只由 L4 覆盖 | 2026-10-27 |
 | `src/host/git/{tag-write,patch,fixup}.ts`、`diff.ts` 选项、`push.ts` revision（B3b） | A | 真实临时仓库测试覆盖：`-w` 四种 scope、整文件上下文、轻量/附注标签与重名/非法名、推送到祖先提交与拒绝非祖先、`format-patch` 一致与合并提交拒绝、`am` 预览/应用/失败回滚、`apply --index` 与不能应用时不留痕、fixup 与 squash（含勾选外改动的贮藏顺序）。缺口：推送直到此提交未经 L4 | 2026-10-27 |
 | `src/client/{diff/diff-views.ts,settings.ts}`、`DiffHunks`/`DiffViewer` 增强、`CommitMenuSheets`（B3b） | B | 纯函数（并排配对、词级、折叠、锚点）与静态渲染有单测；宽度门槛、滚动跳转、下载只由 L4 覆盖 | 2026-10-27 |
+| `src/host/git/shelf.ts`（B3c） | A | 真实临时仓库测试覆盖：部分搁置（已暂存/未暂存/二进制/未跟踪）与回滚、补丁重建、干净取回/保留/删除、拒绝不干净、三方合并（含未暂存的本地改动）、id 与路径校验 | 2026-10-28 |
+| `src/client/{changelists/*,store/shelf-store.ts}`、`ShelfPanel`、`ChangelistView`（B3c） | B | 模型（增删改、活动、移动、同步、持久化与损坏回退）与 store、静态渲染有单测；拖放只有处理函数共用、未经 L4 | 2026-10-28 |
 

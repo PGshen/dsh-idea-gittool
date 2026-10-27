@@ -237,7 +237,7 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
   )
   useEffect(() => { changesStore.setStatus(status) }, [changesStore, status])
   const changes = useChangesState(changesStore)
-  const changelists = useChangelists(value.repoRoot, changes.entries.map(entry => entry.path))
+  const changelists = useChangelists(value.repoRoot, changes.loaded ? changes.entries.map(entry => entry.path) : null)
   const commit = useCommitState(commitStore)
   const statusSawCommit = useRef(false)
   const previousPhase = useRef<CommitPhase>(commit.phase)

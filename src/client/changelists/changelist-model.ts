@@ -63,8 +63,12 @@ export function moveTo(state: ChangelistState, paths: readonly string[], id: str
   return { ...state, assignment }
 }
 
-/** Follow the current changes: new paths join the active list, paths without changes are forgotten. */
-export function syncPaths(state: ChangelistState, changed: readonly string[]): ChangelistState {
+/**
+ * Follow the current changes: new paths join the active list, paths without changes are forgotten.
+ * `null` = the changes are not known yet (before the first status): nothing changes (L4 finding).
+ */
+export function syncPaths(state: ChangelistState, changed: readonly string[] | null): ChangelistState {
+  if (changed === null) return state
   const present = new Set(changed)
   let dirty = false
   const assignment: Record<string, string> = {}

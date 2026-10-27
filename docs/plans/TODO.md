@@ -42,6 +42,7 @@
 | P2 | 补测试：continue 失败后的草稿、忙碌时 dispatch 被忽略、conflict/cancelled 结果文案、`dirtyWorktree` → `cancelStash` 接线、`git-client` 新端点的请求体断言 | B1 终审，2026-10-27 | B1 终审列出的缺口 |
 | P2 | A1–A3 样式引用了 DSH 中不存在的变量（--dsw-alias-state-success/warn、--dsw-font-mono、--dsw-alias-interactive-bg-selected），状态色/等宽字体实际未生效；需负责人确认后全局替换并把静态检查扩到全部样式 | B1 验收演示，2026-10-27 | B1 的 `MergeWindow*.module.css`、`ConflictsPage.module.css` 已替换，静态检查 `test/client/pages/css-tokens.test.ts` 目前只覆盖这两类文件（`GUARDED`） |
 | P2 | B3a 终审 Minor（5 条）：`--root` 下首条 drop 的提交上若有分支，`--update-refs` 会把它指到 git 的空根提交；squash 组信息清空时客户端不拦、Host 报通用错误；preset 的提交不在计划里（链未加载完）时静默打开无关列表；行动作变化后仍保留之前输入的信息；「压缩所选提交」未检查合并提交 | B3a 终审，2026-10-27 | 细节见 [b3a 计划](active/b3a-交互式变基.md)「决策记录」终审条目 |
+| P2 | 没有进行中操作时冲突列表固定说「这些冲突来自恢复贮藏」，搁架三方合并取回时也显示这句 | B3c L4，2026-10-28 | 文案应区分来源（贮藏 / 搁架） |
 | P2 | B3b 终审 Minor（12 条）：勾选的重命名旧路径被当成「勾选外改动」多问一次贮藏；SHA-256 仓库的 mbox 头识别不到；`patch.ts` 头注释与实现不符（写着 `--3way`）；CRLF 普通 diff `apply --check` 失败没有专门提示；`am --abort` 失败未处理；导出补丁是逐提交 `[PATCH]` 而非 `[PATCH n/m]`；带 revision 推送时「设置 upstream」无效却仍显示；推送页换 revision 不重建 store；父组件换请求时 Diff 选项丢失但开关仍亮；高亮片段与行文本长度不符时词级标记错位；整文件并排的行构建是 O(段×行)；`n`/`p` 跳过折叠的 hunk 没有提示 | B3b 终审，2026-10-28 | 细节见 [b3b 计划](active/b3b-Diff增强与提交菜单.md)「决策记录」终审条目 |
 | P2 | Fixup/Squash 到此提交的自动变基被中止后，`fixup!`/`squash!` 提交留在 HEAD；是否在中止时提示「撤销该提交」 | B3b L4，2026-10-27 | 与 IntelliJ 一致，需负责人决定 |
 | P2 | 交互式变基等改写历史的操作之后，日志详情区仍显示改写前选中的旧提交（选中项已不在日志里）；变基列表里的分支名标签与背景对比弱 | B3a L4，2026-10-27 | 前者是 A1 的既有行为：选中 sha 不在新日志里时应清空或跟随 HEAD |

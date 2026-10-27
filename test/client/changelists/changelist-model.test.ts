@@ -123,3 +123,12 @@ describe('changelist grouping preference', () => {
     }
   })
 })
+
+describe('syncPaths before the first status (L4 finding)', () => {
+  it('leaves assignments alone while the changes are not known yet', () => {
+    const { state, id } = addList(emptyChangelists(), 'x')
+    const assigned = moveTo(state, ['a.txt'], id)
+    expect(syncPaths(assigned, null)).toBe(assigned)
+    expect(listOf(syncPaths(assigned, ['a.txt']), 'a.txt')).toBe(id)
+  })
+})

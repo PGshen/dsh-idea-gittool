@@ -8,7 +8,7 @@
 import { text } from '../localized-text.ts'
 import type { LocalizedText } from '../localized-text.ts'
 import { applyNonConflicting, isChunkResolved, nextUnresolved } from '../merge/merge-model.ts'
-import type { MergeAction, MergeStore } from '../store/merge-store.ts'
+import type { MergeAction, MergeStatus, MergeStore } from '../store/merge-store.ts'
 
 export type MergeCommand = 'nextChunk' | 'prevChunk' | 'back' | 'undo' | 'redo' | 'save'
 
@@ -32,6 +32,43 @@ export function mergeKeyCommand(event: MergeKeyEvent): MergeCommand | null {
   if (key === 'y' && !event.shiftKey) return 'redo'
   if (key === 's' && !event.shiftKey) return 'save'
   return null
+}
+
+/** The page and the open window, as far as the stray-key checks need them (React-free, testable). */
+export interface StrayKeyDocument {
+  body: unknown
+  documentElement: unknown
+  querySelectorAll(selector: string): ArrayLike<unknown>
+}
+export interface StrayKeyRoot {
+  contains(node: unknown): boolean
+}
+
+/** Focus fell out of every element: it is on `<body>` / `<html>` or nowhere. */
+export function focusIsLost(active: unknown, doc: Pick<StrayKeyDocument, 'body' | 'documentElement'>): boolean {
+  return active === null || active === undefined || active === doc.body || active === doc.documentElement
+}
+
+/**
+ * B1 acceptance demo: after a failed apply focus was on `<body>`, so the window's own `onKeyDown`
+ * never saw Esc. A document-level listener takes a plain Esc whose target is the page itself, when
+ * nobody handled it (`defaultPrevented`) and no other modal outside the window is open; an Esc on a
+ * focused element is left to that element and the window's `onKeyDown` (menu → confirm → leave).
+ */
+export function isStrayEscape(
+  event: MergeKeyEvent & { target: unknown; defaultPrevented: boolean },
+  doc: StrayKeyDocument,
+  root: StrayKeyRoot | null,
+): boolean {
+  if (root === null || event.defaultPrevented || mergeKeyCommand(event) !== 'back') return false
+  if (!focusIsLost(event.target, doc)) return false
+  const modals = Array.from(doc.querySelectorAll('[aria-modal="true"]'))
+  return modals.every(modal => root.contains(modal))
+}
+
+/** A save / apply that ended in an error: the disabled button lost focus, put it back in the window. */
+export function shouldRefocusAfterWrite(previous: MergeStatus, next: MergeStatus, hasError: boolean): boolean {
+  return (previous === 'saving' || previous === 'applying') && next === 'ready' && hasError
 }
 
 /** Where the window goes: back to the list, another file, or (T7) somewhere another entry point chose. */

@@ -2,7 +2,7 @@
 // next file), Esc / back with the save / discard / cancel question, Cmd/Ctrl+S, apply with the
 // "still N unresolved" confirmation and never twice, resolveSimple notice, file after apply.
 import { describe, expect, it, vi } from 'vitest'
-import { adjacentPath, createMergeWindowController, createReviewRunner, mergeKeyCommand, nextFileAfterApply } from '../../../src/client/pages/merge-window-controller.ts'
+import { adjacentPath, createMergeWindowController, createReviewRunner, focusIsLost, isStrayEscape, mergeKeyCommand, nextFileAfterApply, shouldRefocusAfterWrite } from '../../../src/client/pages/merge-window-controller.ts'
 import type { MergeWindowControllerDeps } from '../../../src/client/pages/merge-window-controller.ts'
 import { createMergeStore } from '../../../src/client/store/merge-store.ts'
 import type { MergeStoreDeps } from '../../../src/client/store/merge-store.ts'
@@ -409,5 +409,56 @@ describe('T7 fix 6: a held prompt of a pending action (dirty-worktree ask) is ca
     controller.answerLeave('discard')
     expect(cancel).toHaveBeenCalledTimes(3)
     expect(go).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('B1 acceptance demo: Esc with focus on <body>, focus after a failed write', () => {
+  const body = { name: 'body' }
+  const html = { name: 'html' }
+  const inside = { name: 'inside' }
+  const elsewhere = { name: 'elsewhere' }
+  const root = { contains: (node: unknown) => node === inside }
+  const doc = (modals: unknown[] = []) => ({ body, documentElement: html, querySelectorAll: (_selector: string) => modals })
+  const esc = (target: unknown, over: Partial<{ defaultPrevented: boolean; shiftKey: boolean; metaKey: boolean }> = {}) => ({
+    ...key('Escape'), target, defaultPrevented: false, ...over,
+  })
+
+  it('an Esc that reached the page itself (focus fell to <body>) is the window\'s', () => {
+    expect(isStrayEscape(esc(body), doc(), root)).toBe(true)
+    expect(isStrayEscape(esc(html), doc(), root)).toBe(true)
+    expect(isStrayEscape(esc(null), doc(), root)).toBe(true)
+  })
+
+  it('leaves Esc alone when something else owns it', () => {
+    // Focused element inside or outside the window: its own handlers (and the window's onKeyDown) decide.
+    expect(isStrayEscape(esc(inside), doc(), root)).toBe(false)
+    expect(isStrayEscape(esc(elsewhere), doc(), root)).toBe(false)
+    // Already handled (menu, confirm, host dialog).
+    expect(isStrayEscape(esc(body, { defaultPrevented: true }), doc(), root)).toBe(false)
+    // Another modal (a sheet, a host dialog) is open outside the window.
+    expect(isStrayEscape(esc(body), doc([elsewhere]), root)).toBe(false)
+    // A modal inside the window does not count as foreign.
+    expect(isStrayEscape(esc(body), doc([inside]), root)).toBe(true)
+    // Not a plain Esc, or no window mounted.
+    expect(isStrayEscape(esc(body, { shiftKey: true }), doc(), root)).toBe(false)
+    expect(isStrayEscape(esc(body, { metaKey: true }), doc(), root)).toBe(false)
+    expect(isStrayEscape({ ...key('F7'), target: body, defaultPrevented: false }, doc(), root)).toBe(false)
+    expect(isStrayEscape(esc(body), doc(), null)).toBe(false)
+  })
+
+  it('refocuses only when a save / apply ends in an error', () => {
+    expect(shouldRefocusAfterWrite('applying', 'ready', true)).toBe(true)
+    expect(shouldRefocusAfterWrite('saving', 'ready', true)).toBe(true)
+    expect(shouldRefocusAfterWrite('applying', 'ready', false)).toBe(false)
+    expect(shouldRefocusAfterWrite('ready', 'ready', true)).toBe(false)
+    expect(shouldRefocusAfterWrite('loading', 'ready', true)).toBe(false)
+  })
+
+  it('focus is lost when it is on <body> or nowhere; focus the user moved elsewhere is kept', () => {
+    expect(focusIsLost(body, doc())).toBe(true)
+    expect(focusIsLost(html, doc())).toBe(true)
+    expect(focusIsLost(null, doc())).toBe(true)
+    expect(focusIsLost(elsewhere, doc())).toBe(false)
+    expect(focusIsLost(inside, doc())).toBe(false)
   })
 })

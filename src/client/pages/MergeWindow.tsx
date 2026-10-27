@@ -25,7 +25,7 @@ import { createMergePane, createScrollLock, gutterAction, mapLine, resultEditabl
 import type { MergePane, MergePaneClasses, MergePaneHandle } from './merge-editor.ts'
 import { useMergeFullscreen } from './merge-fullscreen.ts'
 import type { SidebarFullscreen } from './merge-fullscreen.ts'
-import { adjacentPath, createMergeWindowController, mergeKeyCommand } from './merge-window-controller.ts'
+import { adjacentPath, createMergeWindowController, focusIsLost, isStrayEscape, mergeKeyCommand, shouldRefocusAfterWrite } from './merge-window-controller.ts'
 import type { LeaveAnswer, MergeWindowUi } from './merge-window-controller.ts'
 import css from './MergeWindow.module.css'
 import { MergeConfirmBar, MergeFallback, MergeFooter, MergeHeader } from './MergeWindowParts.tsx'
@@ -465,20 +465,48 @@ function MergeFileSession(props: MergeWindowProps): ReactNode {
     onCopyCommand: copyCommand,
   }
 
+  /** Esc order: the 「应用非冲突更改 ▾」 menu, then the controller (confirm → leave). */
+  const escape = (): void => {
+    if (menuOpen) setMenuOpen(false)
+    else controller.command('back')
+  }
+  const latestEscape = useRef(escape)
+  latestEscape.current = escape
+
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
     if (event.defaultPrevented) return
-    if (event.key === 'Escape' && menuOpen) {
-      event.preventDefault()
-      event.stopPropagation()
-      setMenuOpen(false)
-      return
-    }
     const command = mergeKeyCommand(event)
     if (command === null || (command !== 'back' && state.model === null)) return
     event.preventDefault()
     event.stopPropagation()
-    controller.command(command)
+    if (command === 'back') escape()
+    else controller.command(command)
   }
+
+  // Focus can fall to <body> (a button disabled while saving / applying); Esc still leaves then.
+  useEffect(() => {
+    const listener = (event: globalThis.KeyboardEvent): void => {
+      const root = windowRef.current
+      if (!isStrayEscape(event, document, root === null ? null : { contains: node => root.contains(node as Node | null) })) return
+      event.preventDefault()
+      latestEscape.current()
+    }
+    document.addEventListener('keydown', listener)
+    return () => { document.removeEventListener('keydown', listener) }
+  }, [])
+
+  // A failed save / apply: put focus back into the window (the Result editor) if it was lost.
+  const status = state.status
+  const hasError = state.error !== null
+  const previousStatus = useRef(status)
+  useEffect(() => {
+    const previous = previousStatus.current
+    previousStatus.current = status
+    if (!shouldRefocusAfterWrite(previous, status, hasError) || !focusIsLost(document.activeElement, document)) return
+    const result = panes.current?.result
+    if (result !== undefined) result.view.focus()
+    else windowRef.current?.focus()
+  }, [status, hasError])
 
   return (
     <MergeWindowView

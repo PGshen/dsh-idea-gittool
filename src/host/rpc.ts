@@ -347,7 +347,7 @@ export function createRpcRuntime(deps: RpcDeps): RpcRuntime {
             runtime,
             payload,
             signal,
-            `${DIFF_CACHE_PREFIX}:${JSON.stringify([query.scope, query.sha ?? '', query.parent ?? '', query.path, query.from ?? null, query.to ?? null, query.mergeBase ?? null, query.origPath ?? null])}`,
+            `${DIFF_CACHE_PREFIX}:${JSON.stringify([query.scope, query.sha ?? '', query.parent ?? '', query.path, query.from ?? null, query.to ?? null, query.mergeBase ?? null, query.origPath ?? null, query.ignoreWhitespace ?? false, query.context ?? 'default'])}`,
             (root) => readDiff(deps.runner, root, query, { signal }),
           )
         }
@@ -793,6 +793,9 @@ function parseDiffQuery(payload: unknown): DiffQuery & { path: string } {
   if (record.to !== undefined) query.to = record.to
   if (record.mergeBase !== undefined) query.mergeBase = record.mergeBase
   if (record.origPath !== undefined) query.origPath = record.origPath
+  // B3b options: readDiff validates them.
+  if (record.ignoreWhitespace !== undefined) query.ignoreWhitespace = record.ignoreWhitespace
+  if (record.context !== undefined) query.context = record.context
   return query
 }
 

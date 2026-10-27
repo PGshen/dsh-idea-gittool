@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 // 真实 git 仓库 + 进程 spawn 在并发 worker 下偶尔超过默认 5s，这里按文件放宽。
@@ -569,6 +572,15 @@ describe('endpoint registry (A3 T1)', () => {
     expect(value.commits.length).toBeGreaterThan(0)
     expect(value.supportsUpdateRefs).toBe(true)
     expect(typeof value.version).toBe('number')
+  })
+
+  it('passes the B3b diff options through and keys the cache by them', async () => {
+    const { handler, repo } = makeHandler()
+    repo.write('README.md', `${readFileSync(join(repo.root, 'README.md'), 'utf8').replace(/\n$/u, '')}  \n`)
+    const plain = okValue<DiffFileValue>(await handler('diff', { sessionId: 'session-1', path: 'README.md', scope: 'worktree' }, SIGNAL))
+    const ignoring = okValue<DiffFileValue>(await handler('diff', { sessionId: 'session-1', path: 'README.md', scope: 'worktree', ignoreWhitespace: true }, SIGNAL))
+    expect(plain.hunks.length).toBeGreaterThan(0)
+    expect(ignoring.hunks).toEqual([])
   })
 
   it('serves mergeFile (B1 T2): validates the path and answers stale-target outside a conflict', async () => {

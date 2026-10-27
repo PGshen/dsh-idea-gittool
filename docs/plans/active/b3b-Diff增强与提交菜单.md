@@ -74,10 +74,10 @@
 - 协议、`git-client` 方法、路由占位校验、`bodyLimitFor('applyPatch')` = 8 MiB、覆盖层 `{ kind: 'createTag'; sha }`、`{ kind: 'undoCommit'; sha }`、`{ kind: 'fixupInto'; sha; mode }`、`{ kind: 'patch'; shas }`、`{ kind: 'applyPatch' }`、`push` 覆盖层增加 `revision?`。
 - 测试：协议登记、读写分类、客户端请求体、http 限额。
 
-### T2：Host diff 选项（进行中）
+### T2：Host diff 选项（完成）
 - `src/host/git/diff.ts`：`-w`、`--unified=<大数>`（整文件）；测试 AC1/AC2。
 
-### T3：Host 新端点（待开始）
+### T3：Host 新端点（进行中）
 - `createTag`（`tag [-a -F -] -- <name> <sha>`，`check-ref-format`，已存在 → `git/branch-exists` 同类码 `details.kind: 'tag'`）、`push` 的 `revision`（必须是 HEAD 祖先；预览截断）、`formatPatch`、`applyPatch`（格式识别、`--check` 预览、失败 `am --abort`）、`fixupCommit`（`commit --only --fixup=<sha>`/`--squash=<sha>` + `rebase -i --autosquash <target>^`，复用 B3a 的停下判定与智能贮藏）。
 - 测试：真实临时仓库覆盖 AC6–AC10 的 Host 部分；注入（标签名以 `-` 开头、补丁里的路径越界由 git 自己拒绝）。
 
@@ -99,10 +99,11 @@
 ## 进度
 
 - 2026-10-27 — T1 — 协议（`DiffRequest.ignoreWhitespace/context`、`PushRequest.revision`、`PushPreviewRequest`、四个新端点）、客户端方法、`applyPatch` 32 MiB 请求体、五个新覆盖层、三个写端点的 `parse`
+- 2026-10-27 — T2 — `diff` 的 `-w` 与整文件上下文（`-U1000000`），四种 scope 与未跟踪文件都生效；RPC 透传并纳入缓存键
 
 ## 下一步
 
-- T2：`src/host/git/diff.ts` 支持 `ignoreWhitespace`（`-w`）与 `context: 'full'`，测试写在 `test/host/diff.test.ts`。
+- T3：实现 `createTag`（`src/host/git/tag-write.ts`）、`push` 的 `revision`（`src/host/git/push.ts`）、`formatPatch`/`applyPatch`（`src/host/git/patch.ts`）、`fixupCommit`（`src/host/git/fixup.ts`），替换 T1 的 `not implemented`。
 
 ## 决策记录
 

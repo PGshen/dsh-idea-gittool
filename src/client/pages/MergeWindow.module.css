@@ -104,7 +104,7 @@
 .note {
   flex: 0 0 auto;
   padding: 4px 8px;
-  border-left: 2px solid var(--dsw-alias-state-warn);
+  border-left: 2px solid var(--dsw-alias-state-warn-primary);
   background: var(--dsw-alias-bg-layer-1);
 }
 
@@ -160,7 +160,7 @@
 
 .editor :global(.cm-scroller) {
   overflow: auto;
-  font-family: var(--dsw-font-mono);
+  font-family: var(--dsw-font-markdown-code-block-font-family, monospace);
   line-height: 20px;
 }
 
@@ -195,12 +195,12 @@
 }
 
 .toneResolved {
-  --merge-tone: var(--dsw-alias-state-success);
+  --merge-tone: var(--dsw-alias-state-success-primary);
   --merge-mix: 8%;
 }
 
 .toneEdited {
-  --merge-tone: var(--dsw-alias-state-warn);
+  --merge-tone: var(--dsw-alias-state-warn-primary);
 }
 
 .current {

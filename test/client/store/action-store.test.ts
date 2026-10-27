@@ -261,6 +261,8 @@ describe('actionErrorText', () => {
   it('invalid payload reasons from the Host get their own text; others fall back', () => {
     expect(actionErrorText(error('git/invalid-payload', { reason: 'nothing-to-stash' }))).toEqual({ key: 'action.error.nothing-to-stash' })
     expect(actionErrorText(error('git/invalid-payload', { reason: 'no-upstream' }))).toEqual({ key: 'action.error.no-upstream' })
+    // B1 acceptance demo: a request body over the Host limit reads as "too large, use a terminal".
+    expect(actionErrorText(error('git/invalid-payload', { reason: 'body-too-large', limit: 1 }))).toEqual({ key: 'action.error.body-too-large' })
     expect(actionErrorText(error('git/invalid-payload'))).toEqual({ key: 'action.error.fallback', params: { code: 'git/invalid-payload', message: 'm' } })
     expect(actionErrorText(error('git/exec-failed'))).toEqual({ key: 'action.error.fallback', params: { code: 'git/exec-failed', message: 'm' } })
   })

@@ -119,6 +119,19 @@ function endpointUrl(endpoint: string): string {
   return `${RPC_CHANNEL.slice(1)}/${endpoint}`
 }
 
+/**
+ * A non-2xx reply may still carry the protocol's error envelope (e.g. 413 body-too-large);
+ * surface that structured error instead of a bare "HTTP <status>". Never reads success from it.
+ */
+async function errorBodyOf<T>(response: Response): Promise<RpcResult<T> | undefined> {
+  try {
+    const raw: unknown = await response.json()
+    return isRpcResult<T>(raw) && !raw.ok ? raw : undefined
+  } catch {
+    return undefined
+  }
+}
+
 async function call<T>(endpoint: string, payload: unknown, signal?: AbortSignal): Promise<RpcResult<T>> {
   try {
     const response = await globalThis.fetch(endpointUrl(endpoint), {
@@ -128,7 +141,7 @@ async function call<T>(endpoint: string, payload: unknown, signal?: AbortSignal)
       ...(signal === undefined ? {} : { signal }),
     })
     // Transport failures read like Host errors (English, technical); the UI titles them by code.
-    if (!response.ok) return failure(`HTTP ${response.status}: ${endpoint}`)
+    if (!response.ok) return (await errorBodyOf<T>(response)) ?? failure(`HTTP ${response.status}: ${endpoint}`)
     const raw: unknown = await response.json()
     if (!isRpcResult<T>(raw)) return failure('Host response does not match the /dsh-git protocol')
     return raw

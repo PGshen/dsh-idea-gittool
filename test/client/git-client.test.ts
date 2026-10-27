@@ -81,6 +81,25 @@ describe('createGitClient / non-2xx responses (B1 acceptance demo)', () => {
   })
 })
 
+describe('createGitClient / B3c shelf endpoints', () => {
+  it('posts the shelf endpoints', async () => {
+    const fetch = vi.fn(async () => new Response(JSON.stringify({ ok: true, value: {} })))
+    vi.stubGlobal('fetch', fetch)
+    const client = createGitClient(undefined)
+    const cases: Array<[string, () => Promise<unknown>, unknown]> = [
+      ['shelfList', () => client.shelfList({ sessionId: 's' }), { sessionId: 's' }],
+      ['shelfPatch', () => client.shelfPatch({ sessionId: 's', id: 'x1' }), { sessionId: 's', id: 'x1' }],
+      ['shelfCreate', () => client.shelfCreate({ sessionId: 's', requestId: 'r', name: 'n', paths: ['a'] }), { sessionId: 's', requestId: 'r', name: 'n', paths: ['a'] }],
+      ['shelfApply', () => client.shelfApply({ sessionId: 's', requestId: 'r', id: 'x1', keep: true }), { sessionId: 's', requestId: 'r', id: 'x1', keep: true }],
+      ['shelfDrop', () => client.shelfDrop({ sessionId: 's', requestId: 'r', id: 'x1' }), { sessionId: 's', requestId: 'r', id: 'x1' }],
+    ]
+    for (const [endpoint, send, body] of cases) {
+      await send()
+      expect(fetch).toHaveBeenLastCalledWith(`dsh-git/${endpoint}`, expect.objectContaining({ body: JSON.stringify(body) }))
+    }
+  })
+})
+
 describe('createGitClient / B3b endpoints', () => {
   it('sends the push-up-to revision with the preview only when given', async () => {
     const fetch = vi.fn(async () => new Response(JSON.stringify({ ok: true, value: {} })))

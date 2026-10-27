@@ -69,10 +69,10 @@ interface ShelfEntry { id: string /* 时间戳 + 随机，[0-9a-z-]{1,64} */; na
 
 ## 任务
 
-### T1：契约冻结 + ADR 0011（待开始）
+### T1：契约冻结 + ADR 0011（完成）
 - 协议、客户端方法、路由占位校验、ADR「搁架存为受限 ref 下的提交对象」。
 
-### T2：Host 搁架（待开始）
+### T2：Host 搁架（完成）
 - `src/host/git/shelf.ts`：生成补丁（已跟踪：`diff --binary HEAD -- <paths>`；未跟踪：`diff --binary --no-index /dev/null <path>` 拼接）、`hash-object`/`mktree`/`commit-tree` 存对象、`update-ref`、回滚路径（复用 `rollback.ts` 的逻辑）、列表（`for-each-ref` + `cat-file`）、应用（`apply --check` / `--3way`）、删除。
 - 测试：AC1–AC3。
 
@@ -93,14 +93,16 @@ interface ShelfEntry { id: string /* 时间戳 + 随机，[0-9a-z-]{1,64} */; na
 
 ## 进度
 
-- 无
+- 2026-10-28 — T1+T2 — 协议与客户端方法、覆盖层 `shelve`、ADR 0011；Host `shelf.ts`（补丁含二进制与未跟踪、受限 ref 下的提交对象、先存后回滚、干净应用/三方合并、删除）与路由
 
 ## 下一步
 
-- 从 T1 开始。
+- T3：`src/client/store/shelf-store.ts`、贮藏页「贮藏 | 搁架」分段、`ShelfPanel`、`ShelveSheet`，提交页「搁置…」入口。
 
 ## 决策记录
 
+- 2026-10-28 — T1 与 T2 合并为一次提交：`shelfList` 只需会话参数，占位实现会让「已登记端点不得回答 not implemented」的路由测试失败。
+- 2026-10-28 — 搁架载体提交用固定身份 `dsh-git <dsh-git@localhost>`（仓库可能没配置 user.name）；它不会被签出或推送。
 - 2026-10-27 — 待确认 1–3 按推荐执行（负责人授权 AI 自行推进 B3b–B3d，验收时统一 review）。
 
 ## 意外与发现

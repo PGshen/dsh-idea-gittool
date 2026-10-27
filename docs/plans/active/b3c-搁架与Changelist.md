@@ -101,10 +101,11 @@ interface ShelfEntry { id: string /* 时间戳 + 随机，[0-9a-z-]{1,64} */; na
 
 ## 下一步
 
-- 整分支评审与修复；之后等负责人统一验收 B3。
+- 等负责人统一验收 B3（b3a → b3b → b3c → b3d 顺序合并）。
 
 ## 决策记录
 
+- 2026-10-28 — 整分支评审（独立子代理）：C1、C2 两条 Critical、I1–I7 七条 Important 全部修复。根因是初版把补丁文本存为 blob：非 UTF-8 字节在 JS 字符串里失真、textconv/`diff.noprefix` 改变补丁形状、16 MiB 读取上限、`diff HEAD` 丢失暂存层——而工作区已被回滚（数据丢失）。改为存对象快照（ADR 0011 已更新）：每个路径记录 HEAD/索引/工作区三份 mode+blob，取回经索引写回、三方合并用 `merge-file --object-id` 并写入索引阶段；采集后、回滚前复核路径未被改动（I4）；无提交的仓库拒绝（I3）；留下冲突的条目必保留、冲突只计本条目的路径（C1）；三方合并不再预先 `git add`（I5）。客户端：换仓库时重建改动 store，Changelist 不会拿旧仓库路径同步（I6）；分组视图不再按隐藏的搜索词过滤（I7）。Minor 7 条登记 TODO。
 - 2026-10-28 — T5：分组视图里的文件行是平铺列表（不再按目录树），搜索沿用提交页的搜索词但分组视图本身不显示搜索框；行右键只有「移到 Changelist」（提交/回滚/搁置等仍在非分组视图的右键里）——控制范围，避免复制 `ChangesTree` 的全部交互。
 - 2026-10-28 — T4 提交只跑了 pre-commit（lint/类型），完整 `make check` 在 T5 结束时一起跑。
 - 2026-10-28 — T3：搁置入口只放在提交页文件右键（不另加工具栏按钮）：右键的行已勾选时搁置全部勾选文件，否则只搁置这一行；组件与测试同一步写（视图先于测试，静态渲染覆盖）。
@@ -127,5 +128,6 @@ interface ShelfEntry { id: string /* 时间戳 + 随机，[0-9a-z-]{1,64} */; na
 - L1：每个任务 `make check`（T4 只跑了 pre-commit，见决策记录）。
 - L2：`test/host/shelf.test.ts`（AC1–AC3：部分搁置与回滚、补丁可重建含二进制与未跟踪、干净取回/保留/删除、拒绝不干净并三方合并、未暂存改动上的三方合并、路径与 id 校验）、`rpc.test.ts`（已登记端点）。
 - 组件/纯函数：`test/client/shelf/shelf.test.tsx`（AC4）、`test/client/changelists/*.test.ts(x)`（AC5、AC6）。
+- 评审修复：`test/host/shelf.test.ts` 新增 C1、C2（非 UTF-8/textconv/noprefix）、I2（AD 与 MM）、I3、I4、三方合并写入索引阶段，先红后绿；I6/I7 为接线修改（I6 无单测，靠代码阅读与 L4 已验证的刷新场景）。
 - L4（2026-10-28，隔离 DSH 3081，b3c 构建）：右键「搁置…」带上勾选的 2 个文件、工作区撤下、ref 写入（`refs/worktree/dsh-git/shelf/<id>`）；搁架分段列表与补丁预览（`01-shelf-panel.jpg`）；本地有不同改动时「取回」被拒并提示，三方合并后进入冲突列表（`02-unshelve-threeway-conflicts.jpg`）；按 Changelist 分组、新建列表、右键移动、刷新后保持（`03-changelists.jpg`）。
 - 未在 L4 验证：拖放（内置浏览器的合成拖放不可靠；拖放的处理与右键移动走同一个 `onMove`）。

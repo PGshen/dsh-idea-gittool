@@ -1,7 +1,18 @@
-// Shelf (plan b3c, ADR 0011): named, partial "set aside" of uncommitted changes. Each entry is a commit
-// object whose tree holds `patch` (`git diff --binary`) and `meta.json`, behind
-// `refs/worktree/dsh-git/shelf/<id>`. Everything is written through confined git; the entry is saved
-// before the paths are rolled back, so a failed rollback never loses changes.
+// Shelf (plan b3c, ADR 0011): named, partial "set aside" of uncommitted changes.
+//
+// Each entry is a carrier commit behind `refs/worktree/dsh-git/shelf/<id>` whose tree holds
+// `meta.json` and whose objects capture every chosen path exactly: the HEAD entry at shelving time,
+// the index entry and the working-tree entry (mode + blob). Index entries are read with `ls-files -s`;
+// working-tree files are hashed and written by `hash-object -w`; every blob is an entry of the
+// carrier tree so `gc` keeps it. Bytes never pass through JavaScript strings, so encodings, textconv, diff
+// prefixes and sizes cannot corrupt an entry (B3c review C2/I1). Restoring goes through the index
+// (`update-index --index-info` + `checkout-index`); a three-way unshelve merges each file with
+// `merge-file --object-id` and records conflicts as index stages 1/2/3.
+//
+// Order of a shelve: capture → verify the paths did not change meanwhile → write the ref → roll the
+// paths back to HEAD. A failure before the ref write leaves everything as it was.
+import { lstat, readlink } from 'node:fs/promises'
+import { join } from 'node:path'
 import type {
   FileStatusCode,
   ShelfApplyValue,
@@ -12,6 +23,7 @@ import type {
 import { SHELF_REF_PREFIX } from '../../shared/protocol.ts'
 import type { GitRunResult, GitRunner, WriteContext, WriteOperation } from '../git-executor.ts'
 import { GIT_BASE_ARGV, GitCommandFailure, failureFromExit } from '../git-executor.ts'
+import { readHeadPosition } from './smart-stash.ts'
 import {
   CLEAN_BATCH_MAX,
   OBJECT_ID_PATTERN,
@@ -19,22 +31,44 @@ import {
   batches,
   invalidPayload,
   optionalBoolean,
-  outputSummary,
   parseWritePaths,
-  pathspecArgs,
   payloadRecord,
   query,
   readPathStates,
   redactedFailure,
 } from './write-support.ts'
-import { readHeadPosition } from './smart-stash.ts'
 
 const SHELF_ID_PATTERN = /^[0-9a-z-]{1,64}$/u
 const SHELF_NAME_MAX = 200
-/** Shelf patches are read whole; generous but bounded. */
-const SHELF_PATCH_MAX_BYTES = 16 * 1024 * 1024
+/** The preview diff is for reading only; bounded. */
+const SHELF_PREVIEW_MAX_BYTES = 4 * 1024 * 1024
 /** Fixed identity of the shelf's carrier commit (it is never checked out or pushed). */
 const SHELF_IDENTITY = ['-c', 'user.name=dsh-git', '-c', 'user.email=dsh-git@localhost']
+/** Pin the preview's shape regardless of user diff config (review C2). */
+const PREVIEW_DIFF_ARGS = ['--no-color', '--no-ext-diff', '--no-textconv', '--src-prefix=a/', '--dst-prefix=b/', '--binary']
+
+/** A mode + blob, or null when the path is absent there. */
+interface ObjectEntry {
+  mode: string
+  oid: string
+}
+
+/** What `meta.json` stores per path. */
+interface ShelvedFile {
+  path: string
+  status: FileStatusCode
+  head: ObjectEntry | null
+  index: ObjectEntry | null
+  worktree: ObjectEntry | null
+}
+
+interface ShelfMeta {
+  name: string
+  createdAt: string
+  branch: string | null
+  baseSha: string
+  files: ShelvedFile[]
+}
 
 export function parseShelfId(value: unknown): string {
   if (typeof value !== 'string' || !SHELF_ID_PATTERN.test(value)) throw invalidPayload('id must be a shelf id', {})
@@ -49,48 +83,78 @@ function newShelfId(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
 }
 
-function parseMeta(id: string, text: string): ShelfEntry | null {
+function isEntry(value: unknown): value is ObjectEntry | null {
+  if (value === null) return true
+  const entry = value as Partial<ObjectEntry> | undefined
+  return typeof entry?.mode === 'string' && typeof entry.oid === 'string' && OBJECT_ID_PATTERN.test(entry.oid)
+}
+
+function parseMeta(text: string): ShelfMeta | null {
   try {
-    const value = JSON.parse(text) as Partial<ShelfEntry>
+    const value = JSON.parse(text) as Partial<ShelfMeta>
     if (typeof value.name !== 'string' || typeof value.createdAt !== 'string' || !Array.isArray(value.files)) return null
+    const files = value.files.filter((file): file is ShelvedFile =>
+      typeof file?.path === 'string' && isEntry(file.head) && isEntry(file.index) && isEntry(file.worktree))
+    if (files.length !== value.files.length) return null
     return {
-      id,
       name: value.name,
       createdAt: value.createdAt,
       branch: typeof value.branch === 'string' ? value.branch : null,
       baseSha: typeof value.baseSha === 'string' ? value.baseSha : '',
-      files: value.files.filter((file): file is ShelfEntry['files'][number] => typeof file?.path === 'string'),
+      files,
     }
   } catch {
     return null
   }
 }
 
+function toEntry(id: string, meta: ShelfMeta): ShelfEntry {
+  return { id, name: meta.name, createdAt: meta.createdAt, branch: meta.branch, baseSha: meta.baseSha, files: meta.files.map(file => ({ path: file.path, status: file.status })) }
+}
+
+type Git = (args: readonly string[], options?: { stdin?: string; stdoutMaxBytes?: number }) => Promise<GitRunResult>
+
+async function readMeta(git: Git, id: string): Promise<ShelfMeta | null> {
+  const meta = await git(['cat-file', 'blob', `${shelfRef(id)}:meta.json`])
+  return meta.exitCode === 0 ? parseMeta(meta.stdout) : null
+}
+
 /** Shelf entries, newest first; unreadable entries are skipped. */
 export async function readShelfList(run: GitRunner, cwd: string, options: { signal?: AbortSignal | undefined } = {}): Promise<ShelfEntry[]> {
-  const git = async (args: readonly string[]): Promise<GitRunResult> => await run([...GIT_BASE_ARGV, ...args], { cwd, signal: options.signal })
+  const git: Git = async (args) => await run([...GIT_BASE_ARGV, ...args], { cwd, signal: options.signal })
   const refs = await git(['for-each-ref', '--format=%(refname)', SHELF_REF_PREFIX])
   if (refs.exitCode !== 0) throw failureFromExit(refs, 'git for-each-ref')
   const entries: ShelfEntry[] = []
   for (const ref of refs.stdout.split('\n').filter(line => line !== '')) {
     const id = ref.slice(SHELF_REF_PREFIX.length)
     if (!SHELF_ID_PATTERN.test(id)) continue
-    const meta = await git(['cat-file', 'blob', `${ref}:meta.json`])
-    const entry = meta.exitCode === 0 ? parseMeta(id, meta.stdout) : null
-    if (entry !== null) entries.push(entry)
+    const meta = await readMeta(git, id)
+    if (meta !== null) entries.push(toEntry(id, meta))
   }
   return entries.sort((a, b) => b.createdAt.localeCompare(a.createdAt))
 }
 
-/** The stored patch of one entry. */
+async function emptyBlob(git: Git): Promise<string> {
+  const result = await git(['hash-object', '-w', '-t', 'blob', '--stdin'], { stdin: '' })
+  const oid = result.stdout.trim()
+  if (result.exitCode !== 0 || !OBJECT_ID_PATTERN.test(oid)) throw failureFromExit(result, 'git hash-object')
+  return oid
+}
+
+/** A readable diff of every shelved file (HEAD at shelving time → shelved worktree). Preview only. */
 export async function readShelfPatch(run: GitRunner, cwd: string, id: string, options: { signal?: AbortSignal | undefined } = {}): Promise<string> {
-  const result = await run([...GIT_BASE_ARGV, 'cat-file', 'blob', `${shelfRef(parseShelfId(id))}:patch`], {
-    cwd,
-    signal: options.signal,
-    stdoutMaxBytes: SHELF_PATCH_MAX_BYTES,
-  })
-  if (result.exitCode !== 0) throw new GitCommandFailure('git/stale-target', 'the shelf entry no longer exists', { target: 'shelf', id })
-  return result.stdout
+  const git: Git = async (args, extra = {}) => await run([...GIT_BASE_ARGV, ...args], { cwd, signal: options.signal, ...extra })
+  const meta = await readMeta(git, parseShelfId(id))
+  if (meta === null) throw new GitCommandFailure('git/stale-target', 'the shelf entry no longer exists', { target: 'shelf', id })
+  const empty = await emptyBlob(git)
+  let text = ''
+  for (const file of meta.files) {
+    const result = await git(['diff', ...PREVIEW_DIFF_ARGS, file.head?.oid ?? empty, file.worktree?.oid ?? empty], { stdoutMaxBytes: SHELF_PREVIEW_MAX_BYTES })
+    const body = result.exitCode === 0 || result.exitCode === 1 ? result.stdout : ''
+    text += `# ${file.path}\n${body.replace(/^diff --git a\/[0-9a-f]+ b\/[0-9a-f]+\n/u, '')}`
+    if (text.length > SHELF_PREVIEW_MAX_BYTES) break
+  }
+  return text
 }
 
 function statusOf(state: { x: string; y: string }): FileStatusCode {
@@ -99,38 +163,79 @@ function statusOf(state: { x: string; y: string }): FileStatusCode {
   return (['M', 'A', 'D', 'R', 'C', 'T', 'U'].includes(letter) ? letter : 'M') as FileStatusCode
 }
 
-async function storeBlob(ctx: WriteContext, content: string): Promise<string> {
-  const result = await ctx.git([...GIT_BASE_ARGV, 'hash-object', '-w', '--stdin'], { stdin: content })
-  const sha = result.stdout.trim()
-  if (result.exitCode !== 0 || !OBJECT_ID_PATTERN.test(sha)) throw redactedFailure(result, 'git hash-object')
-  return sha
+/** `<mode> <type> <oid>\t<path>` of one path in a tree-ish, or null. */
+async function treeEntry(git: Git, treeish: string, path: string): Promise<ObjectEntry | null> {
+  const result = await git(['ls-tree', '-z', '--full-tree', treeish, '--', path])
+  if (result.exitCode !== 0) throw failureFromExit(result, 'git ls-tree')
+  const [meta = ''] = result.stdout.split('\t')
+  const [mode, type, oid] = meta.split(' ')
+  return type === 'blob' && mode !== undefined && oid !== undefined ? { mode, oid } : null
 }
 
-/** `diff --binary` of tracked paths against HEAD plus untracked files as additions. */
-async function buildPatch(ctx: WriteContext, tracked: readonly string[], untracked: readonly string[], hasHead: boolean): Promise<string> {
-  let patch = ''
-  // `diff` has no `--pathspec-from-file`: bounded argv batches like `clean` (A3 T1 spike).
-  for (const batch of batches(tracked, CLEAN_BATCH_MAX)) {
-    const args = hasHead ? ['diff', '--binary', '--no-color', '--no-ext-diff', 'HEAD', '--', ...batch] : ['diff', '--binary', '--no-color', '--cached', '--', ...batch]
-    const result = await ctx.git([...GIT_BASE_ARGV, ...args], { mode: 'read', stdoutMaxBytes: SHELF_PATCH_MAX_BYTES })
-    if (result.exitCode !== 0) throw redactedFailure(result, 'git diff')
-    patch += result.stdout
+/** Stage-0 index entry, or null; an unmerged path is refused. */
+async function indexEntry(git: Git, path: string): Promise<ObjectEntry | null> {
+  const result = await git(['ls-files', '-s', '-z', '--', path])
+  if (result.exitCode !== 0) throw failureFromExit(result, 'git ls-files')
+  const records = result.stdout.split('\0').filter(record => record !== '')
+  if (records.some(record => !/^\S+ \S+ 0\t/u.test(record))) throw invalidPayload(`"${path}" has unresolved conflicts`, { reason: 'conflict', path })
+  const [mode, oid] = (records[0] ?? '').split(/[ \t]/u)
+  return mode !== undefined && oid !== undefined && records.length > 0 ? { mode, oid } : null
+}
+
+/** The current working-tree entry, hashed (and written) by git itself; null when absent. */
+async function worktreeEntry(git: Git, root: string, path: string, write: boolean): Promise<ObjectEntry | null> {
+  let stat
+  try {
+    stat = await lstat(join(root, path))
+  } catch {
+    return null
   }
-  for (const path of untracked) {
-    const result = await ctx.git([...GIT_BASE_ARGV, 'diff', '--binary', '--no-color', '--no-ext-diff', '--no-index', '--', '/dev/null', path], {
-      mode: 'read',
-      stdoutMaxBytes: SHELF_PATCH_MAX_BYTES,
-    })
-    // `--no-index` exits 1 when the files differ, which is always the case here.
-    if (result.exitCode !== 0 && result.exitCode !== 1) throw redactedFailure(result, 'git diff --no-index')
-    patch += result.stdout
+  const flags = write ? ['-w'] : []
+  if (stat.isSymbolicLink()) {
+    const result = await git(['hash-object', ...flags, '-t', 'blob', '--stdin'], { stdin: await readlink(join(root, path)) })
+    if (result.exitCode !== 0) throw failureFromExit(result, 'git hash-object')
+    return { mode: '120000', oid: result.stdout.trim() }
   }
-  return patch
+  if (!stat.isFile()) return null
+  const result = await git(['hash-object', ...flags, '--', path])
+  if (result.exitCode !== 0) throw failureFromExit(result, 'git hash-object')
+  return { mode: (stat.mode & 0o111) === 0 ? '100644' : '100755', oid: result.stdout.trim() }
+}
+
+const same = (a: ObjectEntry | null, b: ObjectEntry | null): boolean => (a === null || b === null ? a === b : a.oid === b.oid)
+
+/** One `update-index --index-info` line: an entry at `stage`, or a removal (mode 0). */
+function indexLine(path: string, entry: ObjectEntry | null, zero: string, stage = 0): string {
+  return entry === null ? `0 ${zero}\t${path}\n` : `${entry.mode} ${entry.oid} ${String(stage)}\t${path}\n`
+}
+
+/** Write `entry` to the working tree via the index (`checkout-index`), or remove the file. */
+async function writeWorktree(ctx: WriteContext, path: string, entry: ObjectEntry | null, zero: string): Promise<void> {
+  const update = await ctx.git([...GIT_BASE_ARGV, 'update-index', '--index-info'], { stdin: indexLine(path, entry, zero) })
+  if (update.exitCode !== 0) throw redactedFailure(update, 'git update-index')
+  if (entry !== null) {
+    const out = await ctx.git([...GIT_BASE_ARGV, 'checkout-index', '-f', '--', path])
+    if (out.exitCode !== 0) throw redactedFailure(out, 'git checkout-index')
+    return
+  }
+  // Not in the index any more: an existing file is untracked now and `clean` removes exactly it.
+  const cleaned = await ctx.git([...GIT_BASE_ARGV, 'clean', '-f', '-q', '--', path])
+  if (cleaned.exitCode !== 0) throw redactedFailure(cleaned, 'git clean')
+}
+
+async function setIndex(ctx: WriteContext, lines: string): Promise<void> {
+  if (lines === '') return
+  const update = await ctx.git([...GIT_BASE_ARGV, 'update-index', '--index-info'], { stdin: lines })
+  if (update.exitCode !== 0) throw redactedFailure(update, 'git update-index')
 }
 
 export interface ShelfCreateInput {
   name: string
   paths: string[]
+}
+
+function gitOf(ctx: WriteContext): Git {
+  return async (args, options = {}) => await ctx.git([...GIT_BASE_ARGV, ...args], { mode: 'read', ...options })
 }
 
 export const shelfCreateOperation: WriteOperation<ShelfCreateInput, Omit<ShelfCreateValue, 'version'>> = {
@@ -143,45 +248,68 @@ export const shelfCreateOperation: WriteOperation<ShelfCreateInput, Omit<ShelfCr
 
   async run(ctx, input) {
     await assertNoOperation(ctx)
+    const read = gitOf(ctx)
+    const head = await readHeadPosition(async (args) => await query(ctx, args))
+    if (head.sha === undefined) throw invalidPayload('shelving needs at least one commit', { reason: 'no-head' })
     const states = await readPathStates(ctx, input.paths)
     const chosen = input.paths.filter(path => states.has(path)).sort()
     if (chosen.length === 0) throw invalidPayload('none of the paths has changes to shelve', { reason: 'nothing-to-shelve' })
-    const tracked = chosen.filter(path => states.get(path)?.x !== '?')
-    const untracked = chosen.filter(path => states.get(path)?.x === '?')
-    const head = await readHeadPosition(async (args) => await query(ctx, args))
-    const patch = await buildPatch(ctx, tracked, untracked, head.sha !== undefined)
-    if (patch.trim() === '') throw invalidPayload('the chosen paths have no textual changes to shelve', { reason: 'nothing-to-shelve' })
 
-    const entry: ShelfEntry = {
-      id: newShelfId(),
+    // 1. Capture, without touching anything: index entries as they are (their blobs exist), the
+    // working tree hashed and written by git itself.
+    const zero = '0'.repeat(head.sha.length)
+    const files: ShelvedFile[] = []
+    for (const path of chosen) {
+      const status = statusOf(states.get(path) ?? { x: ' ', y: 'M' })
+      files.push({
+        path,
+        status,
+        head: await treeEntry(read, 'HEAD', path),
+        index: status === '?' ? null : await indexEntry(read, path),
+        worktree: await worktreeEntry(read, ctx.repoRoot, path, true),
+      })
+    }
+    const kept = files.flatMap(file => [file.index?.oid, file.worktree?.oid]).filter((oid): oid is string => oid !== undefined)
+
+    // 2. Nothing may have changed since the capture (an Agent editing the same files, review I4).
+    for (const file of files) {
+      const now = await worktreeEntry(read, ctx.repoRoot, file.path, false)
+      const index = file.status === '?' ? null : await indexEntry(read, file.path)
+      if (!same(now, file.worktree) || !same(index, file.index)) {
+        throw new GitCommandFailure('git/stale-target', `"${file.path}" changed while it was being shelved; nothing was shelved`, { target: 'shelf', path: file.path })
+      }
+    }
+
+    // 3. Save: meta + every blob reachable from the carrier commit.
+    const meta: ShelfMeta = {
       name: input.name,
       createdAt: new Date().toISOString(),
       branch: head.branch === null ? null : head.branch.replace(/^refs\/heads\//u, ''),
-      baseSha: head.sha ?? '',
-      files: chosen.map(path => ({ path, status: statusOf(states.get(path) ?? { x: ' ', y: 'M' }) })),
+      baseSha: head.sha,
+      files,
     }
-    const meta = { name: entry.name, createdAt: entry.createdAt, branch: entry.branch, baseSha: entry.baseSha, files: entry.files }
-    const patchBlob = await storeBlob(ctx, patch)
-    const metaBlob = await storeBlob(ctx, JSON.stringify(meta))
-    const tree = await ctx.git([...GIT_BASE_ARGV, 'mktree'], { stdin: `100644 blob ${metaBlob}\tmeta.json\n100644 blob ${patchBlob}\tpatch\n` })
+    const metaBlob = await ctx.git([...GIT_BASE_ARGV, 'hash-object', '-w', '--stdin'], { stdin: JSON.stringify(meta) })
+    if (metaBlob.exitCode !== 0) throw redactedFailure(metaBlob, 'git hash-object')
+    // Every captured blob is an entry of the carrier tree, so `gc` keeps it as long as the ref lives.
+    const treeInput = [`100644 blob ${metaBlob.stdout.trim()}\tmeta.json\n`, ...[...new Set(kept)].map((oid, index) => `100644 blob ${oid}\to-${String(index)}\n`)].join('')
+    const tree = await ctx.git([...GIT_BASE_ARGV, 'mktree'], { stdin: treeInput })
     if (tree.exitCode !== 0) throw redactedFailure(tree, 'git mktree')
     const commit = await ctx.git([...GIT_BASE_ARGV, ...SHELF_IDENTITY, 'commit-tree', tree.stdout.trim(), '-m', 'dsh-git shelf'])
     if (commit.exitCode !== 0) throw redactedFailure(commit, 'git commit-tree')
-    const updated = await ctx.git([...GIT_BASE_ARGV, 'update-ref', shelfRef(entry.id), commit.stdout.trim(), ''])
+    const id = newShelfId()
+    const updated = await ctx.git([...GIT_BASE_ARGV, 'update-ref', shelfRef(id), commit.stdout.trim(), ''])
     if (updated.exitCode !== 0) throw redactedFailure(updated, 'git update-ref')
 
-    // Saved: now take the paths back to HEAD (index and worktree), untracked files removed.
-    if (tracked.length > 0) {
-      const spec = pathspecArgs(tracked)
-      const source = head.sha === undefined ? [] : ['--source=HEAD']
-      const restored = await ctx.git([...GIT_BASE_ARGV, 'restore', ...source, '--staged', '--worktree', ...spec.args], { stdin: spec.stdin })
-      if (restored.exitCode !== 0) throw redactedFailure(restored, 'git restore')
+    // 4. Roll the paths back to HEAD (index and working tree; untracked files removed).
+    for (const file of files) {
+      if (file.status === '?') continue
+      await writeWorktree(ctx, file.path, file.head, zero)
     }
-    for (const batch of batches(untracked, CLEAN_BATCH_MAX)) {
+    for (const batch of batches(files.filter(file => file.status === '?').map(file => file.path), CLEAN_BATCH_MAX)) {
       const cleaned = await ctx.git([...GIT_BASE_ARGV, 'clean', '-f', '-q', '--', ...batch])
       if (cleaned.exitCode !== 0) throw redactedFailure(cleaned, 'git clean')
     }
-    return { entry }
+    return { entry: toEntry(id, meta) }
   },
 }
 
@@ -189,21 +317,6 @@ export interface ShelfApplyInput {
   id: string
   keep: boolean
   threeWay: boolean
-}
-
-/** Paths a stored patch touches (`apply --numstat -z`; renames give both names). */
-async function patchPaths(ctx: WriteContext, patch: string): Promise<string[]> {
-  const result = await ctx.git([...GIT_BASE_ARGV, 'apply', '--numstat', '-z'], { mode: 'read', stdin: patch })
-  if (result.exitCode !== 0) throw redactedFailure(result, 'git apply --numstat')
-  return [...new Set(result.stdout.split('\0').flatMap(token => {
-    const fields = token.split('\t')
-    return fields.length >= 3 ? [fields[2] ?? ''] : [token]
-  }).filter(path => path !== '' && !/^\d+$|^-$/u.test(path)))]
-}
-
-async function unmergedPaths(ctx: WriteContext): Promise<string[]> {
-  const result = await query(ctx, ['diff', '--name-only', '--diff-filter=U', '-z'])
-  return result.exitCode === 0 ? [...new Set(result.stdout.split('\0').filter(path => path !== ''))].sort() : []
 }
 
 export const shelfApplyOperation: WriteOperation<ShelfApplyInput, Omit<ShelfApplyValue, 'version'>> = {
@@ -214,41 +327,66 @@ export const shelfApplyOperation: WriteOperation<ShelfApplyInput, Omit<ShelfAppl
 
   async run(ctx, input) {
     await assertNoOperation(ctx)
-    const patch = await readShelfPatch(async (argv, options) => await ctx.git(argv, { ...options, mode: 'read' }), ctx.repoRoot, input.id)
-    let conflicts: string[] = []
-    if (input.threeWay) {
-      // `apply --3way` refuses files whose working copy differs from the index ("does not match
-      // index"); stage the current changes of the touched files first (L4 finding, plan b3c).
-      const touched = await patchPaths(ctx, patch)
-      const unstaged = (await query(ctx, ['diff', '--name-only', '-z', '--', ...touched])).stdout.split('\0').filter(path => path !== '')
-      if (unstaged.length > 0) {
-        const spec = pathspecArgs(unstaged)
-        const staged = await ctx.git([...GIT_BASE_ARGV, 'add', ...spec.args], { stdin: spec.stdin })
-        if (staged.exitCode !== 0) throw redactedFailure(staged, 'git add')
-      }
-      const merged = await ctx.git([...GIT_BASE_ARGV, 'apply', '--3way'], { stdin: patch })
-      conflicts = await unmergedPaths(ctx)
-      if (merged.exitCode !== 0 && conflicts.length === 0) {
-        const failure = redactedFailure(merged, 'git apply --3way')
-        throw new GitCommandFailure(failure.code, failure.message, { ...failure.details, output: outputSummary(merged) })
-      }
-    } else {
-      // Clean application only: a check first, so a refused shelf leaves every file untouched.
-      const check = await ctx.git([...GIT_BASE_ARGV, 'apply', '--check'], { stdin: patch })
-      if (check.exitCode !== 0) {
-        throw new GitCommandFailure('git/conflict', 'the shelf does not apply cleanly onto the current files', {
-          reason: 'shelf-not-clean',
-          output: outputSummary(check),
-        })
-      }
-      const applied = await ctx.git([...GIT_BASE_ARGV, 'apply'], { stdin: patch })
-      if (applied.exitCode !== 0) throw redactedFailure(applied, 'git apply')
+    const read = gitOf(ctx)
+    const meta = await readMeta(read, input.id)
+    if (meta === null) throw new GitCommandFailure('git/stale-target', 'the shelf entry no longer exists', { target: 'shelf', id: input.id })
+    const zero = '0'.repeat(meta.baseSha.length || 40)
+
+    // Clean means: the path is exactly as it was at HEAD when shelved (index and working tree).
+    const current = new Map<string, { index: ObjectEntry | null; worktree: ObjectEntry | null }>()
+    for (const file of meta.files) {
+      // Written (`-w`): a three-way merge reads the current version as "ours".
+      current.set(file.path, { index: await indexEntry(read, file.path), worktree: await worktreeEntry(read, ctx.repoRoot, file.path, true) })
     }
-    if (!input.keep) {
+    const unclean = meta.files.filter((file) => {
+      const now = current.get(file.path)
+      return now === undefined || !same(now.index, file.head) || !same(now.worktree, file.head)
+    })
+    if (unclean.length > 0 && !input.threeWay) {
+      throw new GitCommandFailure('git/conflict', 'the shelf does not apply cleanly onto the current files', {
+        reason: 'shelf-not-clean',
+        paths: unclean.map(file => file.path),
+      })
+    }
+
+    const empty = await emptyBlob(read)
+    const conflicts: string[] = []
+    let finalIndex = ''
+    for (const file of meta.files) {
+      const now = current.get(file.path) ?? { index: null, worktree: null }
+      if (!unclean.includes(file)) {
+        await writeWorktree(ctx, file.path, file.worktree, zero)
+        finalIndex += indexLine(file.path, file.index, zero)
+        continue
+      }
+      // Three-way per file: ours = current working tree, base = HEAD when shelved, theirs = shelved.
+      const merged = await ctx.git([
+        ...GIT_BASE_ARGV, 'merge-file', '--object-id', '-L', 'current', '-L', 'base', '-L', 'shelf',
+        now.worktree?.oid ?? empty, file.head?.oid ?? empty, file.worktree?.oid ?? empty,
+      ])
+      const oid = merged.stdout.trim()
+      if (merged.exitCode === null || merged.exitCode < 0 || merged.exitCode > 127 || !OBJECT_ID_PATTERN.test(oid)) throw redactedFailure(merged, 'git merge-file')
+      const mode = file.worktree?.mode ?? now.worktree?.mode ?? '100644'
+      await writeWorktree(ctx, file.path, { mode, oid }, zero)
+      if (merged.exitCode === 0) {
+        finalIndex += indexLine(file.path, now.index, zero)
+        continue
+      }
+      conflicts.push(file.path)
+      finalIndex += `0 ${zero}\t${file.path}\n`
+      if (file.head !== null) finalIndex += indexLine(file.path, file.head, zero, 1)
+      if (now.worktree !== null) finalIndex += indexLine(file.path, now.worktree, zero, 2)
+      if (file.worktree !== null) finalIndex += indexLine(file.path, file.worktree, zero, 3)
+    }
+    await setIndex(ctx, finalIndex)
+
+    // An entry that left conflicts is always kept (review C1).
+    const kept = input.keep || conflicts.length > 0
+    if (!kept) {
       const dropped = await ctx.git([...GIT_BASE_ARGV, 'update-ref', '-d', shelfRef(input.id)])
       if (dropped.exitCode !== 0) throw redactedFailure(dropped, 'git update-ref -d')
     }
-    return { applied: true, conflicts, kept: input.keep }
+    return { applied: true, conflicts, kept }
   },
 }
 

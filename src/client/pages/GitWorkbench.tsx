@@ -230,7 +230,8 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
   useEffect(() => () => { consoleStore.reset() }, [consoleStore])
 
   const repoRoot = value.repoRoot ?? ''
-  const changesStore = useMemo(() => createChangesStore(), [sessionId])
+  // B3c review I6: a new repository gets a fresh store, so changelists never sync the old paths.
+  const changesStore = useMemo(() => createChangesStore(), [sessionId, value.repoRoot])
   const commitStore = useMemo(
     () => createCommitStore({ sessionId, repoRoot, client }),
     [client, repoRoot, sessionId],
@@ -923,7 +924,6 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
               panel: (
                 <ChangelistPanel
                   entries={changes.entries}
-                  search={changes.search}
                   checked={changes.checked}
                   state={changelists.state}
                   writeDisabled={!branchContext.writable}

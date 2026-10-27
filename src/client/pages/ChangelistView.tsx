@@ -9,7 +9,6 @@ import { DEFAULT_LIST, changelistSections } from '../changelists/changelist-mode
 import { useT } from '../i18n.tsx'
 import type { Translate } from '../i18n.tsx'
 import type { ChangeEntry } from '../store/changes-store.ts'
-import { matchesSearch } from '../store/changes-store.ts'
 import { StatusLetter } from '../ui/StatusLetter.tsx'
 import css from './ChangelistView.module.css'
 
@@ -164,7 +163,6 @@ export function ChangelistView(props: ChangelistViewProps): ReactNode {
 
 export interface ChangelistPanelProps {
   entries: readonly ChangeEntry[]
-  search: string
   checked: ReadonlySet<string>
   state: ChangelistState
   writeDisabled: boolean
@@ -183,7 +181,8 @@ export function ChangelistPanel(props: ChangelistPanelProps): ReactNode {
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set())
   const [editing, setEditing] = useState<{ id: string | null; value: string } | null>(null)
   const [menu, setMenu] = useState<{ path: string; x: number; y: number } | null>(null)
-  const visible = props.entries.filter(entry => matchesSearch(entry, props.search))
+  // B3c review I7: the grouped view has no search box, so it shows every change.
+  const visible = props.entries
   useEffect(() => {
     if (menu === null) return undefined
     const close = (event: PointerEvent): void => {

@@ -1,0 +1,123 @@
+// Interactive rebase plan (plan b3a T2): the commits of `base..HEAD` (first parent, oldest first) with
+// their full messages, whether a remote already has them, and the other local branches on them
+// (`--update-refs`). A range the page cannot edit is answered with `blocked` and no commits.
+// - `base` is resolved to a sha first (ADR 0010); only shas reach later git calls.
+// - Merge commits anywhere in the range block it: the page has no `--rebase-merges`.
+
+import type { RebaseBlockedReason, RebasePlanCommit, RebasePlanRequest, RebasePlanValue } from '../../shared/protocol.ts'
+import { REBASE_PLAN_MAX_COMMITS } from '../../shared/protocol.ts'
+import type { GitRunResult, GitRunner } from '../git-executor.ts'
+import { GIT_BASE_ARGV, failureFromExit } from '../git-executor.ts'
+import { resolveRevision } from './revision.ts'
+import { invalidPayload } from './write-support.ts'
+
+const FIELD = '\x1f'
+const RECORD = '\x1e'
+const PLAN_FORMAT = ['%H', '%h', '%P', '%an', '%ae', '%aI', '%s', '%B'].join('%x1f') + '%x1e'
+const PLAN_STDOUT_MAX_BYTES = 16 * 1024 * 1024
+/** First git release with `rebase --update-refs`. */
+const UPDATE_REFS_MIN_VERSION = [2, 38] as const
+
+export interface ReadRebasePlanOptions {
+  signal?: AbortSignal | undefined
+  /** `git --version` number (`2.50.1`); undefined → `--update-refs` treated as unsupported. */
+  gitVersion?: string | undefined
+}
+
+/** Whether `version` (`2.50.1`, `2.38.0.windows.1`) is at least 2.38. */
+export function supportsUpdateRefs(version: string | undefined): boolean {
+  const match = /^(\d+)\.(\d+)/u.exec(version ?? '')
+  if (match === null) return false
+  const major = Number(match[1])
+  const minor = Number(match[2])
+  return major > UPDATE_REFS_MIN_VERSION[0] || (major === UPDATE_REFS_MIN_VERSION[0] && minor >= UPDATE_REFS_MIN_VERSION[1])
+}
+
+export async function readRebasePlan(
+  run: GitRunner,
+  cwd: string,
+  request: RebasePlanRequest,
+  options: ReadRebasePlanOptions = {},
+): Promise<RebasePlanValue> {
+  const { signal } = options
+  const git = async (args: readonly string[], stdoutMaxBytes?: number): Promise<GitRunResult> =>
+    await run([...GIT_BASE_ARGV, ...args], { cwd, signal, ...(stdoutMaxBytes === undefined ? {} : { stdoutMaxBytes }) })
+  const ok = async (args: readonly string[], label: string, stdoutMaxBytes?: number): Promise<string> => {
+    const result = await git(args, stdoutMaxBytes)
+    if (result.exitCode !== 0) throw failureFromExit(result, label)
+    return result.stdout
+  }
+
+  if (request.base !== null && typeof request.base !== 'string') throw invalidPayload('base must be a revision or null', {})
+  const base = request.base === null ? null : await resolveRevision(run, cwd, request.base, 'base', signal)
+  const head = (await ok(['rev-parse', '--verify', 'HEAD'], 'git rev-parse')).trim()
+  const symbolic = await git(['symbolic-ref', '-q', '--short', 'HEAD'])
+  const branch = symbolic.exitCode === 0 ? symbolic.stdout.trim() : ''
+  const value: RebasePlanValue = { base, head, branch, commits: [], supportsUpdateRefs: supportsUpdateRefs(options.gitVersion) }
+  const blocked = (reason: RebaseBlockedReason): RebasePlanValue => ({ ...value, blocked: reason })
+
+  if (branch === '') return blocked('detached')
+  if (base === head) return blocked('empty')
+  if (base !== null) {
+    const ancestor = await git(['merge-base', '--is-ancestor', base, head])
+    if (ancestor.exitCode === 1) return blocked('not-ancestor')
+    if (ancestor.exitCode !== 0) throw failureFromExit(ancestor, 'git merge-base')
+  }
+  const range = base === null ? [head] : [`${base}..${head}`]
+  const merges = Number((await ok(['rev-list', '--count', '--min-parents=2', ...range, '--'], 'git rev-list')).trim())
+  if (merges > 0) return blocked('merge-commit')
+  const count = Number((await ok(['rev-list', '--count', ...range, '--'], 'git rev-list')).trim())
+  if (count > REBASE_PLAN_MAX_COMMITS) return blocked('too-many')
+
+  const log = await ok(['log', '--reverse', `--format=${PLAN_FORMAT}`, ...range, '--'], 'git log', PLAN_STDOUT_MAX_BYTES)
+  const unpushed = new Set(
+    (await ok(['rev-list', ...range, '--not', '--remotes', '--'], 'git rev-list')).split('\n').filter(line => line !== ''),
+  )
+  const branches = await branchesBySha(ok, branch)
+  value.commits = parseRecords(log).map(commit => ({
+    ...commit,
+    pushed: !unpushed.has(commit.sha),
+    branches: branches.get(commit.sha) ?? [],
+  }))
+  return value
+}
+
+/** Local branches by the sha they point at, sorted, without the current branch. */
+async function branchesBySha(
+  ok: (args: readonly string[], label: string) => Promise<string>,
+  current: string,
+): Promise<Map<string, string[]>> {
+  const output = await ok(['for-each-ref', '--format=%(objectname) %(refname:short)', 'refs/heads'], 'git for-each-ref')
+  const map = new Map<string, string[]>()
+  for (const line of output.split('\n')) {
+    const space = line.indexOf(' ')
+    if (space < 0) continue
+    const sha = line.slice(0, space)
+    const name = line.slice(space + 1)
+    if (name === current) continue
+    map.set(sha, [...(map.get(sha) ?? []), name].sort())
+  }
+  return map
+}
+
+function parseRecords(output: string): Omit<RebasePlanCommit, 'pushed' | 'branches'>[] {
+  const commits: Omit<RebasePlanCommit, 'pushed' | 'branches'>[] = []
+  for (const record of output.split(RECORD)) {
+    const trimmed = record.replace(/^\n+/u, '')
+    if (trimmed === '') continue
+    const [sha = '', shortSha = '', parents = '', author = '', email = '', date = '', subject = '', ...message] =
+      trimmed.split(FIELD)
+    if (sha === '') continue
+    commits.push({
+      sha,
+      shortSha,
+      parents: parents === '' ? [] : parents.split(' '),
+      author,
+      email,
+      date,
+      subject,
+      message: message.join(FIELD).replace(/\n+$/u, ''),
+    })
+  }
+  return commits
+}

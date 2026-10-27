@@ -13,7 +13,7 @@
 | 里程碑 | B3 高级操作（拆成 4 份，本份为 B3a；拆分见 [TODO](../TODO.md)） |
 | 设计依据 | [产品设计 v0.2](../../design/2026-10-25-产品设计-v0.2.md) §5.3（覆盖层）、§6.2（「提交右键菜单」「交互式变基」行）、§8.1.7（P1 菜单项）、§11（Interactive Rebase / Commit Message 对话框）、§14.1（`F2`）、§14.3（拖拽排序）、§17 M5、§18 R13；[设计决策 v0.2](../../design/2026-10-25-产品设计决策-v0.2.md) §4（B3 行、「交互式变基先做 spike/feature flag」）、§5 S3 |
 | 分支 | `b3a-interactive-rebase`（独立 worktree） |
-| 批准记录 | 2026-10-27 负责人批准计划：待确认 1–5 按推荐执行，执行方式内联（当前会话，executing-plans），收尾做一次整分支评审 |
+| 批准记录 | 2026-10-27 负责人批准计划：待确认 1–5 按推荐执行，执行方式内联（当前会话，executing-plans），收尾做一次整分支评审；同日负责人离开前授权：B3a 完成后自动评审，并接着起草、实现、自评审 B3b–B3d，回来后统一 review 全部 B3 |
 
 ## 目标
 
@@ -108,15 +108,15 @@ Host 约束（各任务共用）：
 - **测试**：协议层新端点存在、`interactiveRebase` 在 `WRITE_ENDPOINTS`、`rebasePlan` 不在；`git-client` 两个方法的 URL 与请求体断言；路由返回 `not implemented`；flag 默认值与 localStorage 覆盖。
 - **完成标准**：类型冻结；spike 五问有实测结论；若 (a)/(b) 不成立，按 SOP §6.3 停下问人；`make check` 绿。
 
-### T2：Host `rebasePlan`（进行中）
+### T2：Host `rebasePlan`（完成）
 
 - **目标**：实现计划端点。
 - **涉及文件**：新建 `src/host/git/rebase-plan.ts`、`test/host/git/rebase-plan.test.ts`；修改 `src/host/rpc.ts`；从 `log.ts` 复用提交格式解析（不改其行为）。
-- **接口**：`readRebasePlan(ctx, request: RebasePlanRequest, signal): Promise<RebasePlanValue>`。
+- **接口**：`readRebasePlan(run: GitRunner, cwd: string, request: RebasePlanRequest, options: { signal?; gitVersion? }): Promise<RebasePlanValue>`（与 B2 读端点同形；T2 落地时改）；`supportsUpdateRefs(version)`。
 - **测试**（真实临时仓库）：线性分支 5 个提交 → 顺序与信息正确；`base: null` 包含根提交；部分提交已推送到本地 bare 远程 → `pushed` 正确；范围内有合并提交、`base` 在另一分支、detached HEAD、501 个提交 → 对应 `blocked`；`base` 以 `-` 开头 → `git/invalid-payload`。
 - **完成标准**：AC1 有测试；`make check` 绿。
 
-### T3：Host `interactiveRebase` 与停下状态（待开始）
+### T3：Host `interactiveRebase` 与停下状态（进行中）
 
 - **目标**：实现写端点与 `operationState.rebaseStop`。
 - **涉及文件**：新建 `src/host/git/rebase-todo.ts`（纯函数）、`src/host/git/interactive-rebase.ts` 与对应测试；修改 `src/host/git/operation.ts`（`rebaseStop`）、`src/host/rpc.ts`。
@@ -167,13 +167,14 @@ Host 约束（各任务共用）：
 
 ## 下一步
 
-- T2：新建 `src/host/git/rebase-plan.ts`（`readRebasePlan`）与 `test/host/rebase-plan.test.ts`，替换 `src/host/rpc.ts` 中 `rebasePlan` 的 `not implemented`（T1 只做了 `base` 形状校验）。
+- T3：新建 `src/host/git/rebase-todo.ts`（`buildTodo`/`validateEntries`）与 `test/host/rebase-todo.test.ts`；把 `src/host/git/interactive-rebase.ts` 的 `run`（目前 `not implemented`）实现为真实变基；`src/host/git/operation.ts` 加 `rebaseStop`。
 
 ## 决策记录
 
 - 2026-10-27 — B3 拆成 4 份计划，交互式变基先做（负责人选定）：B3a 交互式变基；B3b Diff 增强（并排/词级/忽略空白/折叠）+ 完整提交菜单 + Patch；B3c Shelf + Changelist；B3d Worktree + Remotes + 标签/远程分支/upstream 补齐。
 - 2026-10-27 — T1：`RebasePlanCommit` 增加 `branches`（指向该提交的其他本地分支）——spike 发现 `--update-refs` 只认 todo 里的 `update-ref` 行，而 `cat >` 会覆盖 git 生成的那几行，Host 必须自己写；错了的代价：多一个字段。
 - 2026-10-27 — T1：`rebasePlan` 在 T1 先校验 `base` 形状再返回 `not implemented`、`interactiveRebase` 在 T1 就实现 `parse`——现有路由测试要求「已登记端点对最小载荷不得回答 not implemented」，形状校验本来也是这两个端点的一部分，不另开例外。
+- 2026-10-27 — T2：`readRebasePlan` 签名改为与 B2 读端点一致的 `(run, cwd, request, { signal, gitVersion })`（计划写的是 `(ctx, request, signal)`）；git 版本取 runtime 已有的一次性探测。
 - 2026-10-27 — T1：`RebasePreset` 类型提前在 `src/client/rebase/rebase-model.ts` 定义（覆盖层类型要用）；T4 在同一文件补函数。
 - 2026-10-27 — 横幅步数沿用 git 的 `msgnum/end`，包含 `exec`/`update-ref` 行（会比提交数多）；不自行换算，避免和终端里看到的 git 输出不一致。
 - 2026-10-27 — 写回信息的 `exec` 用 `--no-verify`：`git rebase -i` 自身 pick 时不跑 pre-commit，改信息时再跑 pre-commit 会在历史提交上触发与当前工作区无关的检查。

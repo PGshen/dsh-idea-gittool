@@ -12,6 +12,7 @@ import type {
   BlameValue,
   BootstrapValue,
   CompareValue,
+  RebasePlanValue,
   FileHistoryValue,
   BranchesValue,
   CommitDetailValue,
@@ -559,6 +560,15 @@ describe('endpoint registry (A3 T1)', () => {
       expect(error.code, String(base)).toBe('git/invalid-payload')
       expect(error.message, String(base)).not.toBe('unknown RPC endpoint')
     }
+  })
+
+  it('serves rebasePlan (B3a T2) with the probed git version', async () => {
+    const { handler, repo } = makeHandler()
+    const value = okValue<RebasePlanValue>(await handler('rebasePlan', { sessionId: 'session-1', base: null }, SIGNAL))
+    expect(value.head).toBe(repo.git('rev-parse', 'HEAD').trim())
+    expect(value.commits.length).toBeGreaterThan(0)
+    expect(value.supportsUpdateRefs).toBe(true)
+    expect(typeof value.version).toBe('number')
   })
 
   it('serves mergeFile (B1 T2): validates the path and answers stale-target outside a conflict', async () => {

@@ -18,6 +18,8 @@ import type {
   BootstrapValue,
   CompareRequest,
   CompareValue,
+  RebasePlanRequest,
+  RebasePlanValue,
   FileHistoryRequest,
   FileHistoryValue,
   BranchesValue,
@@ -87,6 +89,7 @@ import type { DiffQuery } from './git/diff.ts'
 import { readBlame } from './git/blame.ts'
 import { readCompare } from './git/compare.ts'
 import { interactiveRebaseOperation } from './git/interactive-rebase.ts'
+import { readRebasePlan } from './git/rebase-plan.ts'
 import { readFileHistory } from './git/file-history.ts'
 import { readDiff, validateRepoPath } from './git/diff.ts'
 import type { LogQuery } from './git/log.ts'
@@ -115,6 +118,7 @@ const STASH_FILES_CACHE_PREFIX = 'stashFiles'
 const BLAME_CACHE_PREFIX = 'blame'
 const FILE_HISTORY_CACHE_PREFIX = 'fileHistory'
 const COMPARE_CACHE_PREFIX = 'compare'
+const REBASE_PLAN_CACHE_PREFIX = 'rebasePlan'
 /** Longest accepted requestId (client-generated UUIDs are 36). */
 const MAX_REQUEST_ID_LENGTH = 100
 
@@ -439,7 +443,15 @@ export function createRpcRuntime(deps: RpcDeps): RpcRuntime {
           if (base !== null && (typeof base !== 'string' || base === '' || base.startsWith('-'))) {
             throw invalidPayload('base must be null or a revision that does not look like an option', {})
           }
-          throw new GitCommandFailure('git/exec-failed', 'not implemented', {})
+          const request = payload as RebasePlanRequest
+          return await handleCached<RebasePlanValue>(
+            deps,
+            runtime,
+            payload,
+            signal,
+            `${REBASE_PLAN_CACHE_PREFIX}:${JSON.stringify([request.base])}`,
+            async (root) => readRebasePlan(deps.runner, root, request, { signal, gitVersion: await runtime.gitVersion(root, signal) }),
+          )
         }
         default:
           if (isWriteEndpoint(endpoint)) {

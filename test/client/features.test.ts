@@ -1,7 +1,13 @@
 // B1 T1 feature flags: defaults, localStorage override, and failure-tolerant reads.
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { MERGE_WINDOW_DEFAULT, MERGE_WINDOW_STORAGE_KEY, isFeatureEnabled } from '../../src/client/features.ts'
+import {
+  INTERACTIVE_REBASE_DEFAULT,
+  INTERACTIVE_REBASE_STORAGE_KEY,
+  MERGE_WINDOW_DEFAULT,
+  MERGE_WINDOW_STORAGE_KEY,
+  isFeatureEnabled,
+} from '../../src/client/features.ts'
 
 function storage(values: Record<string, string>): Pick<Storage, 'getItem'> {
   return { getItem: (key: string) => values[key] ?? null }
@@ -46,5 +52,22 @@ describe('isFeatureEnabled', () => {
       if (original === undefined) Reflect.deleteProperty(globalThis, 'localStorage')
       else Object.defineProperty(globalThis, 'localStorage', original)
     }
+  })
+})
+
+describe('interactiveRebase flag (B3a)', () => {
+  it('defaults to off until owner acceptance and uses the documented storage key', () => {
+    expect(INTERACTIVE_REBASE_DEFAULT).toBe(false)
+    expect(INTERACTIVE_REBASE_STORAGE_KEY).toBe('dsh-git.feature.interactiveRebase')
+    vi.stubGlobal('localStorage', storage({}))
+    expect(isFeatureEnabled('interactiveRebase')).toBe(false)
+  })
+
+  it("'1' turns it on and '0' turns it off, independent of mergeWindow", () => {
+    vi.stubGlobal('localStorage', storage({ 'dsh-git.feature.interactiveRebase': '1', 'dsh-git.feature.mergeWindow': '0' }))
+    expect(isFeatureEnabled('interactiveRebase')).toBe(true)
+    expect(isFeatureEnabled('mergeWindow')).toBe(false)
+    vi.stubGlobal('localStorage', storage({ 'dsh-git.feature.interactiveRebase': '0' }))
+    expect(isFeatureEnabled('interactiveRebase')).toBe(false)
   })
 })

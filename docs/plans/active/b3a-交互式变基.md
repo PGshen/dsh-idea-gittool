@@ -77,7 +77,7 @@
 ```ts
 // 形状约定（字段名冻结，注释写进 protocol.ts）
 type RebaseAction = 'pick' | 'reword' | 'edit' | 'squash' | 'fixup' | 'drop'
-interface RebasePlanCommit extends CommitSummary { message: string /* 完整信息 */; pushed: boolean }
+interface RebasePlanCommit extends CommitSummary { message: string /* 完整信息 */; pushed: boolean; branches: string[] /* 指向它的其他本地分支，--update-refs 用（T1 追加） */ }
 type RebaseBlockedReason = 'merge-commit' | 'not-ancestor' | 'detached' | 'too-many' | 'empty'
 interface RebasePlanValue { base: string | null /* 解析后的 sha */; head: string; branch: string; commits: RebasePlanCommit[] /* 旧 → 新 */; blocked?: RebaseBlockedReason; supportsUpdateRefs: boolean; version?: number }
 interface RebaseEntry { sha: string; action: RebaseAction; message?: string /* reword 必填；squash 组的首条可带，作为整组最终信息 */ }
@@ -92,13 +92,15 @@ Host 约束（各任务共用）：
 - 是否已推送：`for-each-ref refs/remotes` 的 tip 集合上 `rev-list` 求可达性，一次命令完成，不逐提交查询。
 - 提交上限 500（`REBASE_PLAN_MAX_COMMITS`），超过返回 `blocked: 'too-many'`。
 - todo 由纯函数生成（便于单测与客户端预览共用同一规则），写端点里不再拼接字符串。
-- 停下原因判定读 `rebase-merge/`：有未解决冲突 → `conflict`；有 `amend` 文件且 `done` 末行是 `edit` → `edit`；`done` 末行是 `exec` → `exec-failed`。T1 实测后按实际文件定稿并写进 references。
+- 停下原因判定读 `rebase-merge/`（T1 实测定稿，[git-behavior §4](../../references/git-behavior.md)）：索引有 unmerged 条目 → `conflict`；`done` 末行以 `edit ` 开头且有 `amend` 文件 → `edit`；`done` 末行以 `exec ` 开头 → `exec-failed`。**是否完成不能看退出码**（`edit` 停下时退出 0），一律看 `rebase-merge/` 是否还在。
+- `--update-refs`：`cat >` 覆盖了 git 生成的 todo，`update-ref` 行必须由 `buildTodo` 写出——每个被计划提交上的 `branches[i]` 在该提交所在组（含其后的 squash/fixup 与 `exec` 写回行）结束后写一行 `update-ref refs/heads/<b>`；提交被 drop 时仍写在原位置（分支落到此时的 HEAD）。不勾选 `updateRefs` 时不写。
+- 条目全部为 `drop` 时照常执行（todo 只有 drop 行可行）；不会出现空 todo（`entries` 非空）。
 
 ## 任务
 
 <!-- 状态：待开始 / 进行中 / 完成 / 阻塞 -->
 
-### T1：契约冻结 + 机制 spike（进行中）
+### T1：契约冻结 + 机制 spike（完成）
 
 - **目标**：冻结上面的类型；用实测回答待确认 1 的问题，结论写进 [git-behavior](../../references/git-behavior.md)（注明日期、git 版本）与本计划「意外与发现」。
 - **涉及文件**：`src/shared/protocol.ts`、`src/host/rpc.ts`（两个端点先返回 `not implemented`）、`src/client/git-client.ts`（两个方法）、`src/client/features.ts`（`interactiveRebase`，默认 `false`）、`src/client/pages/workbench-overlay.ts`（新覆盖层 `{ kind: 'interactiveRebase'; base: string | null; preset?: RebasePreset }`，`RebasePreset` 见 T4）。
@@ -106,7 +108,7 @@ Host 约束（各任务共用）：
 - **测试**：协议层新端点存在、`interactiveRebase` 在 `WRITE_ENDPOINTS`、`rebasePlan` 不在；`git-client` 两个方法的 URL 与请求体断言；路由返回 `not implemented`；flag 默认值与 localStorage 覆盖。
 - **完成标准**：类型冻结；spike 五问有实测结论；若 (a)/(b) 不成立，按 SOP §6.3 停下问人；`make check` 绿。
 
-### T2：Host `rebasePlan`（待开始）
+### T2：Host `rebasePlan`（进行中）
 
 - **目标**：实现计划端点。
 - **涉及文件**：新建 `src/host/git/rebase-plan.ts`、`test/host/git/rebase-plan.test.ts`；修改 `src/host/rpc.ts`；从 `log.ts` 复用提交格式解析（不改其行为）。
@@ -161,20 +163,25 @@ Host 约束（各任务共用）：
 
 ## 进度
 
-- 无
+- 2026-10-27 — T1 — spike 五问实测通过（Seatbelt 等价复现），契约冻结：`rebasePlan`/`interactiveRebase` 登记、`interactiveRebase` 的 payload 校验、客户端两个方法、`interactiveRebase` flag（默认关）、覆盖层 `interactiveRebase`、`RebasePreset` 类型
 
 ## 下一步
 
-- T1：先在临时仓库跑机制 spike（脚本放 scratchpad），再冻结 `src/shared/protocol.ts` 契约。
+- T2：新建 `src/host/git/rebase-plan.ts`（`readRebasePlan`）与 `test/host/rebase-plan.test.ts`，替换 `src/host/rpc.ts` 中 `rebasePlan` 的 `not implemented`（T1 只做了 `base` 形状校验）。
 
 ## 决策记录
 
 - 2026-10-27 — B3 拆成 4 份计划，交互式变基先做（负责人选定）：B3a 交互式变基；B3b Diff 增强（并排/词级/忽略空白/折叠）+ 完整提交菜单 + Patch；B3c Shelf + Changelist；B3d Worktree + Remotes + 标签/远程分支/upstream 补齐。
+- 2026-10-27 — T1：`RebasePlanCommit` 增加 `branches`（指向该提交的其他本地分支）——spike 发现 `--update-refs` 只认 todo 里的 `update-ref` 行，而 `cat >` 会覆盖 git 生成的那几行，Host 必须自己写；错了的代价：多一个字段。
+- 2026-10-27 — T1：`rebasePlan` 在 T1 先校验 `base` 形状再返回 `not implemented`、`interactiveRebase` 在 T1 就实现 `parse`——现有路由测试要求「已登记端点对最小载荷不得回答 not implemented」，形状校验本来也是这两个端点的一部分，不另开例外。
+- 2026-10-27 — T1：`RebasePreset` 类型提前在 `src/client/rebase/rebase-model.ts` 定义（覆盖层类型要用）；T4 在同一文件补函数。
+- 2026-10-27 — 横幅步数沿用 git 的 `msgnum/end`，包含 `exec`/`update-ref` 行（会比提交数多）；不自行换算，避免和终端里看到的 git 输出不一致。
 - 2026-10-27 — 写回信息的 `exec` 用 `--no-verify`：`git rebase -i` 自身 pick 时不跑 pre-commit，改信息时再跑 pre-commit 会在历史提交上触发与当前工作区无关的检查。
 
 ## 意外与发现
 
-- 无
+- 2026-10-27 T1 spike（详见 [git-behavior §4](../../references/git-behavior.md)）：`edit` 停下时 `git rebase -i` 退出 0；`--update-refs` 依赖 todo 中的 `update-ref` 行（我们的 todo 覆盖了 git 生成的）；`exec` 失败后 `--continue` 不重跑该行（`no-reschedule-failed-exec`），所以写回信息失败后继续会丢掉这次改的信息——横幅文案要说明「继续将保留原信息」；空 todo 报 `nothing to do`。
+- `make setup` 在新 worktree 里因 pnpm 的 `ERR_PNPM_IGNORED_BUILDS`（esbuild 构建脚本未批准）退出 1，但依赖已装好、`pnpm build` 正常（esbuild 用平台包的预编译二进制）；与本计划无关，不处理。
 
 ## 阻塞
 

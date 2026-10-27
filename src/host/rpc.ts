@@ -86,6 +86,7 @@ import { readCommit } from './git/commit.ts'
 import type { DiffQuery } from './git/diff.ts'
 import { readBlame } from './git/blame.ts'
 import { readCompare } from './git/compare.ts'
+import { interactiveRebaseOperation } from './git/interactive-rebase.ts'
 import { readFileHistory } from './git/file-history.ts'
 import { readDiff, validateRepoPath } from './git/diff.ts'
 import type { LogQuery } from './git/log.ts'
@@ -152,6 +153,7 @@ const DEFAULT_WRITE_OPERATIONS: WriteOperations = {
   mergeDraftSave: mergeDraftSaveOperation,
   mergeApply: mergeApplyOperation,
   unresolveConflict: unresolveConflictOperation,
+  interactiveRebase: interactiveRebaseOperation,
 }
 
 /** Everything the handler needs; all session services are lazy and optional. */
@@ -430,6 +432,14 @@ export function createRpcRuntime(deps: RpcDeps): RpcRuntime {
             `${COMPARE_CACHE_PREFIX}:${JSON.stringify([request.left, request.right, request.cursor ?? null, request.limit ?? null])}`,
             (root) => readCompare(deps.runner, root, request, { signal }),
           )
+        }
+        case 'rebasePlan': {
+          parseSessionId(payload)
+          const base = (payload as { base?: unknown }).base
+          if (base !== null && (typeof base !== 'string' || base === '' || base.startsWith('-'))) {
+            throw invalidPayload('base must be null or a revision that does not look like an option', {})
+          }
+          throw new GitCommandFailure('git/exec-failed', 'not implemented', {})
         }
         default:
           if (isWriteEndpoint(endpoint)) {

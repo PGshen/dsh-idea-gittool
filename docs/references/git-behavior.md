@@ -42,3 +42,21 @@
 - 带 `filter=lfs` 等外部 clean/smudge 过滤器的仓库（`hash-object --path` 会调用过滤器进程，confine 下过滤器写缓存目录可能失败）：⚠️ 未实测，T3 遇到再补。
 - `merge.conflictStyle=zdiff3`、非默认 `conflict-marker-size`：窗口不读标记（D2），只影响 `checkout -m` 写回工作区的标记样式，不影响功能。
 - 经 3081 Host 的端到端调用：T3 真实仓库测试 + T6 实机复验。
+
+## 4. 交互式变基的驱动方式（B3a T1 spike）
+
+- 日期：2026-10-27；git `2.50.1 (Apple Git-155)`，macOS Seatbelt
+- 方法：纯 git 脚本 `.evidence/b3a/spike.sh`（停下状态与边界）+ Seatbelt 等价复现 `.evidence/b3a/spike.mjs`（与第 1 节同法，输出 `.evidence/b3a/spike.log`）。仍不是经 3081 Host 的端到端调用（放在 b3a T3 真实仓库测试 + T7 实机）。
+
+| 结论 | 状态 | 证据 |
+|---|---|---|
+| `GIT_SEQUENCE_EDITOR='cat >'` + stdin 传 todo：git 以 `sh -c 'cat > "$@"'` 调用编辑器，stdin 继承自 git，todo 被原样写入；confine 下可用 | ✅ 2026-10-27 | spike.mjs「rebase -i (reword+reorder+update-ref)」 |
+| 信息先 `hash-object -w --stdin` 存 blob，todo 中 `exec git cat-file blob <sha> \| git commit --amend --no-verify --allow-empty -F -` 写回：信息含引号、`$()`、反引号、`#` 开头行、中文时**原样**保存（`-F` 不经编辑器，默认 cleanup 为 whitespace，不删 `#` 行），`$()` 未被执行；作者与作者时间保留 | ✅ 2026-10-27 | spike.sh (a)(b)、spike.mjs `message exact: true`、`pwn file created: false` |
+| `edit` 停下时 **`git rebase -i` 退出 0**（不能靠退出码判断完成）；`rebase-merge/` 存在，`done` 末行 `edit <sha>`，有 `amend` 与 `stopped-sha` 文件 | ✅ 2026-10-27 | spike.sh (c)(d) |
+| `edit` 停下后 `rebase --continue` 继续执行后续的 `exec` 行（信息写回生效） | ✅ 2026-10-27 | spike.sh (c) |
+| `exec` 失败：退出 1，`done` 末行是该 `exec` 行，无 `stopped-sha`/`amend`；HEAD detached；`rebase-merge/no-reschedule-failed-exec` 存在，即 `--continue` 不重跑失败的 `exec` | ✅ 2026-10-27 | spike.sh「exec failure」 |
+| 冲突停下：退出 1，`done` 末行是冲突的 `pick`，有 `stopped-sha`，无 `amend`，索引有 unmerged 条目 | ✅ 2026-10-27 | spike.sh「conflict stop」 |
+| **`--update-refs` 依赖 todo 中的 `update-ref refs/heads/<b>` 行**：`cat >` 覆盖了 git 生成的 todo，自带的 `update-ref` 行一并被覆盖；todo 不写这一行时，指向被改写提交的其他分支留在旧提交上 | ✅ 2026-10-27 | spike.mjs 两次对照 |
+| todo 只含 `drop` 行（全部丢弃）可以执行；todo 为空（无任何命令）时报 `error: nothing to do`、退出 1 | ✅ 2026-10-27 | spike.sh 末两段 |
+| `exec`/`update-ref` 行计入 `msgnum`/`end` 步数（「Rebasing (2/5)」），横幅显示的步数比提交数多 | ✅ 2026-10-27 | spike.mjs stderr |
+| Windows（Git for Windows 自带 sh）未实测 | ⚠️ 未实测 | 留给 B4 跨平台验证 |

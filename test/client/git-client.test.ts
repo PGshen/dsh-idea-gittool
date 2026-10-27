@@ -81,6 +81,32 @@ describe('createGitClient / non-2xx responses (B1 acceptance demo)', () => {
   })
 })
 
+describe('createGitClient / B3a interactive rebase endpoints', () => {
+  it('posts rebasePlan and interactiveRebase to their endpoint paths', async () => {
+    const fetch = vi.fn(async () => new Response(JSON.stringify({ ok: true, value: {} })))
+    vi.stubGlobal('fetch', fetch)
+    const client = createGitClient(undefined)
+
+    await client.rebasePlan({ sessionId: 's', base: null })
+    expect(fetch).toHaveBeenLastCalledWith('dsh-git/rebasePlan', expect.objectContaining({
+      body: JSON.stringify({ sessionId: 's', base: null }),
+    }))
+    const request = {
+      sessionId: 's',
+      requestId: 'r-1',
+      base: 'a'.repeat(40),
+      head: 'b'.repeat(40),
+      entries: [{ sha: 'c'.repeat(40), action: 'reword' as const, message: 'new' }],
+      updateRefs: true,
+      stash: true,
+    }
+    await client.interactiveRebase(request)
+    expect(fetch).toHaveBeenLastCalledWith('dsh-git/interactiveRebase', expect.objectContaining({
+      body: JSON.stringify(request),
+    }))
+  })
+})
+
 describe('createGitClient / B2 history endpoints', () => {
   it('posts blame, fileHistory and compare to their endpoint paths', async () => {
     const fetch = vi.fn(async () => new Response(JSON.stringify({ ok: true, value: {} })))

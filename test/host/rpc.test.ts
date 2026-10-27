@@ -552,6 +552,15 @@ describe('endpoint registry (A3 T1)', () => {
     }
   })
 
+  it('validates the rebasePlan base before touching the repository (B3a T1)', async () => {
+    const { handler } = makeHandler()
+    for (const base of [undefined, 42, '', '-x', '--exec=rm']) {
+      const error = errorOf(await handler('rebasePlan', { sessionId: 'session-1', base }, SIGNAL))
+      expect(error.code, String(base)).toBe('git/invalid-payload')
+      expect(error.message, String(base)).not.toBe('unknown RPC endpoint')
+    }
+  })
+
   it('serves mergeFile (B1 T2): validates the path and answers stale-target outside a conflict', async () => {
     const { handler } = makeHandler()
     expect(errorOf(await handler('mergeFile', { sessionId: 'session-1', path: '../x' }, SIGNAL)).code).toBe(

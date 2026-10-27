@@ -127,7 +127,7 @@ Host 约束（各任务共用）：
 - **测试**：`buildTodo` 各动作与组合的快照（含 squash 组带信息时 `exec` 行位置）；`validateEntries` 的 AC4 各情形；真实仓库跑 AC2 列出的组合并与手工 `rebase -i` 的结果逐项比较（树 sha、信息、作者、作者时间）；AC3 字符集；冲突停下 / `edit` 停下 / `exec` 失败三种 `stop` 与 `operationState.rebaseStop`；AC5 的智能贮藏路径；HEAD 变化与进行中操作的拒绝。
 - **完成标准**：AC2–AC5、AC6 的 Host 部分有测试；`make check` 绿。
 
-### T4：Client 变基列表模型与 store（进行中）
+### T4：Client 变基列表模型与 store（完成）
 
 - **目标**：React 无关的列表模型（纯函数）与加载/提交 store。
 - **涉及文件**：新建 `src/client/rebase/rebase-model.ts`、`src/client/store/rebase-store.ts` 与测试；`.dependency-cruiser.cjs` 若需允许 `store → rebase`，同步改 ARCHITECTURE。
@@ -138,7 +138,7 @@ Host 约束（各任务共用）：
 - **测试**：动作切换、移动、squash 组默认信息（fixup 不计入）、`validate` 各不合法情形、`previewTodo` 与 Host `buildTodo` 对同一输入的结构一致（用共享夹具）、preset 三种生成的条目；store 旧响应丢弃、`dispose` 中止、提交中重复点击只发一次。
 - **完成标准**：AC7 的模型部分有测试；`make check` 绿。
 
-### T5：`InteractiveRebasePage` 覆盖页（待开始）
+### T5：`InteractiveRebasePage` 覆盖页（进行中）
 
 - **目标**：全高覆盖页 UI。
 - **涉及文件**：新建 `src/client/pages/InteractiveRebasePage.tsx`、`InteractiveRebasePage.module.css`、`src/client/locales/rebase.ts`；修改 `GitWorkbench.tsx`（承载覆盖层）、`src/client/locales.ts`。
@@ -167,7 +167,7 @@ Host 约束（各任务共用）：
 
 ## 下一步
 
-- T4：在 `src/client/rebase/rebase-model.ts` 补模型函数（`previewTodo` 直接调用 `src/shared/rebase-todo.ts` 的 `buildTodo`，信息 blob 用占位符），新建 `src/client/store/rebase-store.ts` 与测试。
+- T5：新建 `src/client/pages/InteractiveRebasePage.tsx`（+ `.module.css`），在 `GitWorkbench.tsx` 承载 `interactiveRebase` 覆盖层（创建 `createRebaseStore`，load 用 `client.rebasePlan`，actions 用工作台的 action-store）；文案补进 `src/client/locales/rebase.ts`。
 
 ## 决策记录
 
@@ -179,6 +179,7 @@ Host 约束（各任务共用）：
 - 2026-10-27 — T3：校验规则比计划多一条 `misplaced-message`：`message` 只允许出现在 pick/reword 上（edit 停下后用户自己改信息，若再 exec 会覆盖；squash/fixup/drop 上的信息没有意义）。
 - 2026-10-27 — T3：有整组信息的 squash 组里，squash 行写成 `fixup`（信息最终由 exec 写回，避免 git 拼接一遍再被覆盖）；没有整组信息时保留 `squash`，由 `GIT_EDITOR=true` 接受 git 拼接的默认信息。
 - 2026-10-27 — T3：执行层新增 `todoFromStdin` 选项与 `GIT_TODO_STDIN_ENV`（只把 `GIT_SEQUENCE_EDITOR` 改成 `cat >`）——现有 `GIT_WRITE_ENV` 的 `GIT_SEQUENCE_EDITOR=true` 优先于 `-c sequence.editor`；只对带 stdin 的写调用生效，其余写命令仍是 no-op 编辑器。这是对计划外公共接口（执行层选项）的最小扩展，属于实现细节。
+- 2026-10-27 — T4：`createRebaseStore` 的依赖写成 `{ sessionId, load, actions }`（与 B2 store 同形，便于测试），而不是计划的 `{ client, sessionId }`；行带 `originalIndex` 判断是否移动；`rewritesPushed(rows)` 从「第一条被改写的行（含被 squash/fixup 合入的组首）」起算，之后的提交都会被改写；`validate` 在协议问题之外多两条：`unchanged`（没有改动）与 `confirmPushed`；有整组信息之外的 pick 行编辑信息不算改动。
 - 2026-10-27 — T1：`RebasePreset` 类型提前在 `src/client/rebase/rebase-model.ts` 定义（覆盖层类型要用）；T4 在同一文件补函数。
 - 2026-10-27 — 横幅步数沿用 git 的 `msgnum/end`，包含 `exec`/`update-ref` 行（会比提交数多）；不自行换算，避免和终端里看到的 git 输出不一致。
 - 2026-10-27 — 写回信息的 `exec` 用 `--no-verify`：`git rebase -i` 自身 pick 时不跑 pre-commit，改信息时再跑 pre-commit 会在历史提交上触发与当前工作区无关的检查。

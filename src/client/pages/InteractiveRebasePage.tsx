@@ -311,13 +311,23 @@ export function InteractiveRebasePage(props: InteractiveRebasePageProps): ReactN
   const [showPreview, setShowPreview] = useState(false)
   const [failure, setFailure] = useState<string | null>(null)
   const { base, preset } = props
-  useEffect(() => {
-    setSelected(0)
-    void store.open(base, preset).then(() => { setSelected(presetIndex(store.getState().rows, preset)) })
-  }, [store, base, preset])
-  useEffect(() => () => { store.close() }, [store])
   const rootRef = useRef<HTMLDivElement | null>(null)
   useEffect(() => { rootRef.current?.querySelector<HTMLElement>('[data-rebase]')?.focus() }, [])
+  useEffect(() => {
+    setSelected(0)
+    void store.open(base, preset).then(() => {
+      setSelected(presetIndex(store.getState().rows, preset))
+      // L4: keys act on the list, so it takes focus once loaded; a reword goes straight to its message.
+      requestAnimationFrame(() => {
+        const root = rootRef.current
+        const target = preset?.kind === 'reword'
+          ? root?.querySelector<HTMLElement>('[data-rebase-message]')
+          : root?.querySelector<HTMLElement>('[data-rebase-list]')
+        target?.focus()
+      })
+    })
+  }, [store, base, preset])
+  useEffect(() => () => { store.close() }, [store])
   const submit = async (trigger: FocusTarget | null): Promise<void> => {
     setFailure(null)
     const outcome: ActionOutcome<InteractiveRebaseValue> | undefined = await store.submit(trigger)

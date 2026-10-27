@@ -23,3 +23,6 @@
 | `src/host/git/{blame,file-history,compare,revision}.ts`（B2 只读端点） | A | 真实临时仓库测试覆盖：行段与 `git blame` 逐行一致、未提交行、分页拼接、CRLF/无末尾换行/空文件、二进制/过大/未跟踪/缺失、浅克隆边界、textconv 不生效；文件历史跨重命名与旧路径 diff、短哈希、游标；比较的提交/差异文件与 `git log`/`git diff` 一致、交换、无公共祖先、range 只扫描本文件；路径/修订号注入。缺口：文件历史第 2 页起合并条目路径（TODO Minor） | 2026-10-27 |
 | `src/client/store/{blame,file-history,compare}-store.ts`（B2 store） | A | 分页、过期响应丢弃、version 变化重载、中止、交换、按旧路径取 diff 均有单测 | 2026-10-27 |
 | `src/client/pages/{BlameView,FileHistoryPage,ComparePage}`、`blame-page`、`document-actions`（B2 视图与入口） | B | 静态渲染、菜单可用性矩阵、键盘判定、头部宽度量法有单测；DOM 时序（hover 延迟、焦点、滚动恢复、ResizeObserver）没有 DOM 测试（TD-18 同类），由 L4 走查与 2026-10-27 负责人验收演示覆盖。缺口：终审与 L4 的 11 条 Minor 在 TODO | 2026-10-27 |
+| `src/host/git/{rebase-plan,interactive-rebase}.ts`、`src/shared/rebase-todo.ts`（B3a） | A | 真实临时仓库测试覆盖：计划与 `rev-list --first-parent` 一致、已推送、分支、五种阻塞；pick/reword/edit/squash/fixup/drop/重排/从根/--update-refs 的结果历史、信息原样（shell 元字符、`#` 行、中文）、作者与作者时间保留；三种停下原因、edit 停下时提交/Amend、智能贮藏完成与停下两种路径、HEAD 过期与非法条目。缺口：Windows（Git for Windows sh）未实测 | 2026-10-27 |
+| `src/client/{rebase/rebase-model.ts,store/rebase-store.ts,pages/InteractiveRebasePage.tsx}`（B3a） | B | 模型（分组、默认 squash 信息、改写已推送判定、预览即 Host todo）与 store（过期响应、防重复提交）有单测；视图静态渲染与键盘判定有单测；拖拽、焦点、下拉的 DOM 行为只由 L4 覆盖 | 2026-10-27 |
+

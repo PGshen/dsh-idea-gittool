@@ -54,16 +54,16 @@
 
 ## 验收标准
 
-- [ ] AC1：`rebasePlan` 列出的提交与 `git rev-list --reverse --first-parent <base>..HEAD` 一致（`base` 为空时到根），每条带完整信息与 `pushed`；范围内有合并提交、`base` 不是 HEAD 的祖先、detached HEAD、超过 500 条时返回对应 `blocked` 原因且不列提交（真实仓库测试）。
-- [ ] AC2：pick / reword / edit / squash / fixup / drop 与重排的任意组合执行后，结果历史与等价的手工 `git rebase -i` 一致：提交顺序、树、信息、作者与作者时间（真实仓库测试，至少覆盖：单条 reword、HEAD reword、drop 中间提交、两次重排、squash 链改信息、fixup 链保留首条信息、全部 drop 以外的边界）。
-- [ ] AC3：提交信息含引号、`$()`、反引号、换行、中文、`#` 开头的行时原样写入，不经 shell 解释、不被当注释删掉（Host 单测）。
-- [ ] AC4：条目不是计划提交的排列（多出、缺少、重复）、第一条有效条目是 squash/fixup、reword 缺信息、`base` 以 `-` 开头时返回 `git/invalid-payload`；打开列表后 HEAD 变了返回 `git/stale-target`；有进行中操作返回 `git/operation-in-progress`（Host 单测）。
-- [ ] AC5：工作区有改动时走现有智能贮藏询问，变基完成后自动恢复；中途停下时贮藏保留为待恢复，`continue` 到结束或 `abort` 后恢复（真实仓库测试）。
-- [ ] AC6：冲突停下 → 横幅显示「变基 3/7 · 冲突」并可打开冲突列表；`edit` 停下 → 横幅显示「已停在 abc1234，可修改后继续」，提交页 Amend 可用；`exec` 失败（如写回信息失败）→ 横幅说明并给出控制台入口；三种情况 `继续`/`跳过`/`中止` 都可用（Host 单测 + 组件测试）。
-- [ ] AC7：覆盖页可用鼠标拖拽与 `Alt+↑/↓` 调整顺序，`p`/`r`/`e`/`s`/`f`/`d` 切换当前行动作；squash 组的信息默认是组内各条信息拼接（fixup 的不计入）；预览显示将执行的 todo（与 Host 生成的一致）；不合法状态（第一条是 squash/fixup、reword 信息为空）时主按钮禁用并说明原因（模型单测 + 组件测试）。
-- [ ] AC8：日志右键「从此处交互式变基…」「修改提交信息…」「丢弃提交…」「压缩提交…」按设计出现与禁用：不在当前分支祖先链上、合并提交、只读模式、有进行中操作、flag 关闭时禁用或隐藏并给出原因；「压缩提交」只在选中多于一个且在 first-parent 链上连续时可用；`F2` 打开修改提交信息（组件测试）。
-- [ ] AC9：flag 关闭时上述入口全部不出现，已有功能不变；`localStorage` `dsh-git.feature.interactiveRebase` = `'1'`/`'0'` 覆盖默认值（单测）。
-- [ ] AC10：实机 L4：在真实仓库完成一次「重排 + reword + squash + drop」与一次「edit 停下 → 修改 → 继续」，截图放 `.evidence/b3a/`；`make check` 绿，产物 smoke 通过并记录 `lib/client.js` 体积增量；新增文案中英键集一致。
+- [x] AC1：`rebasePlan` 列出的提交与 `git rev-list --reverse --first-parent <base>..HEAD` 一致（`base` 为空时到根），每条带完整信息与 `pushed`；范围内有合并提交、`base` 不是 HEAD 的祖先、detached HEAD、超过 500 条时返回对应 `blocked` 原因且不列提交（真实仓库测试）。
+- [x] AC2：pick / reword / edit / squash / fixup / drop 与重排的任意组合执行后，结果历史与等价的手工 `git rebase -i` 一致：提交顺序、树、信息、作者与作者时间（真实仓库测试，至少覆盖：单条 reword、HEAD reword、drop 中间提交、两次重排、squash 链改信息、fixup 链保留首条信息、全部 drop 以外的边界）。
+- [x] AC3：提交信息含引号、`$()`、反引号、换行、中文、`#` 开头的行时原样写入，不经 shell 解释、不被当注释删掉（Host 单测）。
+- [x] AC4：条目不是计划提交的排列（多出、缺少、重复）、第一条有效条目是 squash/fixup、reword 缺信息、`base` 以 `-` 开头时返回 `git/invalid-payload`；打开列表后 HEAD 变了返回 `git/stale-target`；有进行中操作返回 `git/operation-in-progress`（Host 单测）。
+- [x] AC5：工作区有改动时走现有智能贮藏询问，变基完成后自动恢复；中途停下时贮藏保留为待恢复，`continue` 到结束或 `abort` 后恢复（真实仓库测试）。
+- [x] AC6：冲突停下 → 横幅显示「变基 3/7 · 冲突」并可打开冲突列表；`edit` 停下 → 横幅显示「已停在 abc1234，可修改后继续」，提交页 Amend 可用；`exec` 失败（如写回信息失败）→ 横幅说明并给出控制台入口；三种情况 `继续`/`跳过`/`中止` 都可用（Host 单测 + 组件测试）。
+- [x] AC7：覆盖页可用鼠标拖拽与 `Alt+↑/↓` 调整顺序，`p`/`r`/`e`/`s`/`f`/`d` 切换当前行动作；squash 组的信息默认是组内各条信息拼接（fixup 的不计入）；预览显示将执行的 todo（与 Host 生成的一致）；不合法状态（第一条是 squash/fixup、reword 信息为空）时主按钮禁用并说明原因（模型单测 + 组件测试）。
+- [x] AC8：日志右键「从此处交互式变基…」「修改提交信息…」「丢弃提交…」「压缩提交…」按设计出现与禁用：不在当前分支祖先链上、合并提交、只读模式、有进行中操作、flag 关闭时禁用或隐藏并给出原因；「压缩提交」只在选中多于一个且在 first-parent 链上连续时可用；`F2` 打开修改提交信息（组件测试）。
+- [x] AC9：flag 关闭时上述入口全部不出现，已有功能不变；`localStorage` `dsh-git.feature.interactiveRebase` = `'1'`/`'0'` 覆盖默认值（单测）。
+- [x] AC10：实机 L4：在真实仓库完成一次「重排 + reword + squash + drop」与一次「edit 停下 → 修改 → 继续」，截图放 `.evidence/b3a/`；`make check` 绿，产物 smoke 通过并记录 `lib/client.js` 体积增量；新增文案中英键集一致。
 
 ## 契约（T1 冻结）
 
@@ -154,7 +154,7 @@ Host 约束（各任务共用）：
 - **测试**：AC8 的可用性矩阵（纯函数单测）；`F2` 打开 reword；快捷动作提交的 `entries` 正确；AC6 横幅三种文案与按钮；AC9 flag 关闭时菜单无新项。
 - **完成标准**：AC6、AC8、AC9 有测试；`make check` 绿。
 
-### T7：自验证与文档（进行中）
+### T7：自验证与文档（完成）
 
 - **目标**：L4 实机走查与收尾文档。
 - **涉及文件**：`docs/runbooks/verification.md`（B3a 走查步骤）、`docs/references/git-behavior.md`、`docs/ARCHITECTURE.md`、`docs/quality/QUALITY.md`、本计划「验证记录」。
@@ -167,7 +167,7 @@ Host 约束（各任务共用）：
 
 ## 下一步
 
-- T7：按 `docs/runbooks/verification.md` 用 `dev.patch.yml` 挂载，`localStorage['dsh-git.feature.interactiveRebase']='1'`，实机跑 AC10 两条流程并截图到 `.evidence/b3a/`；补 runbook 走查步骤、ARCHITECTURE、QUALITY；然后整分支评审。
+- 整分支评审（`git merge-base main HEAD`..HEAD），按评审结果修复；之后等负责人统一验收（负责人授权：B3a 后接着做 B3b–B3d）。
 
 ## 决策记录
 
@@ -201,4 +201,14 @@ Host 约束（各任务共用）：
 
 ## 验证记录
 
-- 无
+- L1：每个任务结束 `make check` 全绿（日志在 `.superpowers/sdd/b3a-交互式变基/t*-check.log`）。
+- L2（真实临时仓库）：AC1 `test/host/rebase-plan.test.ts`；AC2/AC3/AC4/AC5/AC6（Host）`test/host/interactive-rebase.test.ts`；`test/shared/rebase-todo.test.ts`；`test/host/git-executor.test.ts` todoFromStdin。
+- 组件/模型：AC6（横幅、提交页模式）`operation-banner.test.tsx`、`commit-store.test.ts`；AC7 `rebase-model.test.ts`、`rebase-store.test.ts`、`interactive-rebase-page.test.tsx`；AC8/AC9 `commit-actions.test.ts`、`log-store.test.ts`、`log-page.test.tsx`、`features.test.ts`。
+- 机制 spike：`.evidence/b3a/spike.sh`、`spike.mjs`、`spike.log`（Seatbelt 等价复现）。
+- L4（2026-10-27，隔离 DSH 3081，临时 HOME，flag 置 1）：
+  - 流程 1「重排 + reword + squash + drop + --update-refs」：右键菜单 `01-log-menu.jpg`、覆盖页 `02-rebase-page.jpg`、编辑后与预览 `03-edited-preview.jpg`、结果日志 `03b-after-rebase.jpg`；`git log` 核对：c2 信息原样（含 `"` 与 `$(echo x)`）、c4+c3 合并信息为两条拼接、c5 已丢弃、`mid` 随 `--update-refs` 移到合并后的提交。
+  - 流程 2「F2 → 改为 edit → 停下 → Amend → 继续」：横幅 `04-edit-stop-banner.jpg`（「正在变基 1/2」「已在 edit 处停下…」），提交页为普通模式且可 Amend，Amend 后 `rebase-merge` 仍在，「继续」后变基结束，被 edit 的提交包含改动。
+  - 走查发现并修复：打开覆盖页后焦点在对话框根上，字母键与方向键要先点一下列表才生效——改为加载后聚焦列表（reword 预设聚焦信息框），实机复验 F2 后焦点在信息框。
+  - 走查发现、未修（登记 TODO）：变基改写历史后，日志详情区仍显示改写前选中的旧提交（A1 的既有行为）；列表里分支名标签与背景对比弱。
+- 体积：`lib/client.js` 1089.4 KB → 1126 KB（+约 37 KB，含 css +3.6 KB）。
+- 未验证：Windows（Git for Windows sh 下的 `cat >` 与 exec 管道）——B4 跨平台。

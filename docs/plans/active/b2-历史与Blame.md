@@ -183,10 +183,13 @@ Host 约束（各任务共用）：
 - 2026-10-27 — T3 完整关口绿（1828 测试）。T5 完成：`BlameView`/`BlameOverlay`/`BlameHoverCard`、通用 `ActionMenu`（`CommitContextMenu` 改为委托）、`locales/history.ts`（去掉 M0 `blame.*`）、`git.blame` 页改为 Blame 视图（`registerBlameTab(ctx, face)` 注入 client/bootstrap/`openInGit`）、覆盖层 `back` 返回链与 `dismiss()`/`asBack()`、GitWorkbench 渲染 `blame` 覆盖层；`css-tokens` 守护扩到 B2 样式
 - 2026-10-27 — T6 完成：`FileHistoryPage`（行动作：Blame 此版本 / 与工作区比较 / 在日志中显示 / 复制路径，右键菜单与选中栏按钮同一组）、`ComparePage`（横幅、交换、提交列表分页、差异文件、页内 diff）、共用 `HistoryPages.module.css`；文件历史 store 与滚动位置放在 GitWorkbench，`keepsFileHistory` 决定何时释放
 - 2026-10-27 — T7 完成：`file-actions.ts`；提交详情文件行右键菜单（显示 Diff / 文件历史 / Blame 此版本 / 与工作区比较 / 复制路径）、提交页变更树菜单追加文件历史与 Blame、日志提交菜单「与工作区比较」「比较所选的两个提交」、分支/标签菜单「与当前分支比较」「与工作区比较」、文档头部「历史」「Diff」启用与状态徽标跳转（窄头部收进 `⋯`）、GitWorkbench 订阅意图（`intentEffect`）；入口注入 `repoRootFor`/`openInGit`。`pnpm build && pnpm smoke` 通过：`lib/client.js` 1,044,920 → 1,111,210 字节（+66,290，gzip 258,137 → 270,152，+12,015），`lib/host.js` 204,272 → 222,736（+18,464）
+- 2026-10-27 — T6/T7 完整关口绿（1888 测试）。整分支终审（新上下文评审者，opus）：Critical 1、Important 3、Minor 10，结论「修完再合」。
+- 2026-10-27 — 终审修复（一轮）：C1 `node_modules` 软链与被改写的 `pnpm-lock.yaml` 误入 T1 提交 → `3ddceda` 撤回，`.gitignore` 补 `/node_modules`，验证 `git ls-tree HEAD node_modules` 为空、lockfile 与 base 无差异；I2 blame 未加 `--no-textconv` → `test/host/blame.test.ts`「ignores textconv drivers…」RED→GREEN；I3 range diff 扫描整棵树（远距比较时超 2 MiB 输出上限）→ 只扫描本文件与 `origPath`，`test/host/diff.test.ts`「终审 I3」与 `history-stores.test.ts`「sends the old path…」RED→GREEN（`6a35084`）；I4 新列表不可键盘操作 → `list-keys.ts` + 三个列表单一 Tab 停靠点、方向键/Home/End/Enter/菜单键，`list-keys.test.ts` 与页面静态断言 RED→GREEN
 
 ## 下一步
 
-- 全部任务完成后：等 T7 的完整 `make check` 绿；整分支评审（fresh reviewer，最强模型），处理 Critical/Important；然后自验证 L4（本地 DSH 3081 走查，截图存 `.evidence/b2/`）并补「验证记录」；收尾清单（ARCHITECTURE、QUALITY、TODO、references）。
+- 自验证 L4：按 `docs/runbooks/verification.md` 在本地 DSH（3081，`--patch dev.patch.yml`）走查 AC1–AC12，截图存 `.evidence/b2/`，补「验证记录」；确认 T7 的窄头部阈值（280px）与 spike (a)(b) 的运行时行为。然后收尾清单（ARCHITECTURE/QUALITY/runbook/TODO），请负责人验收。
+- 在 worktree 里运行 pnpm/make/git commit 时带 `pnpm_config_verify_deps_before_run=false`（见决策记录），提交时只 `git add` 具体路径。
 
 ## 决策记录
 
@@ -215,6 +218,8 @@ Host 约束（各任务共用）：
 - 2026-10-27 T7 — 裁定：文档头部只在仓库外时禁用「历史」「Diff」「状态跳转」，Blame 保持可用（它的页面自己说明「不在当前仓库」）；干净文件的 Diff 与状态跳转禁用（「文件没有未提交的改动」）；未跟踪/冲突（都显示 U）的「历史」保持可用，空历史由历史页说明 — 头部只有一个字母，分不清 U 的两种含义。
 - 2026-10-27 T7 — 裁定：「与当前分支比较」右侧传 `HEAD`、标签显示当前分支名（游离时显示 HEAD）；当前分支自己的这一项禁用（`branch.disabled.isCurrent`）。
 - 2026-10-27 T7 — 裁定：窄头部判断用 `ResizeObserver` 量父元素宽度（< 280px 收进 `⋯`，原生 `<details>`） — 头部容器属于宿主，不能给它加 container query。代价：阈值是估计值，L4 时确认。
+- 2026-10-27 终审 — 裁定：worktree 内运行 pnpm 一律带环境变量 `pnpm_config_verify_deps_before_run=false`，不改仓库配置 — pnpm 11 在 `pnpm run` 前自动安装，会把 lockfile 里相对 `link:` 的 `version` 按 worktree 深度改写（C1 的根因）；pnpm 11 不从 `.npmrc` 读这项设置（实测）。代价：忘带变量时 lockfile 会再被改写，提交前看 `git status`。
+- 2026-10-27 终审 — Minor 10 条不进修复轮，登记到 TODO（P2）：未提交行双击 diff 应为 HEAD→工作区；修订版 Blame 的「文件不存在」文案与「文件历史」按钮；文件历史翻页后合并条目路径退回新名；头部在 bootstrap 未到时误报「不在仓库」；`openTab` 失败后意图仍在队列；分支比较用 `entry.name` 遇同名标签；被该提交删除的文件「与工作区比较」可用；窄头部 `⋯` 不自动收起；`git.blame` 页吞 Esc；`historyStore` 卸载未 close。
 - 2026-10-27 — B2 不加 feature flag — 全部为只读视图，没有写回风险；出问题可直接隐藏入口。
 - 2026-10-27 — 修订号先解析为 sha 再参与后续 git 调用 — 同时解决参数注入与「同一请求内 ref 移动」的竞态。
 

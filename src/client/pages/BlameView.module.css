@@ -223,3 +223,9 @@
   flex-direction: column;
   min-height: 160px;
 }
+
+/* Keyboard (终审 I4): the lines are one tab stop. */
+.scroller:focus-visible {
+  outline: 1px solid var(--dsw-alias-brand-primary);
+  outline-offset: -1px;
+}

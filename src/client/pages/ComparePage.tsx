@@ -17,7 +17,13 @@ import { EmptyState } from '../ui/EmptyState.tsx'
 import { StatusLetter } from '../ui/StatusLetter.tsx'
 import { diffBody } from './FileHistoryPage.tsx'
 import css from './HistoryPages.module.css'
+import { listKeyAction, stepListIndex } from './list-keys.ts'
 import { formatLogDate } from './LogRow.tsx'
+
+/** DOM id of a compare file row (aria-activedescendant). */
+export function compareFileId(path: string): string {
+  return `compare-file-${path}`
+}
 
 export interface ComparePageViewProps {
   state: CompareState
@@ -80,7 +86,18 @@ function listsOf(props: ComparePageViewProps, t: Translate): ReactNode {
           ) : (
             <ul className={css.list}>
               {state.commits.map(commit => (
-                <li key={commit.sha} className={css.row} title={t('compare.showInLog')} onDoubleClick={() => { props.onShowInLog(commit.sha) }}>
+                <li
+                  key={commit.sha}
+                  className={css.row}
+                  tabIndex={0}
+                  title={t('compare.showInLog')}
+                  onDoubleClick={() => { props.onShowInLog(commit.sha) }}
+                  onKeyDown={(event) => {
+                    if (event.key !== 'Enter') return
+                    event.preventDefault()
+                    props.onShowInLog(commit.sha)
+                  }}
+                >
                   <span className={css.sha}>{commit.shortSha}</span>
                   <span className={css.subject}>{commit.subject}</span>
                   <span className={css.muted}>{commit.author}</span>
@@ -98,10 +115,27 @@ function listsOf(props: ComparePageViewProps, t: Translate): ReactNode {
       )}
       <div className={css.section}>{t('compare.files', { count: state.files.length })}</div>
       {state.files.length === 0 ? <p className={css.section}>{t('compare.files.empty')}</p> : (
-        <ul className={css.list} role="listbox" aria-label={t('compare.files', { count: state.files.length })}>
+        <ul
+          className={css.list}
+          role="listbox"
+          tabIndex={0}
+          aria-label={t('compare.files', { count: state.files.length })}
+          {...(state.selectedPath === null ? {} : { 'aria-activedescendant': compareFileId(state.selectedPath) })}
+          onKeyDown={(event) => {
+            const action = listKeyAction(event)
+            if (action === null || action === 'menu') return
+            event.preventDefault()
+            const index = state.files.findIndex(file => file.path === state.selectedPath)
+            const target = action === 'activate' ? state.files[index] : state.files[stepListIndex(state.files.length, index, action)]
+            if (target === undefined) return
+            props.onSelectFile(target.path)
+            globalThis.document?.getElementById(compareFileId(target.path))?.scrollIntoView({ block: 'nearest' })
+          }}
+        >
           {state.files.map(file => (
             <li
               key={file.path}
+              id={compareFileId(file.path)}
               role="option"
               aria-selected={file.path === state.selectedPath}
               className={css.row}

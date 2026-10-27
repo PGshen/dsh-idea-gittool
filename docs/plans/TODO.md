@@ -37,6 +37,7 @@
 | P2 | `answerLeave('save')` 保存失败、或 `closeIf` 关窗时，被拦住的「未提交改动」询问（`dirtyWorktree`）一直挂起 | B1 终审，2026-10-27 | 保存失败时保留询问可再答；`closeIf` 时按取消回应 |
 | P2 | 补测试：continue 失败后的草稿、忙碌时 dispatch 被忽略、conflict/cancelled 结果文案、`dirtyWorktree` → `cancelStash` 接线、`git-client` 新端点的请求体断言 | B1 终审，2026-10-27 | B1 终审列出的缺口 |
 | P2 | A1–A3 样式引用了 DSH 中不存在的变量（--dsw-alias-state-success/warn、--dsw-font-mono、--dsw-alias-interactive-bg-selected），状态色/等宽字体实际未生效；需负责人确认后全局替换并把静态检查扩到全部样式 | B1 验收演示，2026-10-27 | B1 的 `MergeWindow*.module.css`、`ConflictsPage.module.css` 已替换，静态检查 `test/client/pages/css-tokens.test.ts` 目前只覆盖这两类文件（`GUARDED`） |
+| P2 | B2 终审 Minor（10 条）：Blame 未提交行双击应显示 HEAD→工作区（含已暂存）；修订版 Blame「文件不存在」文案区分修订并给「文件历史」按钮；文件历史第 2 页起合并条目路径退回新名（游标带当前路径）；文档头部 bootstrap 未到时误报「不在仓库」；`openTab` 失败后意图残留在队列；分支比较传 `entry.ref` 而非 `entry.name`（同名标签）；被该提交删除的文件禁用「与工作区比较」；窄头部 `⋯` 点动作/外部/Esc 收起；`git.blame` 页无返回时不吞 Esc；GitWorkbench 卸载时 `historyStore.close()` | B2 终审，2026-10-27 | 细节见 [b2 计划](active/b2-历史与Blame.md)「决策记录」终审条目 |
 
 ## 已完成
 

@@ -119,6 +119,12 @@ describe('BlameView', () => {
     expect(html).toContain('data-blame-hover')
   })
 
+  it('the lines are one tab stop naming the active line (终审 I4)', () => {
+    const html = render(ready())
+    expect(html).toMatch(/role="listbox"[^>]*tabindex="0"|tabindex="0"[^>]*role="listbox"/u)
+    expect(html).toContain('id="blame-line-1"')
+  })
+
   it('renders the segment menu when open', () => {
     const html = render(ready(), { menu: { sha: A, anchor: { kind: 'point', x: 10, y: 20 } } })
     expect(html).toContain('role="menu"')

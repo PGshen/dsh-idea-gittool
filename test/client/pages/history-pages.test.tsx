@@ -76,6 +76,21 @@ describe('FileHistoryPageView', () => {
   })
 })
 
+describe('keyboard reach (终审 I4)', () => {
+  it('the history list is one tab stop that names the selected row', () => {
+    const html = renderHistory(historyState({ selectedSha: A }))
+    expect(html).toMatch(/role="listbox"[^>]*tabindex="0"|tabindex="0"[^>]*role="listbox"/u)
+    expect(html).toContain(`aria-activedescendant="history-row-${A}"`)
+    expect(html).toContain(`id="history-row-${A}"`)
+  })
+
+  it('compare commits are focusable and the file list is one tab stop', () => {
+    const html = renderCompare(compareState('main', { selectedPath: 'src/a.ts' }))
+    expect(html).toMatch(/<li[^>]*tabindex="0"[^>]*>.*commit a1b/u)
+    expect(html).toContain('aria-activedescendant="compare-file-src/a.ts"')
+  })
+})
+
 describe('historyRowActions', () => {
   it('offers blame at the revision, compare with worktree, show in log and copy path', () => {
     expect(historyRowActions(entry(A)).map(item => [item.id, item.disabledReason?.key])).toEqual([

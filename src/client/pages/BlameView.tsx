@@ -6,7 +6,7 @@ import { languageForPath, useCodeHighlighter } from '@deepseek-ai/dsh-client-ui-
 import type { CodeHighlighter, HighlightSpan } from '@deepseek-ai/dsh-client-ui-primitives'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { CSSProperties, ReactNode } from 'react'
+import type { CSSProperties, KeyboardEvent, ReactNode } from 'react'
 import type { BlameCommit } from '../../shared/protocol.ts'
 import { useT } from '../i18n.tsx'
 import { text } from '../localized-text.ts'
@@ -22,6 +22,7 @@ import type { ActionMenuItem } from './ActionMenu.tsx'
 import { BlameHoverCard } from './BlameHoverCard.tsx'
 import css from './BlameView.module.css'
 import { DiffHunks, LineCode } from './DiffHunks.tsx'
+import { listKeyAction, rowAnchor, stepListIndex } from './list-keys.ts'
 import { formatLogDate } from './LogRow.tsx'
 import type { MenuAnchor } from './menu-position.ts'
 
@@ -29,6 +30,11 @@ export const BLAME_ROW_HEIGHT = 20
 const OVERSCAN = 30
 /** Delay before a hover card closes, so the pointer can move from the gutter onto the card. */
 const HOVER_CLOSE_MS = 150
+
+/** DOM id of one blame line (aria-activedescendant). */
+export function blameLineId(line: number): string {
+  return `blame-line-${String(line)}`
+}
 
 export type BlameSegmentActionId = 'copyHash' | 'showInLog' | 'fileHistory'
 
@@ -226,12 +232,42 @@ function BlameLines(props: BlameViewProps): ReactNode {
     overscan: OVERSCAN,
     initialRect: { width: 0, height: 600 },
   })
+  // Keyboard (终审 I4): one tab stop; arrows move the active line and select its commit.
+  const [activeLine, setActiveLine] = useState<number | null>(null)
+  const activeIndex = activeLine === null ? -1 : rows.findIndex(row => row.line === activeLine)
+  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
+    const action = listKeyAction(event)
+    if (action === null) return
+    event.preventDefault()
+    const current = rows[activeIndex]
+    if (action === 'activate' || action === 'menu') {
+      if (current === undefined) return
+      if (action === 'menu') props.onMenu(current.sha, rowAnchor(blameLineId(current.line)))
+      else props.onOpenDiff(current)
+      return
+    }
+    const index = stepListIndex(rows.length, activeIndex, action)
+    const row = rows[index]
+    if (row === undefined) return
+    setActiveLine(row.line)
+    virtualizer.scrollToIndex(index, { align: 'auto' })
+    if (row.sha !== state.selectedSha) props.onSelect(row.sha)
+  }
   const hoveredIndex = hovered === null ? -1 : rows.findIndex(row => row.line === hovered.line)
   const hoveredCommit = hovered === null ? undefined : state.commits[hovered.sha]
   const total = state.value?.totalLines ?? rows.length
 
   return (
-    <div ref={scrollRef} className={css.scroller} data-row-count={rows.length}>
+    <div
+      ref={scrollRef}
+      className={css.scroller}
+      data-row-count={rows.length}
+      role="listbox"
+      tabIndex={0}
+      aria-label={t('blame.dialog', { path: state.value?.path ?? '' })}
+      {...(activeIndex === -1 ? {} : { 'aria-activedescendant': blameLineId(activeLine ?? 0) })}
+      onKeyDown={onKeyDown}
+    >
       <div className={css.canvas} style={{ height: virtualizer.getTotalSize() }}>
         {virtualizer.getVirtualItems().map((item) => {
           const row = rows[item.index]
@@ -241,12 +277,18 @@ function BlameLines(props: BlameViewProps): ReactNode {
           return (
             <div
               key={row.line}
+              id={blameLineId(row.line)}
+              role="option"
+              aria-selected={state.selectedSha === row.sha}
               className={`${css.row} ${row.segmentStart ? css.segmentStart : ''}`}
               style={style}
               data-blame-line={row.line}
               {...(state.selectedSha === row.sha ? { 'data-selected': true } : {})}
               {...(commit?.uncommitted === true ? { 'data-uncommitted': true } : {})}
-              onClick={() => { props.onSelect(row.sha) }}
+              onClick={() => {
+                setActiveLine(row.line)
+                props.onSelect(row.sha)
+              }}
               onDoubleClick={() => { props.onOpenDiff(row) }}
               onContextMenu={(event) => {
                 event.preventDefault()

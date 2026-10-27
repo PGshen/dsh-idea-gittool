@@ -23,7 +23,13 @@ import type { ActionMenuItem } from './ActionMenu.tsx'
 import { DiffHunks } from './DiffHunks.tsx'
 import css from './HistoryPages.module.css'
 import { formatLogDate } from './LogRow.tsx'
+import { listKeyAction, rowAnchor, stepListIndex } from './list-keys.ts'
 import type { MenuAnchor } from './menu-position.ts'
+
+/** DOM id of a history row (aria-activedescendant). */
+export function historyRowId(sha: string): string {
+  return `history-row-${sha}`
+}
 
 export type HistoryRowActionId = 'blameRevision' | 'compareWorktree' | 'showInLog' | 'copyPath'
 
@@ -123,10 +129,35 @@ function HistoryList(props: FileHistoryPageViewProps & { t: Translate }): ReactN
       className={css.lists}
       onScroll={props.onScrollTopChange === undefined ? undefined : event => props.onScrollTopChange?.(event.currentTarget.scrollTop)}
     >
-      <ul className={css.list} role="listbox" aria-label={t('history.dialog', { path: state.target?.path ?? '' })}>
+      <ul
+        className={css.list}
+        role="listbox"
+        tabIndex={0}
+        aria-label={t('history.dialog', { path: state.target?.path ?? '' })}
+        {...(state.selectedSha === null ? {} : { 'aria-activedescendant': historyRowId(state.selectedSha) })}
+        onKeyDown={(event) => {
+          const action = listKeyAction(event)
+          if (action === null) return
+          event.preventDefault()
+          const index = state.entries.findIndex(entry => entry.sha === state.selectedSha)
+          if (action === 'activate' || action === 'menu') {
+            const entry = state.entries[index]
+            if (entry === undefined) return
+            if (action === 'menu') props.onMenu(entry.sha, rowAnchor(historyRowId(entry.sha)))
+            else props.onSelect(entry.sha)
+            return
+          }
+          const next = state.entries[stepListIndex(state.entries.length, index, action)]
+          if (next !== undefined && next.sha !== state.selectedSha) {
+            props.onSelect(next.sha)
+            globalThis.document?.getElementById(historyRowId(next.sha))?.scrollIntoView({ block: 'nearest' })
+          }
+        }}
+      >
         {state.entries.map(entry => (
           <li
             key={entry.sha}
+            id={historyRowId(entry.sha)}
             role="option"
             aria-selected={entry.sha === state.selectedSha}
             className={css.row}

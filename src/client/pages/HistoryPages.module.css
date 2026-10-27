@@ -149,3 +149,10 @@
   padding: 4px 8px;
   background: var(--dsw-alias-bg-layer-1);
 }
+
+/* Keyboard (终审 I4): lists are one tab stop; compare commits are focusable rows. */
+.list:focus-visible,
+.row:focus-visible {
+  outline: 1px solid var(--dsw-alias-brand-primary);
+  outline-offset: -1px;
+}

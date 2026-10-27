@@ -67,6 +67,7 @@ import { FETCH_ALL, branchActionContext, createBranchActionRunner, outcomeNotice
 import type { ActionNotice as ActionNoticeValue, BranchActionRunnerDeps, QuickActionId } from './branch-actions.ts'
 import { createBranchesStore, useBranchesState } from './branch-store.ts'
 import { CommitDetail } from './CommitDetail.tsx'
+import { BlameOverlay } from './BlameView.tsx'
 import { DiffViewer } from './DiffViewer.tsx'
 import { DirtyWorktreeSheet } from './DirtyWorktreeSheet.tsx'
 import css from './GitWorkbench.module.css'
@@ -77,6 +78,7 @@ import { RepoBar } from './RepoBar.tsx'
 import { StatusBar } from './StatusBar.tsx'
 import {
   actionOverlayWiring,
+  asBack,
   dirtySheetHandlers,
   handleOverlayEscape,
   overlayLeaveEffects,
@@ -406,6 +408,13 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
   const navigateTo = useCallback((sha: string) => {
     logStore.jumpTo(sha)
   }, [logStore])
+
+  /** B2: leave the overlay chain and reveal one commit in the log. */
+  const showCommitInLog = useCallback((sha: string) => {
+    overlays.dismiss()
+    setPage('log')
+    navigateTo(sha)
+  }, [navigateTo, overlays.dismiss])
 
   const openPush = useCallback((open: OpenPush) => {
     clearStaleCommitNotice()
@@ -848,6 +857,18 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
             onClose={() => { overlays.closeIf('diff') }}
           />
         )}
+        {overlay?.kind === 'blame' ? (
+          <BlameOverlay
+            sessionId={sessionId}
+            target={overlay.rev === undefined ? { path: overlay.path } : { path: overlay.path, rev: overlay.rev }}
+            load={(request, signal) => client.blame(request, signal)}
+            loadDiff={(request, signal) => client.diff(request, signal)}
+            branch={status?.branch ?? null}
+            onBack={() => { overlays.close() }}
+            onShowInLog={showCommitInLog}
+            onFileHistory={(path) => { overlays.open({ kind: 'fileHistory', path, back: asBack(overlay) }) }}
+          />
+        ) : null}
         {push === null || value.repoRoot === null ? null : (
           <PushPage
             sessionId={sessionId}

@@ -57,6 +57,13 @@ export type WorkbenchOverlay =
 /** An overlay "← back" can return to; one level only, so it never carries its own `back`. */
 export type BackOverlay = DistributiveOmit<WorkbenchOverlay, 'back'>
 
+/** `overlay` as the target of another overlay's `back` (its own `back` dropped). */
+export function asBack(overlay: WorkbenchOverlay): BackOverlay {
+  const copy: { back?: unknown } & BackOverlay = { ...overlay }
+  delete copy.back
+  return copy
+}
+
 type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never
 
 export type WorkbenchOverlayKind = WorkbenchOverlay['kind']
@@ -108,9 +115,17 @@ export function openOverlay(route: OverlayRoute, next: WorkbenchOverlay, trigger
   return { route: { overlay: next, returnFocus }, left: route.overlay }
 }
 
-/** Close the overlay; `focus` is the still-attached trigger to focus again. */
-export function closeOverlay(route: OverlayRoute): OverlayTransition & { focus: FocusTarget | null } {
+/**
+ * Close the overlay; `focus` is the still-attached trigger to focus again. An overlay opened from
+ * another one (B2 `back`) returns to it instead, keeping the page trigger for the final close.
+ */
+export function closeOverlay(
+  route: OverlayRoute,
+  options: { toPage?: boolean } = {},
+): OverlayTransition & { focus: FocusTarget | null } {
   if (route.overlay === null) return { route: CLOSED_ROUTE, left: null, focus: null }
+  const back = 'back' in route.overlay ? route.overlay.back : undefined
+  if (back !== undefined && options.toPage !== true) return { route: { overlay: back, returnFocus: route.returnFocus }, left: route.overlay, focus: null }
   const focus = route.returnFocus !== null && route.returnFocus.isConnected ? route.returnFocus : null
   return { route: CLOSED_ROUTE, left: route.overlay, focus }
 }
@@ -161,6 +176,8 @@ export interface OverlayController {
   open(next: WorkbenchOverlay, trigger?: FocusTarget | null): void
   /** Close the current overlay; focus returns to its trigger on the next {@link flushFocus}. */
   close(): void
+  /** B2: close the current overlay and every `back` level behind it (e.g. "show in log"). */
+  dismiss(): void
   /** Close only if `kind` is still the open overlay (late callbacks of a replaced overlay). */
   closeIf(kind: WorkbenchOverlayKind): void
   route(): OverlayRoute
@@ -179,8 +196,8 @@ export function createOverlayController(options: OverlayControllerOptions): Over
     if (transition.left !== null) options.onLeave?.(transition.left, route.overlay)
   }
 
-  const doClose = (): void => {
-    const transition = closeOverlay(route)
+  const doClose = (toPage = false): void => {
+    const transition = closeOverlay(route, { toPage })
     pendingFocus = transition.focus
     apply(transition)
   }
@@ -198,6 +215,10 @@ export function createOverlayController(options: OverlayControllerOptions): Over
     },
     close: () => {
       if (!held(null, doClose)) doClose()
+    },
+    dismiss: () => {
+      const proceed = (): void => { doClose(true) }
+      if (!held(null, proceed)) proceed()
     },
     closeIf: (kind) => {
       if (route.overlay?.kind === kind) doClose()
@@ -232,7 +253,7 @@ export function useWorkbenchOverlay(onLeave?: OverlayLeave, guard?: OverlayContr
   }), [])
   // Runs after the closed overlay unmounted (and after its own focus cleanup).
   useEffect(() => { controller.flushFocus() }, [controller, route])
-  return { overlay: route.overlay, open: controller.open, close: controller.close, closeIf: controller.closeIf, route: controller.route }
+  return { overlay: route.overlay, open: controller.open, close: controller.close, dismiss: controller.dismiss, closeIf: controller.closeIf, route: controller.route }
 }
 
 // ---------------------------------------------------------------------------

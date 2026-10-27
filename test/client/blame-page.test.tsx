@@ -1,16 +1,16 @@
 /**
- * git.blame body: navigation-parameter narrowing and the M0 empty state.
+ * git.blame body (B2 T5): navigation-parameter narrowing, repo path, notices, reload key.
  */
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
-import { zhT } from './i18n-helpers.tsx'
+import { withLocale } from './i18n-helpers.tsx'
 
 import {
-  BlameEmptyState,
-  BlamePage,
+  BlamePageNotice,
+  blameNavigationKey,
+  blameRepoPath,
   readBlameTarget,
 } from '../../src/client/blame-page.tsx'
-import type { BlamePageProps } from '../../src/client/blame-page.tsx'
 
 describe('readBlameTarget', () => {
   it('reads the absolute path from the open parameters', () => {
@@ -32,34 +32,32 @@ describe('readBlameTarget', () => {
   })
 })
 
-describe('BlameEmptyState', () => {
-  it('says the view arrives in B2 and shows the absolute path', () => {
-    const html = renderToStaticMarkup(<BlameEmptyState target={{ absolutePath: '/repo/src/a.ts' }} />)
-    expect(html).toContain('B2')
-    expect(html).toContain('/repo/src/a.ts')
-  })
-
-  it('shows the repo-relative path when available', () => {
-    const html = renderToStaticMarkup(
-      <BlameEmptyState target={{ absolutePath: '/repo/src/a.ts', repoRelativePath: 'src/a.ts' }} />,
-    )
-    expect(html).toContain('src/a.ts')
-  })
-
-  it('explains a missing target instead of rendering a blank body', () => {
-    const html = renderToStaticMarkup(<BlameEmptyState target={null} />)
-    expect(html).toContain('未提供文件路径')
+describe('blameRepoPath', () => {
+  it('prefers the opener\'s repo-relative path, else derives it from the repository root', () => {
+    expect(blameRepoPath({ absolutePath: '/repo/src/a.ts', repoRelativePath: 'src/a.ts' }, null)).toBe('src/a.ts')
+    expect(blameRepoPath({ absolutePath: '/repo/src/a.ts' }, '/repo')).toBe('src/a.ts')
+    expect(blameRepoPath({ absolutePath: '/elsewhere/a.ts' }, '/repo')).toBeNull()
+    expect(blameRepoPath({ absolutePath: '/repo/src/a.ts' }, null)).toBeNull()
   })
 })
 
-describe('BlamePage', () => {
-  it('reads the target from the tab navigation and renders the empty state', () => {
-    const props = {
-      useTabInfo: () => ({ tab: { navigation: { params: { absolutePath: '/repo/src/a.ts' } } } }),
-      t: zhT,
-    } as unknown as BlamePageProps
-    const html = renderToStaticMarkup(BlamePage(props))
-    expect(html).toContain('/repo/src/a.ts')
-    expect(html).toContain('B2')
+describe('BlamePageNotice', () => {
+  it('explains a missing target and a file outside the repository', () => {
+    expect(renderToStaticMarkup(withLocale(<BlamePageNotice reason="missing" />))).toContain('未提供文件路径')
+    const outside = renderToStaticMarkup(withLocale(<BlamePageNotice reason="outside" absolutePath="/elsewhere/a.ts" />))
+    expect(outside).toContain('不在当前会话的 Git 仓库中')
+    expect(outside).toContain('/elsewhere/a.ts')
+    expect(renderToStaticMarkup(withLocale(<BlamePageNotice reason="loading" />))).toContain('正在读取仓库')
+  })
+})
+
+describe('blameNavigationKey', () => {
+  it('changes with every navigation so reopening the page for another file reloads it', () => {
+    expect(blameNavigationKey({ revision: 1, params: { absolutePath: '/r/a' } })).not.toBe(
+      blameNavigationKey({ revision: 2, params: { absolutePath: '/r/b' } }),
+    )
+    expect(blameNavigationKey({ revision: 3, params: { absolutePath: '/r/a' } })).toBe(
+      blameNavigationKey({ revision: 3, params: { absolutePath: '/r/a' } }),
+    )
   })
 })

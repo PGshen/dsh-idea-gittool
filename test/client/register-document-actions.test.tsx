@@ -99,7 +99,8 @@ function injectedFace(fake: FakeContext, sessionId = 'session-1'): DocumentActio
 describe('registerBlameTab', () => {
   it('registers the page type and its body under one id', () => {
     const fake = createFakeContext()
-    registerBlameTab(fake.ctx)
+    const face = { gitClient: {} as never, bootstrapCache: {} as never, openInGit: () => undefined }
+    registerBlameTab(fake.ctx, face)
 
     expect(fake.tabDefinitions).toHaveLength(1)
     const definition = fake.tabDefinitions[0]!
@@ -114,11 +115,14 @@ describe('registerBlameTab', () => {
     expect(body.name).toBe('sidebar.right.pane.tab')
     expect(body.options.key).toBe(BLAME_TAB_ID)
     expect(body.component).toBe(BlamePage)
+    // B2 T5: the page reads blame through the injected client and hands jumps to the Git tab.
+    const inject = body.options.inject as (() => unknown) | undefined
+    expect(inject?.()).toBe(face)
   })
 
   it('wraps every registration in an effect so unload reclaims it', () => {
     const fake = createFakeContext()
-    registerBlameTab(fake.ctx)
+    registerBlameTab(fake.ctx, { gitClient: {} as never, bootstrapCache: {} as never, openInGit: () => undefined })
     expect(fake.effectCount()).toBe(2)
   })
 })

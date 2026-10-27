@@ -15,6 +15,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-documentpreview/client'
 import type {} from '@deepseek-ai/dsh-client-ui-slots'
 import { BlamePage } from './blame-page.tsx'
+import type { BlamePageInjected } from './blame-page.tsx'
 import { DocumentActions } from './document-actions.tsx'
 import { text } from './localized-text.ts'
 import { statusLetterOf } from './document-actions.tsx'
@@ -67,8 +68,9 @@ function blameDefinition(): SidebarRightTabDefinition {
 /**
  * Register the `git.blame` page: its type face and its body.
  * @param ctx - client context carrying the tab registry and the slot registry.
+ * @param face - what the body reads blame with and how it reaches the Git tab (B2).
  */
-export function registerBlameTab(ctx: ClientContext): void {
+export function registerBlameTab(ctx: ClientContext, face: BlamePageInjected): void {
   ctx.effect(
     () => ctx.sidebarRightTabs.register(blameDefinition()),
     'git: blame tab type',
@@ -78,6 +80,7 @@ export function registerBlameTab(ctx: ClientContext): void {
       name: 'sidebar.right.pane.tab',
       key: BLAME_TAB_ID,
       locale: 'gitWorkbench',
+      inject: () => face,
     }, BlamePage)),
     'git: blame body',
   )

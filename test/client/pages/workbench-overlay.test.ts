@@ -6,6 +6,7 @@ import {
   CLOSED_ROUTE,
   OVERLAY_LEVEL,
   actionOverlayWiring,
+  asBack,
   closeOverlay,
   createOverlayController,
   dirtySheetHandlers,
@@ -67,6 +68,42 @@ describe('closeOverlay', () => {
 
   it('closing a closed route is a no-op', () => {
     expect(closeOverlay(CLOSED_ROUTE)).toEqual({ route: CLOSED_ROUTE, left: null, focus: null })
+  })
+
+  it('B2: an overlay with `back` returns to that overlay, keeping the page trigger for the final close', () => {
+    const trigger = target()
+    const history = { kind: 'fileHistory', path: 'a.txt' } as const
+    const blame: WorkbenchOverlay = { kind: 'blame', path: 'a.txt', rev: 'abc', back: history }
+    const open = openOverlay(openOverlay(CLOSED_ROUTE, history, trigger).route, blame, null).route
+    const back = closeOverlay(open)
+    expect(back.route).toEqual({ overlay: history, returnFocus: trigger })
+    expect(back.left).toBe(blame)
+    expect(back.focus).toBeNull()
+    expect(closeOverlay(back.route).focus).toBe(trigger)
+  })
+
+  it('B2: closing to the page skips the back chain', () => {
+    const trigger = target()
+    const blame: WorkbenchOverlay = { kind: 'blame', path: 'a.txt', back: { kind: 'fileHistory', path: 'a.txt' } }
+    const open = openOverlay(CLOSED_ROUTE, blame, trigger).route
+    expect(closeOverlay(open, { toPage: true })).toEqual({ route: CLOSED_ROUTE, left: blame, focus: trigger })
+  })
+})
+
+describe('asBack', () => {
+  it('drops the back of an overlay so chains stay one level deep', () => {
+    const blame: WorkbenchOverlay = { kind: 'blame', path: 'a.txt', rev: 'abc', back: { kind: 'fileHistory', path: 'a.txt' } }
+    expect(asBack(blame)).toEqual({ kind: 'blame', path: 'a.txt', rev: 'abc' })
+  })
+})
+
+describe('createOverlayController dismiss (B2)', () => {
+  it('closes the whole chain at once', () => {
+    const routes: Array<WorkbenchOverlay | null> = []
+    const controller = createOverlayController({ onChange: route => { routes.push(route.overlay) } })
+    controller.open({ kind: 'blame', path: 'a.txt', back: { kind: 'fileHistory', path: 'a.txt' } }, null)
+    controller.dismiss()
+    expect(routes.at(-1)).toBeNull()
   })
 })
 

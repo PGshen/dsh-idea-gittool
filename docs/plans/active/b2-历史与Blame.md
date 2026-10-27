@@ -135,7 +135,7 @@ Host 约束（各任务共用）：
 - **测试**：分页拼接行号连续；`open` 换目标后旧响应到达被丢弃（AC11）；version 回退的响应被丢弃；`dispose` 中止请求；`swap` 交换后重新加载；意图在订阅前投递也能收到且只交付一次。
 - **完成标准**：AC11 有测试；`make check` 绿。
 
-### T5：`BlameView`（覆盖层 + `git.blame` 页）（待开始）
+### T5：`BlameView`（覆盖层 + `git.blame` 页）（完成）
 
 - **目标**：Blame 视图组件及其两处承载。
 - **涉及文件**：新建 `src/client/pages/BlameView.tsx`、`BlameView.module.css`、`src/client/pages/BlameHoverCard.tsx`；改写 `src/client/blame-page.tsx`（M0 空页 → 承载 `BlameView` + 页内提交详情/diff）；修改 `src/client/pages/workbench-overlay.ts`、`GitWorkbench.tsx`；新建 `src/client/locales/history.ts`，删除 `locales/document.ts` 中的 M0 `blame.*` 键。
@@ -180,10 +180,11 @@ Host 约束（各任务共用）：
 - 2026-10-27 — T2 完成：`src/host/git/{blame,revision,worktree-read}.ts`，`blame` 进 `RPC_ENDPOINTS` 并路由（按 path/rev/start/limit 缓存）；`merge-file.ts` 的工作区读取改用共用 `readWorktreeFile`
 - 2026-10-27 — T3 完成：`src/host/git/{file-history,compare}.ts`、`diff.ts` 的 `scope: 'range'`（含导出 `mergeBaseOf`）、`log.ts` 导出 `LOG_RECORD_FORMAT`/`parseLogRecord`/`normalizeLogLimit`（行为不变）；`fileHistory`/`compare` 进 `RPC_ENDPOINTS` 并路由；`diff` 的缓存键与参数解析加入 range 字段
 - 2026-10-27 — T4 完成：`src/client/store/{blame-store,file-history-store,compare-store}.ts`、`src/client/workbench-intents.ts`；`diff-store` 的请求身份比较加入 `from/to/mergeBase`（交换比较方向时不再显示旧方向内容）
+- 2026-10-27 — T3 完整关口绿（1828 测试）。T5 完成：`BlameView`/`BlameOverlay`/`BlameHoverCard`、通用 `ActionMenu`（`CommitContextMenu` 改为委托）、`locales/history.ts`（去掉 M0 `blame.*`）、`git.blame` 页改为 Blame 视图（`registerBlameTab(ctx, face)` 注入 client/bootstrap/`openInGit`）、覆盖层 `back` 返回链与 `dismiss()`/`asBack()`、GitWorkbench 渲染 `blame` 覆盖层；`css-tokens` 守护扩到 B2 样式
 
 ## 下一步
 
-- T5：先写 `test/client/pages/BlameView.test.tsx`（静态渲染：段首/续行 gutter、空状态、加载更多）与 `test/client/blame-page.test.tsx` 的新断言（随 `navigation` 变化重新 `open`），再实现 `src/client/pages/BlameView.tsx`、`BlameHoverCard.tsx`、新分区 `locales/history.ts`，改写 `src/client/blame-page.tsx`，在 `GitWorkbench.tsx` 渲染 `blame` 覆盖层。store 用 T4 的 `createBlameStore({ sessionId, load })`（worktree `.claude/worktrees/b2-history-blame`）。
+- T6：先写 `test/client/pages/{file-history-page,compare-page}.test.tsx`（静态渲染、空状态、「历史可能不连续」、交换按钮、工作区比较只有文件），再实现 `src/client/pages/{FileHistoryPage,ComparePage}.tsx` 与样式；在 `GitWorkbench.tsx` 渲染 `fileHistory`/`compare` 覆盖层。文件历史 store 放在 GitWorkbench 层（`useMemo`），重开同一目标不重新加载，以便从 Blame 返回时恢复选中与滚动（AC5）。`css-tokens.test.ts` 的清单在新样式出现时补上（worktree `.claude/worktrees/b2-history-blame`）。
 
 ## 决策记录
 
@@ -201,6 +202,10 @@ Host 约束（各任务共用）：
 - 2026-10-27 T3 — 裁定：比较的每一页都重新给出差异文件（不只第一页） — 端点无状态，且 `handleCached` 按 version 缓存；代价：翻页多跑一次 `diff --raw`。
 - 2026-10-27 T4 — 裁定：store 构造参数仿照现有 `diff-store` 注入加载函数（`{ sessionId, load, diff? }`），不直接持有 `GitClient`；`open` 收目标对象（`{ path, rev? }` / `{ left, right }`），比较 store 另有 `canSwap()` — 与仓库内其余 store 一致，测试不必伪造整个客户端。代价：接线处多写一行 `load: (r, s) => client.blame(r, s)`。
 - 2026-10-27 T4 — 裁定：翻页时若响应的 `version` 与第一页不同，从第一页重新加载，而不是把新页接在旧内容后面 — 文件在两次翻页之间变了，拼接会混合两个版本（AC11）。代价：仓库频繁变化时大文件翻页可能反复回到第一页。
+- 2026-10-27 T5 — 裁定：Blame 单击在视图底部显示该提交的事实（主题、作者、时间、短哈希）与动作（查看此提交的改动 / 在日志中显示 / 复制哈希），不加载完整提交详情；双击在底部原地显示该提交对该文件的 diff — 一个覆盖层里不叠第二个覆盖层（`workbench-overlay` 的单槽规则），`git.blame` 页里也没有 Git tab 的详情组件可用。代价：要看完整提交信息需「在日志中显示」。
+- 2026-10-27 T5 — 裁定：返回链做进纯函数 `closeOverlay`（带 `back` 的覆盖层关闭时回到 `back`，Esc 同路），另加 `dismiss()` 一次退到页面（「在日志中显示」用）；原计划放在 T6，因为 Blame →「文件历史」在 T5 就要用。代价：无。
+- 2026-10-27 T5 — 裁定：抽出通用 `ActionMenu`（`CommitContextMenu` 改为委托，样式不变），Blame 行段菜单与 T7 的文件菜单共用 — 两个菜单只差 aria-label。代价：提交菜单的 DOM 不变，现有测试全绿。
+- 2026-10-27 T5 — 裁定：样式只用现有样式里出现过的 DSH 变量（链接色用 `--dsw-alias-brand-primary`，去掉未经验证的 `--dsw-font-family`、`--dsw-alias-label-link`） — B1 验收发现过不存在的变量静默失效。
 - 2026-10-27 — B2 不加 feature flag — 全部为只读视图，没有写回风险；出问题可直接隐藏入口。
 - 2026-10-27 — 修订号先解析为 sha 再参与后续 git 调用 — 同时解决参数注入与「同一请求内 ref 移动」的竞态。
 

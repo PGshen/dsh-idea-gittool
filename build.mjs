@@ -65,6 +65,12 @@ const client = {
   jsx: 'automatic',
   // 产物由插件手工合成（CSS 内联），sourcemap 会与真实产物错位；M0/A1 先不产客户端 map。
   sourcemap: false,
+  // Minified (owner decision 2026-10-27, after B1 inlined CodeMirror). Banner/footer stay verbatim,
+  // so the __ModuleLoader__ wrapper and the CSS placeholder replacement are unaffected.
+  // Identifiers are NOT minified: esbuild would also shorten local-css class names to `.ur`-style
+  // names that can collide with the host's classes (ADR 0005 relies on `File_name` prefixes).
+  minifyWhitespace: true,
+  minifySyntax: true,
   write: false,
   external: PLATFORM_MODULES,
   loader: {

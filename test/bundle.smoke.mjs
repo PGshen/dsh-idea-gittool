@@ -60,6 +60,13 @@ if (registration === undefined) {
     const source = readFileSync(new URL('../lib/client.js', import.meta.url), 'utf8')
     if (!source.includes('data-plugin-css')) fail('client.js 缺少 data-plugin-css 样式注入')
     if (!/\.[a-zA-Z][\w-]*_[a-z0-9]{4,}/u.test(source)) fail('client.js 没有 CSS Modules 哈希类名')
+    // Shipped minified (owner decision 2026-10-27): an unminified build has tens of thousands of lines.
+    const lineCount = source.split('\n').length
+    if (lineCount > 500) fail(`client.js 应为压缩产物，实际 ${lineCount} 行`)
+    // ...but local-css names must keep their `File_name` prefix: identifier minification would
+    // shorten them to `.ur`-style names that can collide with the host's own classes.
+    const shortClass = /[}"]\.[a-z]{1,3}[{,:.\s]/u.exec(source)
+    if (shortClass !== null) fail(`client.js 含无前缀的短 CSS 类名（${shortClass[0]}），不要开启 minifyIdentifiers`)
     // HMR：factory 再次执行时必须更新已有 <style> 的内容，而不是跳过（否则改 CSS 要整页刷新）。
     const styles = []
     const fakeDocument = {

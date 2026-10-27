@@ -181,3 +181,20 @@ git checkout -q feature && git rebase main   # stops at topic1; after continue, 
 | 2 | 贮藏页 →「搁架」分段 | 条目显示名字、分支、文件数、时间；下方是补丁预览 |
 | 3 | 把其中一个文件改成别的内容 →「取回」 | 提示不能干净应用、文件不变；「三方合并应用」后进入冲突列表 |
 | 4 | 提交页勾「按 Changelist 分组」→ 新建 Changelist → 右键文件「移到 Changelist」 | 文件出现在新列表；组头三态勾选只影响本组；刷新页面后分组与分配保持 |
+
+## Worktree 与远程实机验证（B3d，L4）
+
+准备：走查仓库加一个本地 bare 远程（`git init --bare ../walk-bare && git remote add origin ../walk-bare && git push -u origin main`），推一个 `topic` 分支，再建一个没有 upstream 的本地分支和一个标签。Worktree 入口要先在浏览器里打开 flag：`localStorage.setItem('dsh-git.feature.worktrees', '1')`。
+
+| # | 操作 | 期望 |
+|---|---|---|
+| 1 | 仓库栏 ⋯ →「管理远程…」→ 添加 `https://user:pass@example.com/r.git` | 列表只显示 `https://***@example.com/r.git`；页面文本里没有 `pass`；删除后列表恢复 |
+| 2 | 分支页标签右键「推送标签…」→ origin | `git ls-remote --tags origin` 出现该标签 |
+| 3 | 标签右键「删除标签…」，勾「同时删除远程上的同名标签」（默认不勾） | 本地与远程都没有该标签 |
+| 4 | 远程分支 `origin/topic` 右键「删除远程分支…」 | `git ls-remote --heads origin` 与 `git branch -r` 都没有 `topic` |
+| 5 | 本地分支右键「设置 upstream…」选 `origin/topic`，再「取消 upstream」 | `git rev-parse --abbrev-ref <b>@{upstream}` 先等于所选，后报无 upstream；分支行右侧同步显示/消失 |
+| 6 | 本地分支右键「在新 Worktree 中签出…」 | 默认位置 `.worktrees/<分支>`；创建后 `git worktree list` 多一条 |
+| 7 | ⋯ →「Worktree…」：在有改动的 worktree 上「删除…」→「删除」 | 提示有未提交改动，按钮变「仍然删除」；确认后目录消失 |
+| 8 | 手动 `rm -rf` 一个 worktree 目录后打开 Worktree 页 →「清理」 | 该行先标「目录已不存在」，清理后消失，提示「已清理 1 条记录」 |
+| 9 | 「新建 Worktree…」输入新分支名 | 位置随分支名自动填 `.worktrees/<名>`；创建后新分支指向当前 HEAD |
+

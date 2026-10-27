@@ -42,6 +42,17 @@
   white-space: nowrap;
 }
 
+.line > :not(.url),
+.edit > button {
+  flex: none;
+  white-space: nowrap;
+}
+
+.edit > .warning {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 .list {
   margin: 0;
   padding: 0;

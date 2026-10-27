@@ -29,4 +29,6 @@
 | `src/client/{diff/diff-views.ts,settings.ts}`、`DiffHunks`/`DiffViewer` 增强、`CommitMenuSheets`（B3b） | B | 纯函数（并排配对、词级、折叠、锚点）与静态渲染有单测；宽度门槛、滚动跳转、下载只由 L4 覆盖 | 2026-10-27 |
 | `src/host/git/shelf.ts`（B3c） | A | 真实临时仓库测试覆盖：部分搁置（已暂存/未暂存/二进制/未跟踪）与回滚、补丁重建、干净取回/保留/删除、拒绝不干净、三方合并（含未暂存的本地改动）、id 与路径校验 | 2026-10-28 |
 | `src/client/{changelists/*,store/shelf-store.ts}`、`ShelfPanel`、`ChangelistView`（B3c） | B | 模型（增删改、活动、移动、同步、持久化与损坏回退）与 store、静态渲染有单测；拖放只有处理函数共用、未经 L4 | 2026-10-28 |
+| `src/host/git/{remote-write,worktree}.ts`、`tag-write.ts` 推送/删除（B3d） | A | 真实临时仓库 + 本地 bare 远程测试覆盖：标签推送与删除（只本地/本地+远程/不存在）、远程分支删除与跟踪 ref、upstream 设置与取消、远程增改删重命名与凭据脱敏、以 `-` 开头的名字与 URL 被拒；worktree 列表/从已有或新分支新增/重复签出拒绝/有改动需 force/清理/不能删当前/仓库外路径被拒 | 2026-10-28 |
+| `RemoteSheets`、`RemotesPages`、`branch-actions` 新项（B3d） | B | 菜单可用性、flag 关闭时入口消失、静态渲染有单测；表单交互与布局由 L4 覆盖 | 2026-10-28 |
 

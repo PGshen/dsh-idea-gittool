@@ -43,14 +43,14 @@
 
 ## 验收标准
 
-- [ ] AC1：`tagPush` 推送标签到所选远程（`push <remote> refs/tags/<name>`）；`tagDelete` 只删本地，或本地 + 远程（`push <remote> :refs/tags/<name>`），远程失败时本地删除仍生效并如实报告（Host 真实仓库测试，本地 bare 远程）。
-- [ ] AC2：`remoteBranchDelete` 删除 `origin/<b>` 对应的远程分支，并清掉本地的远程跟踪 ref；不存在时报 `git/stale-target`（Host 测试）。
-- [ ] AC3：`setUpstream` 设置后 `git rev-parse --abbrev-ref <b>@{upstream}` 等于所选；取消后无 upstream；远程分支不存在时报错（Host 测试）。
-- [ ] AC4：`remoteList` 返回名字、fetch/push URL（凭据脱敏）；`remoteEdit` 的新增、改 URL、重命名、删除与 `git remote -v` 一致；名字/URL 以 `-` 开头被拒（Host 测试）。
-- [ ] AC5：`worktreeList` 与 `git worktree list --porcelain` 一致（路径、分支、HEAD、locked、prunable、是否当前）；`worktreeAdd` 能从已有分支或新分支创建，默认路径 `.worktrees/<分支>`；分支已在别处签出时报错；`worktreeRemove` 对有改动的 worktree 要求 `force`；`worktreePrune` 清理已删除目录的记录；不能删除当前 worktree（Host 测试）。
-- [ ] AC6：分支页菜单按设计出现并说明不可用原因（标签/远程分支/本地分支三类）；Remotes 页与 Worktree 页的列表、表单、确认（组件测试 + L4）。
-- [ ] AC7：flag `worktrees` 关闭时 Worktree 入口全部不出现（单测）。
-- [ ] AC8：L4 截图 `.evidence/b3d/`；`make check` 绿；中英文案一致。
+- [x] AC1：`tagPush` 推送标签到所选远程（`push <remote> refs/tags/<name>`）；`tagDelete` 只删本地，或本地 + 远程（`push <remote> :refs/tags/<name>`），远程失败时本地删除仍生效并如实报告（Host 真实仓库测试，本地 bare 远程）。
+- [x] AC2：`remoteBranchDelete` 删除 `origin/<b>` 对应的远程分支，并清掉本地的远程跟踪 ref；不存在时报 `git/stale-target`（Host 测试）。
+- [x] AC3：`setUpstream` 设置后 `git rev-parse --abbrev-ref <b>@{upstream}` 等于所选；取消后无 upstream；远程分支不存在时报错（Host 测试）。
+- [x] AC4：`remoteList` 返回名字、fetch/push URL（凭据脱敏）；`remoteEdit` 的新增、改 URL、重命名、删除与 `git remote -v` 一致；名字/URL 以 `-` 开头被拒（Host 测试）。
+- [x] AC5：`worktreeList` 与 `git worktree list --porcelain` 一致（路径、分支、HEAD、locked、prunable、是否当前）；`worktreeAdd` 能从已有分支或新分支创建，默认路径 `.worktrees/<分支>`；分支已在别处签出时报错；`worktreeRemove` 对有改动的 worktree 要求 `force`；`worktreePrune` 清理已删除目录的记录；不能删除当前 worktree（Host 测试）。
+- [x] AC6：分支页菜单按设计出现并说明不可用原因（标签/远程分支/本地分支三类）；Remotes 页与 Worktree 页的列表、表单、确认（组件测试 + L4）。
+- [x] AC7：flag `worktrees` 关闭时 Worktree 入口全部不出现（单测）。
+- [x] AC8：L4 截图 `.evidence/b3d/`；`make check` 绿；中英文案一致。
 
 ## 契约（T1 冻结）
 
@@ -79,16 +79,17 @@ worktreePrune: WriteRequest → { pruned: number }
 ### T4：分支页菜单与浮层（完成）
 - `branch-actions.ts` 新项与可用性；`TagSheets`（推送/删除）、`RemoteBranchDeleteSheet`、`UpstreamSheet`。
 ### T5：Remotes 页与 Worktree 页（完成）
-### T6：自验证与文档（进行中）
+### T6：自验证与文档（完成）
 
 ## 进度
 
 - 2026-10-28 — T1–T3 — 协议与客户端方法；Host `remote-write`（列表脱敏、增改删重命名、删除远程分支、upstream）、`tag-write`（推送、删除本地/远程）、`worktree`（列表、新增、删除、清理）与路由
 - 2026-10-28 — T4+T5 — 分支页新菜单项（标签推送/删除、远程分支删除、设置/取消 upstream、在新 Worktree 中签出）与四个浮层；远程页、Worktree 页（flag `worktrees`）；仓库栏 ⋯「管理远程…」「Worktree…」
+- 2026-10-28 — T6 — L4 走查（`.evidence/b3d/`，8 张截图），修复三处布局问题：新建 Worktree 浮层的路径说明挤在标签列、Worktree/远程页行内名字与按钮折行、删除确认行按钮折行；runbook/ARCHITECTURE/QUALITY/references §7
 
 ## 下一步
 
-- T6：L4 走查（重启 3081 DSH 指向 b3d worktree，走查仓库加一个本地 bare 远程），截图 `.evidence/b3d/`；runbook、ARCHITECTURE、QUALITY；然后整分支评审。
+- 整分支评审（`b3c-shelf-changelist..HEAD`），修复 Critical/Important，Minor 进 TODO；然后等负责人统一验收 B3。
 
 ## 决策记录
 
@@ -98,7 +99,7 @@ worktreePrune: WriteRequest → { pruned: number }
 
 ## 意外与发现
 
-- 无
+- 2026-10-28 — 新建 Worktree 后主工作区多出未跟踪的 `.worktrees/`（状态栏「1 个修改」），符合待确认 1 的预期；页面已提示加进 `.gitignore`。
 
 ## 阻塞
 
@@ -106,4 +107,4 @@ worktreePrune: WriteRequest → { pruned: number }
 
 ## 验证记录
 
-- 无
+- 2026-10-28 — L4（隔离 DSH，端口 3081，git 2.50.1，Chrome 内置浏览器）：runbook「Worktree 与远程实机验证」1–9 全部通过；每步用 `git ls-remote`/`git worktree list`/`rev-parse @{upstream}` 对照。截图 `.evidence/b3d/01–08`。

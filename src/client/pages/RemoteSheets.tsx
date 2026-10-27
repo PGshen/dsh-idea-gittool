@@ -143,7 +143,7 @@ export function WorktreeAddSheetView(props: FrameProps & {
         <label className={sheetCss.field}>
           <span>{t('worktree.add.path')}</span>
           <input value={props.path} disabled={busy} onChange={event => props.onChange({ path: event.target.value })} data-worktree-path />
-          <span className={sheetCss.muted}>{t('worktree.add.pathHint')}</span>
+          <span className={`${sheetCss.muted} ${sheetCss.fieldHint}`}>{t('worktree.add.pathHint')}</span>
         </label>
         <MessageLines t={t} error={props.error} />
         <IntegrateFooter t={t} label={t('worktree.add.submit')} busy={busy} canSubmit={canSubmit} onCancel={props.onCancel} />

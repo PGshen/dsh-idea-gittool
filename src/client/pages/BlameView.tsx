@@ -115,7 +115,9 @@ export function BlameView(props: BlameViewProps): ReactNode {
         <span className={css.path} title={path}>{path}</span>
         {revCommit === undefined ? null : <span className={css.meta}>{t('blame.rev', { sha: revCommit })}</span>}
         {props.branch === null ? null : <span className={css.meta}>⎇ {props.branch}</span>}
-        {value === null ? null : <span className={css.meta}>{t('blame.lines', { count: value.totalLines })}</span>}
+        {value === null || value.binary || value.tooLarge || value.unavailable !== undefined
+          ? null
+          : <span className={css.meta}>{t('blame.lines', { count: value.totalLines })}</span>}
         <Button className={css.toggle} title={t('blame.toggle.title')} onClick={props.onToggleCompact}>
           {props.compact ? t('blame.toggle.detailed') : t('blame.toggle.compact')}
         </Button>
@@ -322,7 +324,14 @@ function BlameLines(props: BlameViewProps): ReactNode {
       </div>
       {state.next === undefined ? null : (
         <div className={css.more}>
-          <Button disabled={state.loadingMore} onClick={props.onLoadMore}>
+          <Button
+            disabled={state.loadingMore}
+            onClick={() => {
+              // The button disappears with the last page: keep focus in the view so Esc still reaches it (L4).
+              scrollRef.current?.focus()
+              props.onLoadMore()
+            }}
+          >
             {state.loadingMore ? t('blame.loadingMore') : t('blame.loadMore', { shown: rows.length, total })}
           </Button>
         </div>

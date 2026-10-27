@@ -37,7 +37,7 @@ export async function readFileHistory(
   const result = await run(
     [
       ...GIT_BASE_ARGV, 'log', '--follow', '-M', '--no-ext-diff', '--no-textconv', '--no-show-signature',
-      '--raw', '--numstat', '--no-abbrev', '-z',
+      '--raw', '--numstat', '-z',
       `--max-count=${String(limit + 1)}`, `--skip=${String(start.offset)}`,
       `--pretty=format:${RECORD_START}${LOG_RECORD_FORMAT}`, start.head, '--', path,
     ],

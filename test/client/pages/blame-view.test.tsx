@@ -98,6 +98,12 @@ describe('BlameView', () => {
     expect(render(ready({ rows: [] }, { totalLines: 0 }))).toContain('空文件')
   })
 
+  it('shows no line count when the file is not annotated (L4)', () => {
+    expect(render(ready({ rows: [] }, { binary: true, totalLines: 0 }))).not.toContain('0 行')
+    expect(render(ready({ rows: [] }, { unavailable: 'missing', totalLines: 0 }))).not.toContain('0 行')
+    expect(render(ready({ rows: [] }, { totalLines: 0 }))).toContain('0 行')
+  })
+
   it('shows loading and error states', () => {
     expect(render({ ...ready(), status: 'loading', value: null, rows: [] })).toContain('正在加载 Blame')
     const failed = render({ ...ready(), status: 'error', value: null, rows: [], error: { code: 'git/exec-failed', message: 'boom' } })

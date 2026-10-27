@@ -10,6 +10,7 @@ import {
   DocumentActions,
   DocumentActionsView,
   documentActionStates,
+  layoutWidth,
   statusLetterOf,
   toRepoRelativePath,
 } from '../../src/client/document-actions.tsx'
@@ -165,5 +166,25 @@ describe('DocumentActionsView compact (B2)', () => {
     expect(html).toContain('⋯')
     expect(html.indexOf('Blame')).toBeLessThan(html.indexOf('<details'))
     expect(html.indexOf('历史')).toBeGreaterThan(html.indexOf('<details'))
+  })
+})
+
+describe('layoutWidth (L4)', () => {
+  type Fake = { clientWidth: number; display: string; parentElement: Fake | null }
+  const chain = (...nodes: Array<[number, string]>): Fake => {
+    let parent: Fake | null = null
+    for (const [clientWidth, display] of [...nodes].reverse()) parent = { clientWidth, display, parentElement: parent }
+    if (parent === null) throw new Error('empty chain')
+    return parent
+  }
+  const displayOf = (node: Fake): string => node.display
+
+  it('skips display: contents wrappers and measures the first laid-out ancestor', () => {
+    const row = chain([120, 'inline-flex'], [0, 'contents'], [647, 'flex'])
+    expect(layoutWidth(row, displayOf)).toBe(647)
+  })
+
+  it('returns null when nothing above has a width', () => {
+    expect(layoutWidth(chain([120, 'inline-flex'], [0, 'contents']), displayOf)).toBeNull()
   })
 })

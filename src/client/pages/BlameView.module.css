@@ -160,6 +160,8 @@
   border-radius: 6px;
   background: var(--dsw-specific-menu);
   box-shadow: var(--dsw-elevation-panel);
+  /* The menu fill is translucent by design; the blur makes it read as a solid card (L4). */
+  backdrop-filter: var(--dsw-menu-backdrop-filter);
   white-space: normal;
 }
 

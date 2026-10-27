@@ -101,7 +101,25 @@ export function documentActionStates(input: {
   }
 }
 
-const COMPACT_WIDTH = 280
+/** Header width below which history and diff fold under ⋯ (the header also holds the host's controls). */
+const COMPACT_WIDTH = 480
+
+interface LayoutNode {
+  readonly clientWidth: number
+  readonly parentElement: LayoutNode | null
+}
+
+/**
+ * Width of the first laid-out ancestor of `node` (L4: the slot wraps the row in `display: contents`,
+ * whose own width is 0); null when none has a width yet.
+ */
+export function layoutWidth<T extends LayoutNode>(node: T, displayOf: (element: T) => string): number | null {
+  for (let current = node.parentElement as T | null; current !== null; current = current.parentElement as T | null) {
+    if (displayOf(current) === 'contents') continue
+    return current.clientWidth > 0 ? current.clientWidth : null
+  }
+  return null
+}
 
 export interface DocumentActionsViewProps {
   t: Translate
@@ -230,10 +248,19 @@ export function DocumentActions(props: DocumentActionsProps): ReactNode {
   const repoRelativePath = toRepoRelativePath(absolutePath, repoRootFor?.(absolutePath))
   // Narrow header (design §9.7): measure the header the row sits in, not the row itself.
   useLayoutEffect(() => {
-    const host = rowRef.current?.parentElement
-    if (host === null || host === undefined || typeof ResizeObserver === 'undefined') return
-    const observer = new ResizeObserver(() => { setCompact(host.clientWidth < COMPACT_WIDTH) })
+    const row = rowRef.current
+    if (row === null || typeof ResizeObserver === 'undefined') return
+    const displayOf = (element: HTMLElement): string => getComputedStyle(element).display
+    let host: HTMLElement | null = row.parentElement
+    while (host !== null && displayOf(host) === 'contents') host = host.parentElement
+    if (host === null) return
+    const measure = (): void => {
+      const width = layoutWidth(row, displayOf)
+      setCompact(width !== null && width < COMPACT_WIDTH)
+    }
+    const observer = new ResizeObserver(measure)
     observer.observe(host)
+    measure()
     return () => { observer.disconnect() }
   }, [])
   return (

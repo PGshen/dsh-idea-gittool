@@ -1,5 +1,6 @@
 .row {
   display: inline-flex;
+  flex: 0 0 auto;
   align-items: center;
   gap: 4px;
 }
@@ -27,6 +28,7 @@
   font: inherit;
   font-size: 12px;
   line-height: 1.5;
+  white-space: nowrap;
   cursor: pointer;
 }
 
@@ -80,6 +82,8 @@
   border-radius: 6px;
   background: var(--dsw-specific-menu);
   box-shadow: var(--dsw-elevation-panel);
+  backdrop-filter: var(--dsw-menu-backdrop-filter);
+  white-space: nowrap;
 }
 
 .note {

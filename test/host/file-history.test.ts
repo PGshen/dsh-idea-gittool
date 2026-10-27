@@ -64,6 +64,13 @@ describe('readFileHistory', () => {
     expect(value.entries[2]).toMatchObject({ additions: 5, deletions: 0 })
   })
 
+  it('gives the abbreviated hash like the log (L4)', async () => {
+    const repo = makeRepo()
+    const { edit } = renamedRepo(repo)
+    const value = await readFileHistory(run, repo.root, { sessionId: 's', path: 'new.txt' })
+    expect(value.entries[0]?.shortSha).toBe(repo.git('rev-parse', '--short', edit).trim())
+  })
+
   it('takes the diff of a pre-rename commit by the path the entry carries', async () => {
     const repo = makeRepo()
     const { create } = renamedRepo(repo)

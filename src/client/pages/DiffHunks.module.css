@@ -106,3 +106,53 @@
 .deleted .marker {
   color: var(--dsw-alias-file-diff-deleted-marker);
 }
+
+/* B3b：行内变更词、折叠的未改内容、并排两栏。 */
+.word {
+  border-radius: 2px;
+  background: var(--dsw-alias-interactive-bg-active);
+  color: inherit;
+}
+
+.fold {
+  position: absolute;
+  top: 0;
+  left: 0;
+  box-sizing: border-box;
+  min-width: 100%;
+  padding: 0 8px;
+  border: 0;
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-secondary);
+  font: inherit;
+  line-height: 20px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.fold:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.splitRow {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  box-sizing: border-box;
+  min-width: 100%;
+  line-height: 20px;
+  white-space: pre;
+}
+
+.half {
+  display: flex;
+  min-width: 0;
+  overflow: hidden;
+  border-right: 0.5px solid var(--dsw-alias-border-l2);
+}
+
+.pad {
+  background: var(--dsw-alias-bg-layer-1);
+}

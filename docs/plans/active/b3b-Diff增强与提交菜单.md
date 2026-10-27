@@ -85,11 +85,11 @@
 - `src/client/diff/{split-rows,word-diff,fold}.ts`：`splitRows(hunks)`、`wordDiff(oldText, newText)`（按词切分后用 `merge/line-diff.ts` 的 `diffSequences`；改动占比 > 60% 视为整行替换）、`foldContext(lines, minRun = 8)`、`changeAnchors(hunks)`。
 - 测试：AC3/AC4 的纯函数部分。
 
-### T5：Diff 查看器 UI（进行中）
+### T5：Diff 查看器 UI（完成）
 - `DiffViewer` 工具栏三个开关、`DiffHunks` 增加并排渲染与词级标记、折叠展开、`n`/`p`、宽度门槛、`diffMode` 持久化（`src/client/settings.ts`，读写都 try/catch）。
 - 测试：静态渲染与 controller 单测；AC5。
 
-### T6：提交菜单与浮层（待开始）
+### T6：提交菜单与浮层（进行中）
 - `commit-actions.ts` 六个新项与可用性；`CreateTagSheet`、`UndoCommitSheet`（复用 `ResetSheet` 的确认样式）、`FixupIntoSheet`（显示将带入的勾选文件数）、`PatchPage`（预览 + 下载 + 复制）、`ApplyPatchPage`（文件选择/粘贴 → 预览 → 应用）、推送页 `revision`。
 - 测试：可用性矩阵、组件静态渲染、下载文件名。
 
@@ -102,14 +102,16 @@
 - 2026-10-27 — T2 — `diff` 的 `-w` 与整文件上下文（`-U1000000`），四种 scope 与未跟踪文件都生效；RPC 透传并纳入缓存键
 - 2026-10-27 — T3 — `createTag`（`check-ref-format`、同名 → `git/branch-exists` + `kind: 'tag'`、附注信息走 stdin）、推送/预览的 `revision`（须为 HEAD 祖先）、`formatPatch`（逐提交 `format-patch -1`，按祖先数排序，拒绝合并提交）、`applyPatch`（mbox → `am --3way`，失败 `am --abort`；diff → 先 `apply --check --index` 再 `apply --index`）、`fixupCommit`（先判断勾选外改动再提交 `fixup!`/`squash!`，`rebase -i --autosquash` 复用 B3a 的 `rebaseOutcome`）
 - 2026-10-27 — T4 — `src/client/diff/diff-views.ts`：`splitRows`、`wordDiff`（按 Unicode 词/数字/空白/标点切分，Myers，改动字符 > 60% 视为整行替换）、`pairChanges`、`foldContext`、`changeAnchors`
+- 2026-10-27 — T5 — 工具栏三个开关（并排按内容区宽度 ≥ 900 门槛）、`DiffHunks` 并排/折叠/词级（与语法高亮合并）、`n`/`p`、控制器 `setOptions`（切换文件沿用）、`src/client/settings.ts` 记住模式、`locales/diffmenu.ts`
 
 ## 下一步
 
-- T5：`DiffViewer` 工具栏（统一/并排、忽略空白、完整文件）、`DiffHunks` 并排渲染 + 词级标记 + 折叠展开、`n`/`p`、宽度门槛、`src/client/settings.ts` 记住 `diffMode`。
+- T6：`commit-actions.ts` 新增 `undoCommit`/`pushUpTo`/`createTag`/`fixupInto`/`squashInto`/`createPatch`；新建 `CreateTagSheet`、`UndoCommitSheet`、`FixupIntoSheet`、`PatchPage`、`ApplyPatchPage`；推送页支持 `revision`；仓库栏 ⋯ 加「应用补丁…」。
 
 ## 决策记录
 
 - 2026-10-27 — `plans/active/` 同时有 b3a（待负责人验收）与 b3b 两份计划：b3a 已完成实现与评审，只等验收；b3b 从 b3a 分支切出，验收后按 b3a → b3b 顺序合并。
+- 2026-10-27 — T5：词级标记与语法高亮合并渲染（按词边界切分高亮片段），而不是二选一；折叠只作用于 hunk 内的长段上下文，默认 3 行上下文时很少触发，主要配合「完整文件」。
 - 2026-10-27 — T4：三个纯函数合在一个文件 `src/client/diff/diff-views.ts`（计划写的是三个文件）——都很小、互相调用（`pairChanges` 用 `splitRows`）。
 - 2026-10-27 — T3：普通 diff 补丁不用 `--3way`：`apply --3way` 失败时会在工作区留下冲突标记却没有任何「操作进行中」状态，横幅与冲突列表都接不住；改为先 `--check` 再 `--index`，不能干净应用就整体拒绝并给出 git 输出。mbox 仍用 `am --3way`（失败即 `am --abort`）。
 - 2026-10-27 — T3：`formatPatch` 按祖先数（`rev-list --count`）排序而非提交时间——同一秒内的提交按时间排序不稳定（测试里实际出现）。

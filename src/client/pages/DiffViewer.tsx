@@ -1,7 +1,7 @@
 // 统一模式 Diff 查看器（设计 §9.1–9.5）：覆盖层占满 Git tab 内容区，顶部「← 返回 + 面包屑 +
 // 文件切换 + 复制路径」，Esc 返回；内容按 §9.3 规则处理重命名/二进制/无变化/截断。
 // 数据与交互状态在 diff-store（store + 控制器）里，组件只做呈现与事件转发。
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent, ReactNode, Ref } from 'react'
 import { languageForPath, useCodeHighlighter } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { CodeHighlighter } from '@deepseek-ai/dsh-client-ui-primitives'
@@ -16,7 +16,7 @@ import {
   truncationNotice,
   useDiffState,
 } from '../store/diff-store.ts'
-import type { DiffLoader, DiffState, DiffViewerPosition } from '../store/diff-store.ts'
+import type { DiffLoader, DiffState, DiffViewOptions, DiffViewerPosition } from '../store/diff-store.ts'
 import { render, useT } from '../i18n.tsx'
 import type { LocalizedText, Translate } from '../i18n.tsx'
 import { Button } from '../ui/Button.tsx'
@@ -24,6 +24,8 @@ import { EmptyState } from '../ui/EmptyState.tsx'
 import { StatusLetter } from '../ui/StatusLetter.tsx'
 import { DiffFileList, DiffFileSelect } from './DiffFileList.tsx'
 import { DiffHunks } from './DiffHunks.tsx'
+import { readDiffMode, writeDiffMode } from '../settings.ts'
+import type { DiffMode } from '../settings.ts'
 import css from './DiffViewer.module.css'
 
 /** 写入剪贴板；没有 navigator 的环境（SSR/单测）静默跳过。 */
@@ -61,7 +63,21 @@ export interface DiffViewerHeaderProps {
   onNext: () => void
   onSelectFile: (file: CommitFileEntry) => void
   onCopy: (text: string) => void
+  /** B3b：显示选项；省略时不显示这三个开关。 */
+  options?: DiffHeaderOptions
+  onOptions?: (next: Partial<Omit<DiffHeaderOptions, 'splitAvailable'>>) => void
 }
+
+/** B3b toolbar state: preferred mode, whether the content is wide enough for split, and the two diff options. */
+export interface DiffHeaderOptions {
+  mode: DiffMode
+  splitAvailable: boolean
+  ignoreWhitespace: boolean
+  fullFile: boolean
+}
+
+/** Content width below which side-by-side is unavailable (design §9.2). */
+export const SPLIT_MIN_WIDTH = 900
 
 /**
  * 顶部工具栏（无 hook）：返回、面包屑、状态字母、文件切换、复制路径。
@@ -80,6 +96,8 @@ export function DiffViewerHeader({
   onNext,
   onSelectFile,
   onCopy,
+  options,
+  onOptions,
 }: DiffViewerHeaderProps): ReactNode {
   const switchable = files.length > 1
   return (
@@ -108,6 +126,23 @@ export function DiffViewerHeader({
             <Button title={t('diff.nextFile')} disabled={!position.hasNext} onClick={onNext}>↓</Button>
           </>
         ) : null}
+        {options === undefined ? null : (
+          <>
+            <span className={css.segmented} role="group" aria-label={t('diff.mode.title')}>
+              <Button aria-pressed={options.mode === 'unified' || !options.splitAvailable} onClick={() => onOptions?.({ mode: 'unified' })}>{t('diff.mode.unified')}</Button>
+              <Button
+                aria-pressed={options.mode === 'split' && options.splitAvailable}
+                disabled={!options.splitAvailable}
+                title={options.splitAvailable ? t('diff.mode.title') : t('diff.mode.narrow')}
+                onClick={() => onOptions?.({ mode: 'split' })}
+              >
+                {t('diff.mode.split')}
+              </Button>
+            </span>
+            <Button aria-pressed={options.ignoreWhitespace} title={t('diff.ignoreWhitespace.title')} onClick={() => onOptions?.({ ignoreWhitespace: !options.ignoreWhitespace })}>{t('diff.ignoreWhitespace')}</Button>
+            <Button aria-pressed={options.fullFile} title={t('diff.fullFile.title')} onClick={() => onOptions?.({ fullFile: !options.fullFile })}>{t('diff.fullFile')}</Button>
+          </>
+        )}
         <Button title={t('diff.copyPath.title')} onClick={() => onCopy(path)}>{t('diff.copyPath')}</Button>
       </div>
     </header>
@@ -128,6 +163,8 @@ export interface DiffContentProps {
   initialScrollTop?: number
   onScrollTopChange?: (scrollTop: number) => void
   onCopy?: (text: string) => void
+  /** B3b：实际使用的显示模式。 */
+  mode?: DiffMode
 }
 
 function BinaryPanel({ value }: { value: DiffFileValue }): ReactNode {
@@ -173,6 +210,7 @@ export function DiffContent({
   initialScrollTop,
   onScrollTopChange,
   onCopy = copyToClipboard,
+  mode = 'unified',
 }: DiffContentProps): ReactNode {
   const t = useT()
   const renamed = value.oldPath !== null && value.newPath !== null && value.oldPath !== value.newPath
@@ -186,7 +224,9 @@ export function DiffContent({
     body = renamed ? (
       <EmptyState title={t('diff.renameOnly')} />
     ) : (
-      <EmptyState title={t('diff.noTextChange')} hint={t('diff.noTextChange.hint')} />
+      request.ignoreWhitespace === true
+        ? <EmptyState title={t('diff.noTextChange.whitespace')} />
+        : <EmptyState title={t('diff.noTextChange')} hint={t('diff.noTextChange.hint')} />
     )
   } else {
     body = (
@@ -196,6 +236,7 @@ export function DiffContent({
         viewportHeight={viewportHeight}
         initialScrollTop={initialScrollTop}
         onScrollTopChange={onScrollTopChange}
+        mode={mode}
       />
     )
   }
@@ -247,6 +288,10 @@ export interface DiffViewerViewProps {
   onCopy: (text: string) => void
   onRetry: () => void
   onKeyDown: (event: Pick<KeyboardEvent, 'key' | 'defaultPrevented' | 'preventDefault'>) => void
+  /** B3b toolbar options (container-owned). */
+  options?: DiffHeaderOptions
+  onOptions?: (next: Partial<Omit<DiffHeaderOptions, 'splitAvailable'>>) => void
+  mainRef?: Ref<HTMLDivElement>
 }
 
 /**
@@ -273,6 +318,9 @@ export function DiffViewerView({
   onCopy,
   onRetry,
   onKeyDown,
+  options,
+  onOptions,
+  mainRef,
 }: DiffViewerViewProps): ReactNode {
   const current = state.request ?? request
   const status = state.value?.status ?? files[position.index]?.status
@@ -290,6 +338,7 @@ export function DiffViewerView({
         initialScrollTop={initialScrollTop}
         onScrollTopChange={onScrollTopChange}
         onCopy={onCopy}
+        mode={options !== undefined && options.mode === 'split' && options.splitAvailable ? 'split' : 'unified'}
       />
     )
   } else if (state.status === 'error') {
@@ -329,6 +378,8 @@ export function DiffViewerView({
         onNext={onNext}
         onSelectFile={onSelectFile}
         onCopy={onCopy}
+        {...(options === undefined ? {} : { options })}
+        {...(onOptions === undefined ? {} : { onOptions })}
       />
       <div className={css.body}>
         {files.length > 1 ? (
@@ -336,7 +387,7 @@ export function DiffViewerView({
             <DiffFileList t={t} files={files} currentIndex={position.index} onSelect={onSelectFile} />
           </div>
         ) : null}
-        <div className={css.main}>{main}</div>
+        <div ref={mainRef} className={css.main}>{main}</div>
       </div>
     </div>
   )
@@ -434,6 +485,38 @@ export function DiffViewer({
   const currentKey = requestKey(current)
   const highlighter = useHighlighter(highlight ? languageForPath(current.path) : undefined)
 
+  // B3b: preferred mode (remembered), width gate for side-by-side, and the two diff options.
+  const [mode, setMode] = useState<DiffMode>(() => readDiffMode())
+  const [diffOptions, setDiffOptions] = useState<DiffViewOptions>({ ignoreWhitespace: false, context: 'default' })
+  const mainRef = useRef<HTMLDivElement | null>(null)
+  const [mainWidth, setMainWidth] = useState(0)
+  useEffect(() => {
+    const node = mainRef.current
+    if (node === null || typeof ResizeObserver === 'undefined') return undefined
+    const observer = new ResizeObserver(entries => { setMainWidth(entries[0]?.contentRect.width ?? 0) })
+    observer.observe(node)
+    return () => { observer.disconnect() }
+  }, [])
+  const headerOptions: DiffHeaderOptions = {
+    mode,
+    splitAvailable: mainWidth >= SPLIT_MIN_WIDTH,
+    ignoreWhitespace: diffOptions.ignoreWhitespace,
+    fullFile: diffOptions.context === 'full',
+  }
+  const changeOptions = (next: Partial<Omit<DiffHeaderOptions, 'splitAvailable'>>): void => {
+    if (next.mode !== undefined) {
+      setMode(next.mode)
+      writeDiffMode(next.mode)
+    }
+    if (next.ignoreWhitespace === undefined && next.fullFile === undefined) return
+    const updated: DiffViewOptions = {
+      ignoreWhitespace: next.ignoreWhitespace ?? diffOptions.ignoreWhitespace,
+      context: (next.fullFile ?? diffOptions.context === 'full') ? 'full' : 'default',
+    }
+    setDiffOptions(updated)
+    void controller.setOptions(updated)
+  }
+
   return (
     <DiffViewerView
       t={t}
@@ -455,6 +538,9 @@ export function DiffViewer({
       onKeyDown={(event) => {
         if (controller.handleKey(event)) event.preventDefault()
       }}
+      options={headerOptions}
+      onOptions={changeOptions}
+      mainRef={mainRef}
     />
   )
 }

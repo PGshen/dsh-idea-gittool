@@ -91,7 +91,7 @@ describe('DiffHunks', () => {
     expect(html).toContain('data-line-type="add"')
     expect(html).toContain('data-line-type="del"')
     expect(html).toContain('data-line-type="context"')
-    expect(html).toContain('const b = 2')
+    expect(html.replace(/<[^>]+>/gu, '')).toContain('const b = 2')
     expect(html).toContain('data-old-line="2"')
     expect(html).toContain('data-new-line="2"')
     expect(html).toMatch(/data-marker[^>]*>\+</)
@@ -101,7 +101,7 @@ describe('DiffHunks', () => {
   it('初始折叠的 hunk 不渲染代码行', () => {
     const html = renderToStaticMarkup(<DiffHunks hunks={[hunk()]} initialCollapsedHunks={[0]} viewportHeight={600} />)
     expect(html).toContain('aria-expanded="false"')
-    expect(html).not.toContain('const b = 2')
+    expect(html.replace(/<[^>]+>/gu, '')).not.toContain('const b = 2')
     expect(html).toContain('4 行')
   })
 
@@ -133,7 +133,9 @@ describe('DiffHunks', () => {
     expect(highlighted).toContain('color:var(--shiki-token-keyword)')
     const plain = renderToStaticMarkup(<DiffHunks hunks={[hunk()]} viewportHeight={600} highlighter={() => undefined} />)
     expect(plain).not.toContain('--shiki-token')
-    expect(plain).toContain('const b = 2')
+    // B3b word marks split the changed line; compare the visible text.
+    expect(plain.replace(/<[^>]+>/gu, '')).toContain('const b = 2')
+    expect(highlighted).toContain('<mark')
   })
 
   it('hunk 头点击回调折叠切换', () => {

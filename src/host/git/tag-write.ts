@@ -5,8 +5,7 @@ import { GIT_BASE_ARGV, GitCommandFailure } from '../git-executor.ts'
 import { parseFullSha } from './integrate.ts'
 import { networkFailure } from './push.ts'
 import { parseRemoteName } from './remote-write.ts'
-import { firstLine, invalidPayload, parseCommitMessage, parseRefName, payloadRecord, query, readRemotes, redactedFailure } from './write-support.ts'
-import { redactCredentials } from '../console.ts'
+import { invalidPayload, parseCommitMessage, parseRefName, payloadRecord, query, readRemotes, redactedFailure } from './write-support.ts'
 
 export interface CreateTagInput {
   name: string
@@ -69,7 +68,10 @@ export const tagPushOperation: WriteOperation<{ name: string; remote: string }, 
   },
 }
 
-/** B3d: delete a tag locally and, when asked, on one remote; a remote failure keeps the local deletion. */
+/**
+ * B3d: delete a tag locally and, when asked, on one remote. The remote goes first: if it fails the
+ * local tag is still there, so the failure is visible and the user can simply retry.
+ */
 export const tagDeleteOperation: WriteOperation<{ name: string; remote: string | undefined }, Omit<TagDeleteValue, 'version'>> = {
   parse(payload) {
     const record = payloadRecord(payload)
@@ -78,13 +80,16 @@ export const tagDeleteOperation: WriteOperation<{ name: string; remote: string |
 
   async run(ctx, input) {
     await assertTag(ctx, input.name)
-    if (input.remote !== undefined) await assertRemote(ctx, input.remote)
+    let remoteDeleted = false
+    if (input.remote !== undefined) {
+      await assertRemote(ctx, input.remote)
+      const ref = `:refs/tags/${input.name}`
+      const remote = await ctx.git([...GIT_BASE_ARGV, 'push', '--porcelain', '--', input.remote, ref], { mode: 'network' })
+      if (remote.exitCode !== 0) throw networkFailure(remote, ctx.repoRoot, ['push', input.remote, ref], 'git push')
+      remoteDeleted = true
+    }
     const local = await ctx.git([...GIT_BASE_ARGV, 'tag', '-d', input.name])
     if (local.exitCode !== 0) throw redactedFailure(local, 'git tag -d')
-    const value: Omit<TagDeleteValue, 'version'> = { name: input.name, localDeleted: true, remoteDeleted: false }
-    if (input.remote === undefined) return value
-    const remote = await ctx.git([...GIT_BASE_ARGV, 'push', '--porcelain', '--', input.remote, `:refs/tags/${input.name}`], { mode: 'network' })
-    if (remote.exitCode === 0) return { ...value, remoteDeleted: true }
-    return { ...value, remoteError: redactCredentials(firstLine(remote.stderr) || firstLine(remote.stdout) || 'git push failed') }
+    return { name: input.name, localDeleted: true, remoteDeleted }
   },
 }

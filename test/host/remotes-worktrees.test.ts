@@ -1,5 +1,5 @@
 // B3d T1–T3: remotes, tag push/delete, remote branch delete, upstream, worktrees (real repositories).
-import { existsSync, realpathSync, rmSync } from 'node:fs'
+import { existsSync, readFileSync, realpathSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -74,6 +74,15 @@ describe('tags', () => {
     expect((await failureOf(write(tagDeleteOperation, local, { name: 'nope' }))).code).toBe('git/stale-target')
     expect((await failureOf(write(tagPushOperation, local, { name: '-x', remote: 'origin' }))).code).toBe('git/invalid-payload')
   })
+
+  it('keeps the local tag when deleting it on the remote fails, so the user can retry', async () => {
+    const { local } = remoteSetup()
+    local.git('tag', 'v3')
+    local.git('remote', 'add', 'gone', 'https://alice:secret@127.0.0.1:9/none.git')
+    const failure = await failureOf(write(tagDeleteOperation, local, { name: 'v3', remote: 'gone' }))
+    expect(JSON.stringify(failure)).not.toContain('secret')
+    expect(local.git('tag', '-l', 'v3').trim()).toBe('v3')
+  })
 })
 
 describe('remote branches and upstream', () => {
@@ -126,6 +135,9 @@ describe('worktrees', () => {
     expect(list).toEqual([expect.objectContaining({ path: repo.root, branch: 'main', current: true, locked: false, prunable: false })])
     const added = await write(worktreeAddOperation, repo, { path: '.worktrees/side', branch: 'side' })
     expect(added.worktree).toMatchObject({ path: realpathSync(join(repo.root, '.worktrees/side')), branch: 'side', current: false })
+    // The new worktree must not show up as an untracked (embedded repository) path in the main worktree.
+    expect(repo.git('status', '--porcelain', '--untracked-files=all').trim()).toBe('')
+    expect(readFileSync(join(repo.root, '.git/info/exclude'), 'utf8')).toContain('/.worktrees/side/')
     await write(worktreeAddOperation, repo, { path: '.worktrees/fresh', branch: 'fresh', createBranch: true })
     expect(repo.git('rev-parse', 'fresh').trim()).toBe(repo.git('rev-parse', 'HEAD').trim())
     expect((await readWorktreeList(run, repo.root)).map(entry => entry.branch).sort()).toEqual(['fresh', 'main', 'side'])

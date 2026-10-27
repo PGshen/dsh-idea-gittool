@@ -91,4 +91,4 @@
 | 删除远程标签用 `push <remote> :refs/tags/<name>`；删除远程分支用 `push <remote> :refs/heads/<b>`，成功后本地 `refs/remotes/<remote>/<b>` 一并消失 | ✅ 2026-10-28 | 同上 + L4 |
 | `branch --set-upstream-to=refs/remotes/<remote>/<b> <branch>`（用完整 ref 避免与同名本地分支歧义）要求远程跟踪 ref 存在；`branch --unset-upstream <branch>` 取消 | ✅ 2026-10-28 | 同上 |
 | `remote get-url` 返回带凭据的原始 URL；脱敏在 Host 做，整段 userinfo 换成 `***`（`https://***@host/...`） | ✅ 2026-10-28 | 同上 |
-
+| 仓库内新建的 worktree 在主工作区显示为未跟踪目录，`git add` 会提示 `adding embedded git repository` 并暂存 gitlink；用 `rev-parse --git-path info/exclude` 找到本地 exclude 文件写入 `/<路径>/` 即可隐藏 | ✅ 2026-10-28 | B3d 终审 I2 + `remotes-worktrees.test.ts` |

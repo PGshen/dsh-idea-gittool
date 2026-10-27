@@ -799,7 +799,7 @@ export interface TagPushValue {
   version?: number
 }
 
-/** `remote` 给出时同时删除该远程上的同名标签；远程失败不回滚本地删除，`remoteError` 说明原因。 */
+/** `remote` 给出时先删除该远程上的同名标签；远程失败时整个请求失败，本地标签保留。 */
 export interface TagDeleteRequest extends WriteRequest {
   name: string
   remote?: string
@@ -809,7 +809,6 @@ export interface TagDeleteValue {
   name: string
   localDeleted: boolean
   remoteDeleted: boolean
-  remoteError?: string
   version?: number
 }
 

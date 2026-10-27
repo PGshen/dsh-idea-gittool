@@ -89,10 +89,11 @@ worktreePrune: WriteRequest → { pruned: number }
 
 ## 下一步
 
-- 整分支评审（`b3c-shelf-changelist..HEAD`），修复 Critical/Important，Minor 进 TODO；然后等负责人统一验收 B3。
+- 等负责人统一验收 B3（合并顺序 b3a → b3b → b3c → b3d）；验收后开启 flag `worktrees`。
 
 ## 决策记录
 
+- 2026-10-28 — 整分支评审（独立子代理，无 Critical）。修复：I1 远程删除标签失败时本地已删、界面无提示且无法重试 → 改为先删远程、失败则整个请求失败并保留本地标签（契约去掉 `remoteError`）；I2 仓库内新建的 worktree 在主工作区显示为未跟踪，`git add` 会提交内嵌仓库 gitlink → 新建时把路径写进本地 `info/exclude`（不提交、不改 `.gitignore`；exclude 文件不在仓库内时跳过）。M1–M9 进 TODO：`HEAD` 删除未 `--no-deref`、含 `/` 的远程名、标签推送被拒信息、主/锁定 worktree 删除按钮、符号链接 `.worktrees`、`remoteList` 失败未脱敏、「留空不修改」文案、改 URL 只改 fetch、成功无提示。
 - 2026-10-28 — T4/T5 合并为一次提交，视图组件先写、静态渲染测试后补（同 B3b/B3c 的做法）。新菜单项只在上下文带 `remotes` 时出现（保持旧的可用性矩阵测试不变）。
 - 2026-10-28 — T1–T3 合并为一次提交：`remoteList`/`worktreeList` 只需会话参数，占位实现会让路由登记测试失败（与 B3c 同理）。
 - 2026-10-28 — 待确认 1–4 按推荐执行（负责人授权 AI 自行推进 B3b–B3d，验收时统一 review）。

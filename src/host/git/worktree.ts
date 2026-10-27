@@ -1,7 +1,7 @@
 // Worktrees (plan b3d T3, behind the client flag `worktrees`): list, add from an existing or a new
 // branch at a path inside the repository (the write boundary of `workspace-write`), remove, prune.
-import { realpath } from 'node:fs/promises'
-import { join } from 'node:path'
+import { appendFile, mkdir, readFile, realpath } from 'node:fs/promises'
+import { dirname, isAbsolute, join, relative } from 'node:path'
 import type { WorktreeAddValue, WorktreeEntry, WorktreePruneValue, WorktreeRemoveValue } from '../../shared/protocol.ts'
 import type { GitRunner, WriteContext, WriteOperation } from '../git-executor.ts'
 import { GIT_BASE_ARGV, failureFromExit } from '../git-executor.ts'
@@ -53,6 +53,28 @@ export interface WorktreeAddInput {
   startPoint: string | undefined
 }
 
+/**
+ * Keep a worktree created inside the repository out of the main worktree's untracked files: otherwise
+ * `git add` on it stages an embedded-repository gitlink. Uses `info/exclude`, which is local and never
+ * committed (the user's `.gitignore` stays untouched). Skipped when the exclude file lies outside the
+ * repository (a linked-worktree session whose common dir is elsewhere).
+ */
+async function excludeLocally(ctx: WriteContext, path: string): Promise<void> {
+  const located = await query(ctx, ['rev-parse', '--git-path', 'info/exclude'])
+  const named = located.stdout.trim()
+  if (located.exitCode !== 0 || named === '') return
+  const file = isAbsolute(named) ? named : join(ctx.repoRoot, named)
+  const [root, gitDir] = await Promise.all([realpath(ctx.repoRoot), realpath(dirname(dirname(file))).catch(() => null)])
+  if (gitDir === null) return
+  const inside = relative(root, gitDir)
+  if (inside.startsWith('..') || isAbsolute(inside)) return
+  await mkdir(dirname(file), { recursive: true })
+  const line = `/${path.replace(/\/+$/u, '').replace(/[*?[\\]/gu, match => `\\${match}`)}/`
+  const current = await readFile(file, 'utf8').catch(() => '')
+  if (current.split('\n').includes(line)) return
+  await appendFile(file, `${current === '' || current.endsWith('\n') ? '' : '\n'}${line}\n`)
+}
+
 export const worktreeAddOperation: WriteOperation<WorktreeAddInput, Omit<WorktreeAddValue, 'version'>> = {
   parse(payload) {
     const record = payloadRecord(payload)
@@ -81,6 +103,7 @@ export const worktreeAddOperation: WriteOperation<WorktreeAddInput, Omit<Worktre
       }
       throw redactedFailure(result, 'git worktree add')
     }
+    await excludeLocally(ctx, input.path)
     const path = await canonical(target)
     const worktree = (await listOf(ctx)).find(entry => entry.path === path)
     if (worktree === undefined) throw invalidPayload('the new worktree is not listed', {})

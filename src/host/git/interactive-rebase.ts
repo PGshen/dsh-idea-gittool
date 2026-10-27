@@ -112,6 +112,8 @@ export const interactiveRebaseOperation: WriteOperation<
           ...GIT_BASE_ARGV,
           'rebase',
           '-i',
+          // Pin git-behavior §4 regardless of `rebase.rescheduleFailedExec` (review I3).
+          '--no-reschedule-failed-exec',
           ...(input.updateRefs ? ['--update-refs'] : []),
           ...(input.base === null ? ['--root'] : ['--end-of-options', input.base]),
         ],
@@ -119,7 +121,14 @@ export const interactiveRebaseOperation: WriteOperation<
       )
       // Never trust the exit code alone: an `edit` stop exits 0 (references/git-behavior §4).
       if ((await detectOperationIn(gitDir)) === 'rebase') {
-        return { open: true, stop: await readRebaseStop(gitDir, await unmergedCount(ctx)) }
+        const stop = await readRebaseStop(gitDir, await unmergedCount(ctx))
+        if (stop === undefined && result.exitCode !== 0) {
+          // Stopped for a reason the banner cannot name (e.g. a pick would overwrite untracked
+          // files): keep git's words instead of closing the page silently (review M5).
+          const failure = redactedFailure(result, 'git rebase -i')
+          throw new GitCommandFailure(failure.code, failure.message, { ...failure.details, operation: 'rebase', output: outputSummary(result) })
+        }
+        return { open: true, stop }
       }
       if (result.exitCode !== 0) {
         if (await hasHook(ctx, REBASE_HOOKS)) {

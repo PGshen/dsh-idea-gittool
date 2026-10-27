@@ -167,7 +167,7 @@ Host 约束（各任务共用）：
 
 ## 下一步
 
-- 整分支评审（`git merge-base main HEAD`..HEAD），按评审结果修复；之后等负责人统一验收（负责人授权：B3a 后接着做 B3b–B3d）。
+- 等负责人统一验收 B3（负责人授权：B3a 后接着做 B3b–B3d）。验收通过后按 SOP §8 rebase 到 main、`make check`、`--no-ff` 合并。
 
 ## 决策记录
 
@@ -186,6 +186,7 @@ Host 约束（各任务共用）：
 - 2026-10-27 — T6：`StatusValue` 增加 `rebaseStop`（与 `operationState.rebaseStop` 同一读取函数）——横幅与提交页读的是 status，不是 operationState；属于协议的可选字段追加。
 - 2026-10-27 — T6：`edit` 停下时提交页回到普通模式，Host 的 `commitFiles`/`amendMessage` 用 `assertNoOperationUnlessEditStop` 放行（其他停下原因仍是 `git/operation-in-progress`）；这是 A2 写端点行为的有意放宽，只限于 `rebase-merge` 且停在 `edit`。
 - 2026-10-27 — T6：可用性按已加载日志沿 HEAD 的 first-parent 链判断；链走出已加载页时视为「可能」，由 `rebasePlan` 最终裁定（计划原意）。
+- 2026-10-27 — 整分支评审（独立子代理，无 Critical）。修复：I1 同名标签时 `--short` 输出 `heads/<名>` → 一律读完整 ref；I2 `--update-refs` 会移动其他 worktree 签出的分支 → 计划里剔除所有 worktree 签出的分支；I3 用户配置 `rebase.rescheduleFailedExec=true` 会让失败的 exec 重排、横幅文案失真 → 显式 `--no-reschedule-failed-exec`；M5（按影响上调）未识别原因的停下（如 pick 会覆盖未跟踪文件）原先静默关页 → 抛出带 `operation: 'rebase'` 与 git 输出的错误；M7（按影响上调）信息含 `\x1e`/`\x1f` 时计划解析截断、未编辑的 reword 会悄悄改信息 → `log -z` + NUL 分隔字段。M1–M4、M6 登记 TODO。
 - 2026-10-27 — T1：`RebasePreset` 类型提前在 `src/client/rebase/rebase-model.ts` 定义（覆盖层类型要用）；T4 在同一文件补函数。
 - 2026-10-27 — 横幅步数沿用 git 的 `msgnum/end`，包含 `exec`/`update-ref` 行（会比提交数多）；不自行换算，避免和终端里看到的 git 输出不一致。
 - 2026-10-27 — 写回信息的 `exec` 用 `--no-verify`：`git rebase -i` 自身 pick 时不跑 pre-commit，改信息时再跑 pre-commit 会在历史提交上触发与当前工作区无关的检查。
@@ -210,5 +211,6 @@ Host 约束（各任务共用）：
   - 流程 2「F2 → 改为 edit → 停下 → Amend → 继续」：横幅 `04-edit-stop-banner.jpg`（「正在变基 1/2」「已在 edit 处停下…」），提交页为普通模式且可 Amend，Amend 后 `rebase-merge` 仍在，「继续」后变基结束，被 edit 的提交包含改动。
   - 走查发现并修复：打开覆盖页后焦点在对话框根上，字母键与方向键要先点一下列表才生效——改为加载后聚焦列表（reword 预设聚焦信息框），实机复验 F2 后焦点在信息框。
   - 走查发现、未修（登记 TODO）：变基改写历史后，日志详情区仍显示改写前选中的旧提交（A1 的既有行为）；列表里分支名标签与背景对比弱。
+- 评审修复：`test/host/rebase-plan.test.ts`（I1、I2、M7）、`test/host/interactive-rebase.test.ts`（I3、M5）先红后绿。
 - 体积：`lib/client.js` 1089.4 KB → 1126 KB（+约 37 KB，含 css +3.6 KB）。
 - 未验证：Windows（Git for Windows sh 下的 `cat >` 与 exec 管道）——B4 跨平台。

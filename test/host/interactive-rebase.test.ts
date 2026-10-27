@@ -287,6 +287,47 @@ describe('interactiveRebaseOperation.run', () => {
     expect((await readOperationState(runner, repo.root)).rebaseStop).toBe('exec-failed')
   })
 
+  it('reports exec-failed and does not reschedule even when the user config asks to (review I3)', async () => {
+    const repo = makeRepo()
+    const [c1] = linear(repo, 1)
+    repo.git('config', 'rebase.rescheduleFailedExec', 'true')
+    const ctx = contextFor(repo)
+    const input = interactiveRebaseOperation.parse({
+      sessionId: 's', requestId: 'r', base: repo.git('rev-parse', 'HEAD~1').trim(), head: repo.git('rev-parse', 'HEAD').trim(),
+      entries: [{ sha: c1, action: 'reword', message: 'x' }],
+    })
+    const failing: typeof ctx = {
+      ...ctx,
+      git: async (argv, options) => (argv.includes('hash-object')
+        ? { ...(await ctx.git(argv, options)), stdout: `${'0'.repeat(40)}\n` }
+        : await ctx.git(argv, options)),
+    }
+    expect(await interactiveRebaseOperation.run(failing, input)).toMatchObject({ stop: 'exec-failed' })
+    const gitDir = repo.git('rev-parse', '--absolute-git-dir').trim()
+    expect(existsSync(join(gitDir, 'rebase-merge', 'reschedule-failed-exec'))).toBe(false)
+    expect(readFileSync(join(gitDir, 'rebase-merge', 'git-rebase-todo'), 'utf8')).not.toContain('exec ')
+  })
+
+  it('surfaces git output when the rebase stops for no recognised reason (review M5)', async () => {
+    const repo = makeRepo()
+    const [c1, c2] = linear(repo, 2)
+    const base = repo.git('rev-parse', 'HEAD~2').trim()
+    // f2.txt is untracked at HEAD; picking c2 (which adds f2.txt) would overwrite it.
+    repo.write('f2.txt', 'untracked blocker\n')
+    repo.git('rm', '-q', '--cached', 'f2.txt')
+    repo.git('-c', 'user.name=T', '-c', 'user.email=t@x', 'commit', '-q', '-m', 'untrack f2')
+    const head = repo.git('rev-parse', 'HEAD').trim()
+    const ctx = contextFor(repo)
+    const input = interactiveRebaseOperation.parse({
+      sessionId: 's', requestId: 'r', base, head,
+      entries: [{ sha: c1 ?? '', action: 'pick' }, { sha: head, action: 'pick' }, { sha: c2 ?? '', action: 'pick' }],
+    })
+    const failure = await interactiveRebaseOperation.run(ctx, input).then(() => null, (error: unknown) => error)
+    expect(failure).toBeInstanceOf(GitCommandFailure)
+    expect((failure as GitCommandFailure).details).toMatchObject({ operation: 'rebase' })
+    expect(String((failure as GitCommandFailure).details?.output ?? '')).toMatch(/untracked|overwritten/u)
+  })
+
   it('refuses a moved HEAD, a non-permutation, a blocked plan and an operation in progress', async () => {
     const repo = makeRepo()
     const [c1, c2] = linear(repo, 2)

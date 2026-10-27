@@ -1,5 +1,6 @@
 // B3a T2：交互式变基计划（真实临时仓库）。
 import { spawnSync } from 'node:child_process'
+import { rmSync } from 'node:fs'
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -93,6 +94,39 @@ describe('readRebasePlan', () => {
     repo.git('branch', 'also-mid', shas[1] ?? '')
     const value = await readRebasePlan(run, repo.root, { sessionId: 's', base: 'HEAD~3' })
     expect(value.commits.map(commit => commit.branches)).toEqual([[], ['also-mid', 'mid'], []])
+  })
+
+  it('names branches by their full ref even when a tag shares the name (review I1)', async () => {
+    const repo = makeRepo()
+    const shas = linear(repo, 2)
+    repo.git('branch', 'foo', shas[0] ?? '')
+    repo.git('tag', 'foo', shas[1] ?? '')
+    repo.git('tag', 'main', shas[0] ?? '')
+    const value = await readRebasePlan(run, repo.root, { sessionId: 's', base: 'HEAD~2' })
+    expect(value.branch).toBe('main')
+    expect(value.commits.map(commit => commit.branches)).toEqual([['foo'], []])
+  })
+
+  it('leaves out branches checked out in another worktree (review I2)', async () => {
+    const repo = makeRepo()
+    const shas = linear(repo, 2)
+    repo.git('branch', 'wt', shas[0] ?? '')
+    const other = `${repo.root}-wt`
+    repo.git('worktree', 'add', '-q', other, 'wt')
+    cleanups.push(() => { rmSync(other, { recursive: true, force: true }) })
+    const value = await readRebasePlan(run, repo.root, { sessionId: 's', base: 'HEAD~2' })
+    expect(value.commits.map(commit => commit.branches)).toEqual([[], []])
+  })
+
+  it('keeps messages with record and field separator characters intact (review M7)', async () => {
+    const repo = makeRepo()
+    repo.write('x.txt', 'x\n')
+    repo.git('add', '-A')
+    repo.git('-c', 'user.name=T', '-c', 'user.email=t@x', 'commit', '-q', '-m', 'odd \x1e record \x1f field')
+    const message = repo.git('log', '-1', '--format=%B').replace(/\n+$/u, '')
+    const value = await readRebasePlan(run, repo.root, { sessionId: 's', base: 'HEAD~1' })
+    expect(value.commits).toHaveLength(1)
+    expect(value.commits[0]?.message).toBe(message)
   })
 
   it('blocks a range containing a merge commit', async () => {

@@ -344,3 +344,33 @@ describe('readDiff scope range (B2 T3)', () => {
     expect(await codeOf(readDiff(run, repo.root, { path: 'f.txt', scope: 'range', from: '--output=x', to: null }))).toBe('git/invalid-payload')
   })
 })
+
+describe('readDiff scope range is limited to the file (终审 I3)', () => {
+  it('scans only the requested path (and its origPath), still seeing the rename', async () => {
+    const repo = makeRepo()
+    repo.write('old.txt', 'one\ntwo\nthree\nfour\n')
+    repo.write('other.txt', 'x\n')
+    repo.commit('base')
+    repo.git('checkout', '-q', '-b', 'feature')
+    repo.git('mv', 'old.txt', 'new.txt')
+    repo.write('other.txt', 'y\n')
+    repo.commit('rename')
+    const calls: string[][] = []
+    const recording: typeof run = async (argv, options) => {
+      calls.push([...argv])
+      return run(argv, options)
+    }
+    const value = await readDiff(recording, repo.root, { path: 'new.txt', origPath: 'old.txt', scope: 'range', from: 'main', to: 'feature' })
+    expect(value).toMatchObject({ status: 'R', oldPath: 'old.txt', newPath: 'new.txt' })
+    const raw = calls.find(argv => argv.includes('--raw'))
+    expect(raw?.slice(raw.indexOf('--') + 1)).toEqual(['old.txt', 'new.txt'])
+  })
+
+  it('rejects origPath outside scope range and validates it like a path', async () => {
+    const repo = makeRepo()
+    repo.write('a.txt', 'a\n')
+    repo.commit('base')
+    expect(await codeOf(readDiff(run, repo.root, { path: 'a.txt', origPath: 'b.txt', scope: 'worktree' }))).toBe('git/invalid-payload')
+    expect(await codeOf(readDiff(run, repo.root, { path: 'a.txt', origPath: '../b', scope: 'range', from: 'HEAD', to: null }))).toBe('git/invalid-payload')
+  })
+})

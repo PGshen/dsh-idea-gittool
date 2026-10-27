@@ -186,6 +186,17 @@ describe('readBlame', () => {
     expect(empty).toMatchObject({ totalLines: 0, lines: [], segments: [] })
   })
 
+  it('ignores textconv drivers so the lines match the counted content (终审 I2)', async () => {
+    const repo = makeRepo()
+    repo.write('.gitattributes', '*.dat diff=dup\n')
+    repo.git('config', 'diff.dup.textconv', 'sed p')
+    repo.write('x.dat', 'a\nb\nc')
+    repo.commit('first')
+    const value = await readBlame(run, repo.root, { sessionId: 's', path: 'x.dat' })
+    expect(value.totalLines).toBe(3)
+    expect(value.lines).toEqual(['a', 'b', 'c'])
+  })
+
   it('reports binary and too-large files without blaming them', async () => {
     const repo = makeRepo()
     repo.write('bin.dat', 'a\0b\n')

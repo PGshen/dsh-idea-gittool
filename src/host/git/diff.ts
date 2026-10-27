@@ -55,6 +55,8 @@ export interface DiffQuery {
   from?: unknown
   to?: unknown
   mergeBase?: unknown
+  /** scope=range: the file's path on the old side when it was renamed (limits the scan to both paths). */
+  origPath?: unknown
 }
 
 export interface ReadDiffOptions {
@@ -185,9 +187,10 @@ export async function readDiff(
   if (scope !== 'commit' && (query.sha !== undefined || query.parent !== undefined)) {
     throw invalidPayload('sha/parent are only valid for scope "commit"')
   }
-  if (scope !== 'range' && (query.from !== undefined || query.to !== undefined || query.mergeBase !== undefined)) {
-    throw invalidPayload('from/to/mergeBase are only valid for scope "range"')
+  if (scope !== 'range' && (query.from !== undefined || query.to !== undefined || query.mergeBase !== undefined || query.origPath !== undefined)) {
+    throw invalidPayload('from/to/mergeBase/origPath are only valid for scope "range"')
   }
+  const origPath = query.origPath === undefined ? undefined : validateRepoPath(query.origPath)
 
   const range = await rangeArgs(run, cwd, scope, query, signal)
 
@@ -201,9 +204,10 @@ export async function readDiff(
     '--no-abbrev',
     ...range,
     '--',
-    // Worktree renames do not exist (unstaged files are add/delete); other scopes scan the
-    // whole tree so a rename into `path` is recognized.
-    ...(scope === 'worktree' ? [path] : []),
+    // Worktree renames do not exist (unstaged files are add/delete); staged/commit scan the whole
+    // tree so a rename into `path` is recognized. A range (B2) can span thousands of files: it scans
+    // only this file and, when the caller knows it, its old path (终审 I3).
+    ...(scope === 'worktree' ? [path] : scope === 'range' ? (origPath === undefined || origPath === path ? [path] : [origPath, path]) : []),
   ]
   const rawResult = await run(rawArgv, { cwd, signal })
   if (rawResult.exitCode !== 0) throw failureFromExit(rawResult, 'git diff --raw')

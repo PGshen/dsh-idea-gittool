@@ -193,6 +193,18 @@ describe('compare store', () => {
     expect(diff.getState().status).toBe('idle')
   })
 
+  it('sends the old path of a renamed file so the Host scans only that file (终审 I3)', async () => {
+    const load = vi.fn(async (request: CompareRequest) => ok(compareValue(request, { files: [{ path: 'new.txt', origPath: 'old.txt', status: 'R' }] })))
+    const diffLoad = vi.fn(async (_request: DiffRequest) => ok({ oldPath: 'old.txt', newPath: 'new.txt', status: 'R', binary: false, hunks: [], truncated: false } satisfies DiffFileValue))
+    const store = createCompareStore({ sessionId: 's', load, diff: createDiffStore({ load: diffLoad }) })
+    await store.open({ left: 'feature', right: 'main' })
+    await store.selectFile('new.txt')
+    expect(diffLoad).toHaveBeenLastCalledWith(
+      { sessionId: 's', path: 'new.txt', scope: 'range', from: B, to: A, mergeBase: true, origPath: 'old.txt' },
+      expect.any(AbortSignal),
+    )
+  })
+
   it('compares with the worktree: no swap, diff from the revision to the worktree', async () => {
     const load = vi.fn(async (request: CompareRequest) => ok(compareValue(request, { commits: [] })))
     const diffLoad = vi.fn(async (_request: DiffRequest) => ok({ oldPath: 'f.txt', newPath: 'f.txt', status: 'M', binary: false, hunks: [], truncated: false } satisfies DiffFileValue))

@@ -161,7 +161,7 @@ export async function readBlame(
   const count = Math.min(limit, totalLines - start + 1)
   const result = await run(
     [
-      ...GIT_BASE_ARGV, 'blame', '--line-porcelain', '--root', '-L', `${String(start)},+${String(count)}`,
+      ...GIT_BASE_ARGV, 'blame', '--line-porcelain', '--root', '--no-textconv', '-L', `${String(start)},+${String(count)}`,
       ...(rev === null ? [] : [rev]), '--', path,
     ],
     { cwd, signal, stdoutMaxBytes: BLAME_STDOUT_MAX_BYTES },

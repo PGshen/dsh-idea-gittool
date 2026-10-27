@@ -335,7 +335,7 @@ export function createRpcRuntime(deps: RpcDeps): RpcRuntime {
             runtime,
             payload,
             signal,
-            `${DIFF_CACHE_PREFIX}:${JSON.stringify([query.scope, query.sha ?? '', query.parent ?? '', query.path, query.from ?? null, query.to ?? null, query.mergeBase ?? null])}`,
+            `${DIFF_CACHE_PREFIX}:${JSON.stringify([query.scope, query.sha ?? '', query.parent ?? '', query.path, query.from ?? null, query.to ?? null, query.mergeBase ?? null, query.origPath ?? null])}`,
             (root) => readDiff(deps.runner, root, query, { signal }),
           )
         }
@@ -759,6 +759,7 @@ function parseDiffQuery(payload: unknown): DiffQuery & { path: string } {
   if (record.from !== undefined) query.from = record.from
   if (record.to !== undefined) query.to = record.to
   if (record.mergeBase !== undefined) query.mergeBase = record.mergeBase
+  if (record.origPath !== undefined) query.origPath = record.origPath
   return query
 }
 

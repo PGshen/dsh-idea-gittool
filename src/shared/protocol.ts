@@ -419,6 +419,8 @@ export interface DiffRequest extends RpcRequest {
   to?: string | null
   /** scope=range 且 `to` 非 null 时：从 `from` 与 `to` 的合并基算起（`from...to`）。 */
   mergeBase?: boolean
+  /** scope=range：文件在旧侧的路径（重命名时）；Host 只扫描这两个路径（B2 终审 I3）。 */
+  origPath?: string
 }
 
 export type DiffLineKind = 'context' | 'add' | 'del'

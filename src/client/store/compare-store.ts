@@ -127,9 +127,12 @@ export function createCompareStore(options: { sessionId: string; load: CompareLo
       const value = state.value
       if (value === null) return
       emit({ ...state, selectedPath: path })
+      // The Host scans only this file; a renamed file also needs its old path to stay a rename.
+      const origPath = state.files.find(file => file.path === path)?.origPath
+      const renamed = origPath === undefined ? {} : { origPath }
       await options.diff.open(value.right === null
-        ? { sessionId: options.sessionId, path, scope: 'range', from: value.left.sha, to: null }
-        : { sessionId: options.sessionId, path, scope: 'range', from: value.right.sha, to: value.left.sha, mergeBase: true })
+        ? { sessionId: options.sessionId, path, scope: 'range', from: value.left.sha, to: null, ...renamed }
+        : { sessionId: options.sessionId, path, scope: 'range', from: value.right.sha, to: value.left.sha, mergeBase: true, ...renamed })
     },
     close: () => {
       controller?.abort()

@@ -125,7 +125,8 @@ function sameDiffRequest(left: DiffRequest, right: DiffRequest): boolean {
     left.parent === right.parent &&
     left.from === right.from &&
     left.to === right.to &&
-    left.mergeBase === right.mergeBase
+    left.mergeBase === right.mergeBase &&
+    left.origPath === right.origPath
   )
 }
 

@@ -10,8 +10,8 @@ function storage(values: Record<string, string>): Pick<Storage, 'getItem'> {
 afterEach(() => { vi.unstubAllGlobals() })
 
 describe('isFeatureEnabled', () => {
-  it('mergeWindow defaults to off and uses the documented storage key', () => {
-    expect(MERGE_WINDOW_DEFAULT).toBe(false)
+  it('mergeWindow defaults to on (accepted 2026-10-27) and uses the documented storage key', () => {
+    expect(MERGE_WINDOW_DEFAULT).toBe(true)
     expect(MERGE_WINDOW_STORAGE_KEY).toBe('dsh-git.feature.mergeWindow')
     vi.stubGlobal('localStorage', storage({}))
     expect(isFeatureEnabled('mergeWindow')).toBe(MERGE_WINDOW_DEFAULT)

@@ -1,8 +1,8 @@
 // Client feature flags (B1). A flag has a compiled-in default; a viewer can override it
 // per browser with localStorage (`'1'` on, `'0'` off). Any storage failure means the default.
 
-/** Three-way merge window and the enhanced conflict list (B1); flipped to true after acceptance (T8). */
-export const MERGE_WINDOW_DEFAULT = false
+/** Three-way merge window and the enhanced conflict list (B1); on since owner acceptance (2026-10-27). */
+export const MERGE_WINDOW_DEFAULT = true
 
 /** localStorage key that overrides {@link MERGE_WINDOW_DEFAULT}. */
 export const MERGE_WINDOW_STORAGE_KEY = 'dsh-git.feature.mergeWindow'

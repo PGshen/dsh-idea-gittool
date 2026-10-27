@@ -50,6 +50,8 @@ import { readOnlyMessage } from '../localized-text.ts'
 import { ReadOnlyBanner } from '../read-only-banner.tsx'
 import { createDetailStore, useDetailState } from '../store/detail-store.ts'
 import { createDiffStore } from '../store/diff-store.ts'
+import { intentEffect, subscribeIntents } from '../workbench-intents.ts'
+import type { WorkbenchIntent } from '../workbench-intents.ts'
 import { createFileHistoryStore } from '../store/file-history-store.ts'
 import { createLogStore } from '../store/log-store.ts'
 import { ActionNotice } from './ActionNotice.tsx'
@@ -69,10 +71,14 @@ import { FETCH_ALL, branchActionContext, createBranchActionRunner, outcomeNotice
 import type { ActionNotice as ActionNoticeValue, BranchActionRunnerDeps, QuickActionId } from './branch-actions.ts'
 import { createBranchesStore, useBranchesState } from './branch-store.ts'
 import { CommitDetail } from './CommitDetail.tsx'
+import { ActionMenu } from './ActionMenu.tsx'
 import { BlameOverlay } from './BlameView.tsx'
 import { ComparePage } from './ComparePage.tsx'
 import { DiffViewer } from './DiffViewer.tsx'
 import { FileHistoryPage } from './FileHistoryPage.tsx'
+import { fileActions } from './file-actions.ts'
+import type { FileActionId } from './file-actions.ts'
+import type { MenuAnchor } from './menu-position.ts'
 import { DirtyWorktreeSheet } from './DirtyWorktreeSheet.tsx'
 import css from './GitWorkbench.module.css'
 import { LogPage } from './LogPage.tsx'
@@ -299,6 +305,8 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
 
   const [refsBySha, setRefsBySha] = useState<Record<string, RefEntry[]> | undefined>(undefined)
   const [selectedFile, setSelectedFile] = useState<{ path: string; parentSha?: string } | undefined>(undefined)
+  // B2: right-click menu of a commit detail file row.
+  const [fileMenu, setFileMenu] = useState<{ file: CommitFileEntry; parentSha: string | undefined; anchor: MenuAnchor } | null>(null)
   const [consoleHeight, setConsoleHeight] = useState(CONSOLE_DEFAULT_HEIGHT)
   const [refreshing, setRefreshing] = useState(false)
 
@@ -422,6 +430,21 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
   const navigateTo = useCallback((sha: string) => {
     logStore.jumpTo(sha)
   }, [logStore])
+
+  // B2: intents from the document header and the git.blame page (queued while this tab was not mounted).
+  const intentHandler = useRef<(intent: WorkbenchIntent) => void>(() => undefined)
+  intentHandler.current = (intent) => {
+    const effect = intentEffect(intent, status)
+    if (effect.kind === 'overlay') overlays.open(effect.overlay, null)
+    else if (effect.kind === 'diff') openWorktreeDiff(effect.path, effect.scope)
+    else if (effect.kind === 'showCommit') showCommitInLog(effect.sha)
+    else {
+      overlays.dismiss()
+      setPage('commit')
+      changesStore.setFocused(effect.path)
+    }
+  }
+  useEffect(() => subscribeIntents(sessionId, (intent) => { intentHandler.current(intent) }), [sessionId])
 
   /** B2: leave the overlay chain and reveal one commit in the log. */
   const showCommitInLog = useCallback((sha: string) => {
@@ -582,6 +605,7 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
     },
     openPush: () => { openPush({}) },
     onOutcome: (outcome) => { setNotice(outcomeNotice(outcome)) },
+    currentBranch: () => (status === null || status.detached ? null : status.branch),
   }
   const branchRunner = useMemo(() => createBranchActionRunner({
     actions,
@@ -591,6 +615,7 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
     filterLog: (entry) => { runnerDeps.current?.filterLog(entry) },
     openPush: () => { runnerDeps.current?.openPush() },
     onOutcome: (outcome) => { runnerDeps.current?.onOutcome(outcome) },
+    currentBranch: () => runnerDeps.current?.currentBranch?.() ?? null,
   }), [actions])
   const reportOutcome = useCallback((outcome: ActionOutcome<unknown>) => { setNotice(outcomeNotice(outcome)) }, [])
   const runQuickAction = useCallback((id: QuickActionId, trigger: FocusTarget | null) => {
@@ -656,7 +681,9 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
   const stashBusy = Object.keys(actionState.pending).some(key => key.startsWith('stash'))
   const blockText = (reason: typeof integrateBlock): string | null => (reason === undefined ? null : t(reason.key, reason.params))
   const runCommitAction = useCallback((id: CommitActionId, commit: CommitSummary, trigger: FocusTarget | null, childSha: string | null) => {
-    const effect = commitActionEffect(id, commit, childSha)
+    const log = logStore.getState()
+    const selected = log.commits.filter(candidate => log.selection.includes(candidate.sha))
+    const effect = commitActionEffect(id, commit, childSha, selected)
     if (effect === null) return
     if (effect.kind === 'copy') void globalThis.navigator?.clipboard?.writeText(effect.value)
     else if (effect.kind === 'jump') navigateTo(effect.sha)
@@ -664,7 +691,7 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
       setNotice(null)
       overlays.open(effect.overlay, trigger)
     }
-  }, [navigateTo, overlays.open])
+  }, [logStore, navigateTo, overlays.open])
 
   const renderDetail = useCallback(() => (
     detail.status === 'idle' ? null : (
@@ -676,11 +703,27 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
         onOpenFile={(file, parentSha) => {
           if (detail.value !== null) openFile(detail.value, file, parentSha)
         }}
+        onFileMenu={(file, parentSha, anchor) => { setFileMenu({ file, parentSha, anchor }) }}
         onNavigate={navigateTo}
         onRetry={() => { void detailStore.reload() }}
       />
     )
   ), [detail, detailStore, navigateTo, openFile, selectedFile])
+
+  /** B2: what a commit detail file menu item does. */
+  const runFileAction = (id: FileActionId, commit: CommitDetailValue, file: CommitFileEntry, parentSha: string | undefined): void => {
+    if (id === 'showDiff') openFile(commit, file, parentSha)
+    else if (id === 'fileHistory') overlays.open({ kind: 'fileHistory', path: file.path, rev: commit.sha })
+    else if (id === 'blameRevision') overlays.open({ kind: 'blame', path: file.path, rev: commit.sha })
+    else if (id === 'compareWorktree') {
+      overlays.open({
+        kind: 'diff',
+        request: { sessionId, scope: 'range', from: commit.sha, to: null, path: file.path },
+        files: [file],
+        source: [text('diff.source.log'), commit.shortSha, text('compare.worktree')],
+      })
+    } else void globalThis.navigator?.clipboard?.writeText(file.path)
+  }
 
   const branchPanel = (
     <BranchPanel
@@ -848,6 +891,8 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
             }}
             onAddToVcs={paths => { void addToVcs(paths) }}
             onCopyPath={path => { void globalThis.navigator?.clipboard?.writeText(path) }}
+            onFileHistory={path => { overlays.open({ kind: 'fileHistory', path }) }}
+            onBlame={path => { overlays.open({ kind: 'blame', path }) }}
             onCommitted={onCommitted}
             onPushAfterCommit={(_result, options) => { pushAfterCommit(options.openPushPage) }}
             onShowConsole={() => { setConsoleOpen(true) }}
@@ -869,6 +914,19 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
                 : { path: file.path, parentSha: request.parent })
             }}
             onClose={() => { overlays.closeIf('diff') }}
+          />
+        )}
+        {fileMenu === null || detail.value === null ? null : (
+          <ActionMenu
+            label={t('file.menu', { path: fileMenu.file.path })}
+            items={fileActions({ kind: 'commitFile', status: fileMenu.file.status })}
+            anchor={fileMenu.anchor}
+            onClose={() => { setFileMenu(null) }}
+            onSelect={(id) => {
+              const { file, parentSha } = fileMenu
+              setFileMenu(null)
+              if (detail.value !== null) runFileAction(id, detail.value, file, parentSha)
+            }}
           />
         )}
         {overlay?.kind === 'blame' ? (

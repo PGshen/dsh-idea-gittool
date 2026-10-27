@@ -18,6 +18,9 @@ export type CommitActionId =
   | 'resetTo'
   | 'goParent'
   | 'goChild'
+  // B2 compare mode
+  | 'compareWorktree'
+  | 'compareSelected'
 
 export interface CommitActionItem {
   id: CommitActionId
@@ -35,21 +38,32 @@ export interface CommitActionContext {
   parentLoaded: boolean
   /** A child of this commit is in the loaded log. */
   childLoaded: boolean
+  /** B2: shas selected in the log (the compare item needs exactly two, this one among them). */
+  selection?: readonly string[]
 }
 
 /** Neighbour availability from the loaded log (newest first). */
 export function commitActionContext(
   commits: readonly CommitSummary[],
   commit: CommitSummary,
-  base: { writable: boolean; operation: RepoOperation },
+  base: { writable: boolean; operation: RepoOperation; selection?: readonly string[] },
 ): CommitActionContext {
   const parent = commit.parents[0]
-  return {
+  const context: CommitActionContext = {
     writable: base.writable,
     operation: base.operation,
     parentLoaded: parent !== undefined && commits.some(candidate => candidate.sha === parent),
     childLoaded: childOf(commits, commit.sha) !== null,
   }
+  if (base.selection !== undefined) context.selection = base.selection
+  return context
+}
+
+/** Why "compare the two selected commits" is unavailable for `sha`, if it is. */
+function compareSelectedReason(sha: string, selection: readonly string[]): LocalizedText | undefined {
+  if (selection.length > 2) return text('commit.disabled.compareTooMany')
+  if (selection.length < 2 || !selection.includes(sha)) return text('commit.disabled.compareNeedsTwo')
+  return undefined
 }
 
 /** The newest loaded commit that has `sha` as a parent. */
@@ -89,6 +103,8 @@ export function commitActions(commit: CommitSummary, context: CommitActionContex
     item('resetTo', 'commit.action.resetTo', 3, block, true),
     item('goParent', 'commit.action.goParent', 4, parentReason),
     item('goChild', 'commit.action.goChild', 4, context.childLoaded ? undefined : text('commit.disabled.noChild')),
+    item('compareWorktree', 'commit.action.compareWorktree', 5),
+    item('compareSelected', 'commit.action.compareSelected', 5, compareSelectedReason(commit.sha, context.selection ?? [])),
   ]
 }
 
@@ -98,7 +114,12 @@ export type CommitActionEffect =
   | { kind: 'jump'; sha: string }
 
 /** What choosing `id` does; null when there is nothing to do (no parent / child). */
-export function commitActionEffect(id: CommitActionId, commit: CommitSummary, childSha: string | null): CommitActionEffect | null {
+export function commitActionEffect(
+  id: CommitActionId,
+  commit: CommitSummary,
+  childSha: string | null,
+  selected: readonly CommitSummary[] = [],
+): CommitActionEffect | null {
   switch (id) {
     case 'copyHash': return { kind: 'copy', value: commit.sha }
     case 'copyShortHash': return { kind: 'copy', value: commit.shortSha }
@@ -117,6 +138,15 @@ export function commitActionEffect(id: CommitActionId, commit: CommitSummary, ch
       return parent === undefined ? null : { kind: 'jump', sha: parent }
     }
     case 'goChild': return childSha === null ? null : { kind: 'jump', sha: childSha }
+    case 'compareWorktree':
+      return { kind: 'overlay', overlay: { kind: 'compare', left: commit.sha, right: null, leftLabel: commit.shortSha, rightLabel: null } }
+    case 'compareSelected': {
+      // "In this commit but not in the other": the clicked commit is the left side.
+      const other = selected.find(candidate => candidate.sha !== commit.sha)
+      return other === undefined
+        ? null
+        : { kind: 'overlay', overlay: { kind: 'compare', left: commit.sha, right: other.sha, leftLabel: commit.shortSha, rightLabel: other.shortSha } }
+    }
   }
 }
 

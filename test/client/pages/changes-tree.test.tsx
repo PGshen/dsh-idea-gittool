@@ -152,6 +152,27 @@ describe('ChangeContextMenu', () => {
   }
   const noop = () => {}
 
+  it('B2: offers file history and blame, disabled with a reason for never committed files', () => {
+    const tracked = renderToStaticMarkup(
+      <ChangeContextMenu entry={find('README.md')} writeDisabled={false} onCopyPath={noop} onFileHistory={noop} onBlame={noop} />,
+    )
+    expect(tracked).toContain('data-menu="fileHistory"')
+    expect(tracked).toContain('data-menu="blame"')
+    expect(tracked).not.toMatch(/data-menu="blame"[^>]*disabled/)
+    const untracked = changes.find(change => change.group === 'untracked')
+    if (untracked === undefined) throw new Error('fixture has no untracked file')
+    const html = renderToStaticMarkup(
+      <ChangeContextMenu entry={untracked} writeDisabled={false} onCopyPath={noop} onFileHistory={noop} onBlame={noop} />,
+    )
+    expect(html).toContain('文件还没有提交过')
+    expect(html).toMatch(/disabled=""[^>]*data-menu="blame"|data-menu="blame"[^>]*disabled/)
+  })
+
+  it('B2: leaves history and blame out when the page does not wire them', () => {
+    const html = renderToStaticMarkup(<ChangeContextMenu entry={find('README.md')} writeDisabled={false} onCopyPath={noop} />)
+    expect(html).not.toContain('data-menu="fileHistory"')
+  })
+
   it('tracked file: commit, rollback, copy (no add to VCS)', () => {
     const html = renderToStaticMarkup(
       <ChangeContextMenu entry={find('README.md')} writeDisabled={false} onCommitFile={noop} onRollback={noop} onAddToVcs={noop} onCopyPath={noop} />,

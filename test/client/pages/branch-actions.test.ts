@@ -42,6 +42,7 @@ describe('branchActions availability matrix', () => {
     const items = branchActions(login, ctx())
     expect(ids(items)).toEqual([
       'checkout', 'newFrom', 'merge', 'rebaseOnto', 'rename', 'delete', 'copyName', 'copyRef', 'filterLog', 'showInLog',
+      'compareWithCurrent', 'compareWithWorktree',
     ])
     expect(items.filter(item => item.disabledReason !== undefined)).toEqual([])
     expect(items.find(item => item.id === 'delete')?.danger).toBe(true)
@@ -62,6 +63,9 @@ describe('branchActions availability matrix', () => {
     expect(byId['delete']?.disabledReason).toEqual(text('branch.disabled.deleteCurrent'))
     expect(byId['rename']?.disabledReason).toBeUndefined()
     expect(byId['push']?.disabledReason).toBeUndefined()
+    // B2: comparing the current branch with itself is empty.
+    expect(byId['compareWithCurrent']?.disabledReason).toEqual(text('branch.disabled.isCurrent'))
+    expect(byId['compareWithWorktree']?.disabledReason).toBeUndefined()
   })
 
   it('push is only offered for the current branch', () => {
@@ -71,12 +75,14 @@ describe('branchActions availability matrix', () => {
 
   it('remote branch: no rename/delete/push at all (hidden, not disabled); pull is offered', () => {
     const list = ids(branchActions(remote, ctx()))
-    expect(list).toEqual(['checkout', 'newFrom', 'merge', 'rebaseOnto', 'pull', 'copyName', 'copyRef', 'filterLog', 'showInLog'])
+    expect(list).toEqual([
+      'checkout', 'newFrom', 'merge', 'rebaseOnto', 'pull', 'copyName', 'copyRef', 'filterLog', 'showInLog', 'compareWithCurrent', 'compareWithWorktree',
+    ])
   })
 
   it('tag: checkout (detached label), new branch from tag, copy, show in log only', () => {
     const items = branchActions(tag, ctx())
-    expect(ids(items)).toEqual(['checkout', 'newFrom', 'copyName', 'copyRef', 'showInLog'])
+    expect(ids(items)).toEqual(['checkout', 'newFrom', 'copyName', 'copyRef', 'showInLog', 'compareWithCurrent', 'compareWithWorktree'])
     expect(items[0]?.label).toEqual(text('branch.action.checkoutTag'))
     expect(items[1]?.label).toEqual(text('branch.action.newFromTag'))
   })
@@ -84,7 +90,7 @@ describe('branchActions availability matrix', () => {
   it('read-only: every write item is disabled, copy and show-in-log stay enabled', () => {
     const items = branchActions(login, ctx({ writable: false }))
     for (const item of items) {
-      if (['copyName', 'copyRef', 'showInLog', 'filterLog'].includes(item.id)) expect(item.disabledReason, item.id).toBeUndefined()
+      if (['copyName', 'copyRef', 'showInLog', 'filterLog', 'compareWithCurrent', 'compareWithWorktree'].includes(item.id)) expect(item.disabledReason, item.id).toBeUndefined()
       else expect(item.disabledReason, item.id).toEqual(text('branch.disabled.readOnly'))
     }
   })
@@ -334,5 +340,27 @@ describe('branchActionContext', () => {
   it('read-only policy, missing status and detached HEAD', () => {
     expect(branchActionContext(null, { mode: 'read-only', reason: 'x' })).toEqual({ writable: false, operation: null, current: null, dirty: false })
     expect(branchActionContext({ ...clean, branch: null, detached: true } as never, { mode: 'read-write' }).current).toBeNull()
+  })
+})
+
+describe('B2 branch compare actions', () => {
+  it('opens compare overlays against the current branch and the worktree', async () => {
+    const opened: unknown[] = []
+    const runner = createBranchActionRunner({
+      actions: {} as never,
+      openOverlay: (overlay) => { opened.push(overlay) },
+      copy: () => undefined,
+      showInLog: () => undefined,
+      filterLog: () => undefined,
+      openPush: () => undefined,
+      onOutcome: () => undefined,
+      currentBranch: () => 'main',
+    })
+    await runner.run('compareWithCurrent', login, null)
+    await runner.run('compareWithWorktree', tag, null)
+    expect(opened).toEqual([
+      { kind: 'compare', left: login.name, right: 'HEAD', leftLabel: login.name, rightLabel: 'main' },
+      { kind: 'compare', left: tag.name, right: null, leftLabel: tag.name, rightLabel: null },
+    ])
   })
 })

@@ -19,6 +19,7 @@ import { Chip } from '../ui/Chip.tsx'
 import { EmptyState } from '../ui/EmptyState.tsx'
 import { ChangedFilesTree } from './ChangedFilesTree.tsx'
 import type { ChangedFilesMode } from './ChangedFilesTree.tsx'
+import type { MenuAnchor } from './menu-position.ts'
 import css from './CommitDetail.module.css'
 
 /** 正文超过这个行数就折叠（设计 §8.1.5「超长折叠」）。 */
@@ -82,6 +83,8 @@ export interface CommitDetailProps {
   /** 当前选中的文件（Diff 返回后保留选中）；合并提交还要匹配 parentSha。 */
   selectedFile?: { path: string; parentSha?: string }
   onOpenFile?: (file: CommitFileEntry, parentSha?: string) => void
+  /** B2：变更文件右键菜单（文件历史、Blame 此版本、与工作区比较…）。 */
+  onFileMenu?: (file: CommitFileEntry, parentSha: string | undefined, anchor: MenuAnchor) => void
   /** 点击父提交/跳转时回调，参数是完整 sha。 */
   onNavigate?: (sha: string) => void
   onRetry?: () => void
@@ -212,6 +215,7 @@ export function CommitDetail({
   defaultFilesMode,
   selectedFile,
   onOpenFile,
+  onFileMenu,
   onNavigate,
   onRetry,
   onCopy,
@@ -345,6 +349,7 @@ export function CommitDetail({
                     mode={filesMode}
                     selectedPath={selectedFile?.parentSha === group.parentSha ? selectedFile.path : undefined}
                     onOpenFile={file => onOpenFile?.(file, group.parentSha)}
+                    {...(onFileMenu === undefined ? {} : { onFileMenu: (file: CommitFileEntry, anchor: MenuAnchor) => { onFileMenu(file, group.parentSha, anchor) } })}
                   />
                 )}
               </section>
@@ -359,6 +364,7 @@ export function CommitDetail({
           selectedPath={selectedFile?.path}
           headerExtra={<FilesModeToggle t={t} mode={filesMode} onChange={setFilesMode} />}
           onOpenFile={onOpenFile}
+          {...(onFileMenu === undefined ? {} : { onFileMenu: (file: CommitFileEntry, anchor: MenuAnchor) => { onFileMenu(file, undefined, anchor) } })}
         />
       )}
     </article>

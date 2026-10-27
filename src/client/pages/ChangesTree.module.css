@@ -231,3 +231,10 @@
   margin: 4px 0;
   background: var(--dsw-alias-border-l2);
 }
+
+/* B2: why a file history / blame item is unavailable, under its label. */
+.menuReason {
+  display: block;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 11px;
+}

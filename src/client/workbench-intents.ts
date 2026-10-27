@@ -2,6 +2,7 @@
 // the Git tab to open an overlay or reveal a commit. Same bundle, so a module-level queue suffices;
 // intents posted while no Git tab listens wait and are delivered once to the first subscriber.
 // Not routed through `openTab` params, which a restored tab could replay (references §15).
+import type { StatusValue } from '../shared/protocol.ts'
 
 export type WorkbenchIntent =
   | { kind: 'fileHistory'; path: string }
@@ -51,4 +52,26 @@ export function subscribeIntents(sessionId: string, listener: Listener): () => v
 /** Test seam: forget every channel. */
 export function resetIntentsForTest(): void {
   channels.clear()
+}
+
+/** What the Git tab does for one intent (React-free so the mapping is testable). */
+export type IntentEffect =
+  | { kind: 'overlay'; overlay: { kind: 'fileHistory'; path: string } }
+  | { kind: 'diff'; path: string; scope: 'worktree' | 'staged' }
+  | { kind: 'selectChange'; path: string }
+  | { kind: 'showCommit'; sha: string }
+
+export function intentEffect(intent: WorkbenchIntent, status: StatusValue | null): IntentEffect {
+  switch (intent.kind) {
+    case 'fileHistory': return { kind: 'overlay', overlay: { kind: 'fileHistory', path: intent.path } }
+    case 'selectChange': return { kind: 'selectChange', path: intent.path }
+    case 'showCommit': return { kind: 'showCommit', sha: intent.sha }
+    case 'worktreeDiff': {
+      // A file with only staged changes has an empty worktree diff; show what it does have.
+      const onlyStaged = status !== null
+        && status.staged.some(entry => entry.path === intent.path)
+        && !status.unstaged.some(entry => entry.path === intent.path)
+      return { kind: 'diff', path: intent.path, scope: onlyStaged ? 'staged' : 'worktree' }
+    }
+  }
 }

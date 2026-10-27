@@ -171,6 +171,21 @@ describe('registerDocumentActions', () => {
     expect(face.repoRootFor?.('/repo/src/a.ts')).toBe('/repo')
   })
 
+  it('B2: hands history/diff intents to the Git tab of the slot\'s session', () => {
+    const fake = createFakeContext()
+    const sent: Array<[string, unknown]> = []
+    registerDocumentActions(fake.ctx, { openInGit: (sessionId, intent) => { sent.push([sessionId, intent]); return null } })
+    const face = injectedFace(fake, 'session-3')
+    expect(face.openInGit?.({ kind: 'fileHistory', path: 'src/a.ts' })).toBeNull()
+    expect(sent).toEqual([['session-3', { kind: 'fileHistory', path: 'src/a.ts' }]])
+  })
+
+  it('B2: without an openInGit option the header gets none (history and diff stay disabled)', () => {
+    const fake = createFakeContext()
+    registerDocumentActions(fake.ctx)
+    expect(injectedFace(fake).openInGit).toBeUndefined()
+  })
+
   it('reports why the blame page could not open instead of throwing', () => {
     const fake = createFakeContext({ openThrows: true })
     registerDocumentActions(fake.ctx)

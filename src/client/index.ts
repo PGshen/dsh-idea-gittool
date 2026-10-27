@@ -12,6 +12,7 @@ import { createGitClient } from './git-client.ts'
 import { GitBody } from './GitBody.tsx'
 import { GitTitle } from './GitTitle.tsx'
 import { en, zh } from './locales.ts'
+import { text } from './localized-text.ts'
 import { registerBlameTab, registerDocumentActions } from './register-document-actions.ts'
 import { useStatusLetter } from './use-bootstrap.ts'
 import { postIntent } from './workbench-intents.ts'
@@ -75,16 +76,20 @@ export function apply(ctx: ClientContext): void {
 
   // 文档预览头部动作 + git.blame 页（B2：Blame 视图）；状态字母复用同一份 bootstrap 快照。
   // 页里的「在日志中显示」「文件历史」经意图队列交给本会话的 Git tab，并把它切到前面。
-  const openInGit = (sessionId: string, intent: WorkbenchIntent): void => {
+  const openInGit = (sessionId: string, intent: WorkbenchIntent): boolean => {
     postIntent(sessionId, intent)
     try {
       ctx.sidebarRight.openTab(GIT_KIND)
+      return true
     } catch {
       // No Session on screen: the intent waits until the Git tab of that session mounts.
+      return false
     }
   }
-  registerBlameTab(ctx, { gitClient, bootstrapCache, openInGit })
+  registerBlameTab(ctx, { gitClient, bootstrapCache, openInGit: (sessionId, intent) => { openInGit(sessionId, intent) } })
   registerDocumentActions(ctx, {
     useStatus: (absolutePath, sessionId) => useStatusLetter(bootstrapCache, sessionId, absolutePath),
+    repoRootFor: (_absolutePath, sessionId) => bootstrapCache.get(sessionId)?.repoRoot ?? null,
+    openInGit: (sessionId, intent) => (openInGit(sessionId, intent) ? null : text('document.noSession.git')),
   })
 }

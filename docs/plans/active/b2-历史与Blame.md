@@ -153,7 +153,7 @@ Host 约束（各任务共用）：
 - **测试**：两页静态渲染与空状态；选中行/文件触发 diff；「交换」；从文件历史打开 Blame 再返回恢复选中与滚动（AC5）；`Esc` 走同一返回链。
 - **完成标准**：AC4–AC8 的 UI 部分；`make check` 绿。
 
-### T7：入口接线（待开始）
+### T7：入口接线（完成）
 
 - **目标**：把所有入口接到 T5/T6 的覆盖层与 `git.blame` 页。
 - **涉及文件**：新建 `src/client/pages/file-actions.ts`（文件动作项纯函数，供各处菜单共用）与测试、`src/client/pages/FileContextMenu.tsx`；修改 `ChangedFilesTree.tsx`（新增右键：显示 Diff、文件历史、Blame（此版本）、与工作区比较、复制路径）、`ChangesTree.tsx`（追加：文件历史、Blame）、`commit-actions.ts` / `CommitContextMenu.tsx`（与工作区比较；选中两个时「比较」）、`branch-actions.ts`（`compareWithCurrent`、`compareWithWorktree`）、`document-actions.tsx` / `register-document-actions.ts`（「历史」「Diff」启用、状态徽标可点、窄宽度收进 `⋯`、不在仓库内时禁用并说明）、`GitWorkbench.tsx`（订阅 `workbench-intents`）。
@@ -182,10 +182,11 @@ Host 约束（各任务共用）：
 - 2026-10-27 — T4 完成：`src/client/store/{blame-store,file-history-store,compare-store}.ts`、`src/client/workbench-intents.ts`；`diff-store` 的请求身份比较加入 `from/to/mergeBase`（交换比较方向时不再显示旧方向内容）
 - 2026-10-27 — T3 完整关口绿（1828 测试）。T5 完成：`BlameView`/`BlameOverlay`/`BlameHoverCard`、通用 `ActionMenu`（`CommitContextMenu` 改为委托）、`locales/history.ts`（去掉 M0 `blame.*`）、`git.blame` 页改为 Blame 视图（`registerBlameTab(ctx, face)` 注入 client/bootstrap/`openInGit`）、覆盖层 `back` 返回链与 `dismiss()`/`asBack()`、GitWorkbench 渲染 `blame` 覆盖层；`css-tokens` 守护扩到 B2 样式
 - 2026-10-27 — T6 完成：`FileHistoryPage`（行动作：Blame 此版本 / 与工作区比较 / 在日志中显示 / 复制路径，右键菜单与选中栏按钮同一组）、`ComparePage`（横幅、交换、提交列表分页、差异文件、页内 diff）、共用 `HistoryPages.module.css`；文件历史 store 与滚动位置放在 GitWorkbench，`keepsFileHistory` 决定何时释放
+- 2026-10-27 — T7 完成：`file-actions.ts`；提交详情文件行右键菜单（显示 Diff / 文件历史 / Blame 此版本 / 与工作区比较 / 复制路径）、提交页变更树菜单追加文件历史与 Blame、日志提交菜单「与工作区比较」「比较所选的两个提交」、分支/标签菜单「与当前分支比较」「与工作区比较」、文档头部「历史」「Diff」启用与状态徽标跳转（窄头部收进 `⋯`）、GitWorkbench 订阅意图（`intentEffect`）；入口注入 `repoRootFor`/`openInGit`。`pnpm build && pnpm smoke` 通过：`lib/client.js` 1,044,920 → 1,111,210 字节（+66,290，gzip 258,137 → 270,152，+12,015），`lib/host.js` 204,272 → 222,736（+18,464）
 
 ## 下一步
 
-- T7：先写 `test/client/pages/file-actions.test.ts`（可用性矩阵）、日志「比较」在 0/1/2/3 个选中时的可用性、分支动作 `compareWithCurrent`/`compareWithWorktree`、文档头部三动作与状态徽标（`test/client/document-actions.test.tsx`），再实现 `src/client/pages/file-actions.ts`、`ChangedFilesTree`/`ChangesTree` 的菜单项、`commit-actions.ts`/`branch-actions.ts` 的比较项、`document-actions.tsx` 的「历史」「Diff」与状态徽标、GitWorkbench 订阅 `workbench-intents`。完成后 `pnpm build && pnpm smoke` 并记录体积（worktree `.claude/worktrees/b2-history-blame`）。
+- 全部任务完成后：等 T7 的完整 `make check` 绿；整分支评审（fresh reviewer，最强模型），处理 Critical/Important；然后自验证 L4（本地 DSH 3081 走查，截图存 `.evidence/b2/`）并补「验证记录」；收尾清单（ARCHITECTURE、QUALITY、TODO、references）。
 
 ## 决策记录
 
@@ -209,6 +210,11 @@ Host 约束（各任务共用）：
 - 2026-10-27 T5 — 裁定：样式只用现有样式里出现过的 DSH 变量（链接色用 `--dsw-alias-brand-primary`，去掉未经验证的 `--dsw-font-family`、`--dsw-alias-label-link`） — B1 验收发现过不存在的变量静默失效。
 - 2026-10-27 T6 — 裁定：比较页的提交行双击「在日志中显示」，单击不做事；差异文件单击在页内显示 diff — 设计只说「表格只显示差异提交」，单击就离开比较页会打断浏览。代价：双击不易发现，行 `title` 写了提示。
 - 2026-10-27 T6 — 裁定：文件历史页的四个行动作同时放在右键菜单与选中提交的 diff 栏上（同一 `historyRowActions`） — 右键之外需要一个可见入口。
+- 2026-10-27 T7 — 裁定：提交详情文件的「文件历史」从该提交往回看（`rev` = 该提交），「与工作区比较」直接打开该文件的 `range` diff（该提交 → 工作区），不进比较页 — 文件级动作只关心这一个文件；从提交往回看保证路径在该提交存在（之后改名也不丢）。代价：要看 HEAD 之后的改动需从文档头部或变更树进入。
+- 2026-10-27 T7 — 裁定：「比较所选的两个提交」以右键的那个提交为左侧（「它有而另一个没有」），可在比较页「交换」 — 多选没有天然顺序。
+- 2026-10-27 T7 — 裁定：文档头部只在仓库外时禁用「历史」「Diff」「状态跳转」，Blame 保持可用（它的页面自己说明「不在当前仓库」）；干净文件的 Diff 与状态跳转禁用（「文件没有未提交的改动」）；未跟踪/冲突（都显示 U）的「历史」保持可用，空历史由历史页说明 — 头部只有一个字母，分不清 U 的两种含义。
+- 2026-10-27 T7 — 裁定：「与当前分支比较」右侧传 `HEAD`、标签显示当前分支名（游离时显示 HEAD）；当前分支自己的这一项禁用（`branch.disabled.isCurrent`）。
+- 2026-10-27 T7 — 裁定：窄头部判断用 `ResizeObserver` 量父元素宽度（< 280px 收进 `⋯`，原生 `<details>`） — 头部容器属于宿主，不能给它加 container query。代价：阈值是估计值，L4 时确认。
 - 2026-10-27 — B2 不加 feature flag — 全部为只读视图，没有写回风险；出问题可直接隐藏入口。
 - 2026-10-27 — 修订号先解析为 sha 再参与后续 git 调用 — 同时解决参数注入与「同一请求内 ref 移动」的竞态。
 

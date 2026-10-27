@@ -18,6 +18,8 @@ import { BlamePage } from './blame-page.tsx'
 import type { BlamePageInjected } from './blame-page.tsx'
 import { DocumentActions } from './document-actions.tsx'
 import { text } from './localized-text.ts'
+import type { LocalizedText } from './localized-text.ts'
+import type { WorkbenchIntent } from './workbench-intents.ts'
 import { statusLetterOf } from './document-actions.tsx'
 import type { DocumentActionsInjected, FileStatusLetter } from './document-actions.tsx'
 
@@ -53,6 +55,11 @@ export interface RegisterDocumentActionsOptions {
    * @param sessionId - 会话 id。
    */
   readonly useStatus?: (absolutePath: string, sessionId: string) => FileStatusLetter | null
+  /**
+   * B2: hand an intent (file history, worktree diff, select the change) to the session's Git tab.
+   * @returns a user-facing failure, or null.
+   */
+  readonly openInGit?: (sessionId: string, intent: WorkbenchIntent) => LocalizedText | null
 }
 
 function blameDefinition(): SidebarRightTabDefinition {
@@ -114,6 +121,7 @@ export function registerDocumentActions(
         statusFor: absolutePath => statusLetterOf(options.statusCodeFor?.(absolutePath, sessionId)),
         repoRootFor: absolutePath => options.repoRootFor?.(absolutePath, sessionId) ?? null,
         useStatus: absolutePath => options.useStatus?.(absolutePath, sessionId) ?? null,
+        ...(options.openInGit === undefined ? {} : { openInGit: (intent: WorkbenchIntent) => options.openInGit?.(sessionId, intent) ?? null }),
       }),
     }, DocumentActions)),
     'git: document actions',

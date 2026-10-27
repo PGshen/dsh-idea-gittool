@@ -123,7 +123,7 @@ Host 约束（各任务共用）：
 - **测试**：重命名后再修改的文件，历史两段都在、旧条目 `path` 为旧名、`followedRename` 为 true，用旧条目的 `path` 调 `diff scope=commit` 成功；分页游标与 `log` 一致；比较两个分叉分支的提交列表与 `git log right..left` 一致、文件与 `right...left` 一致；`right: null` 时 `commits` 为空、文件等于 `git diff --name-status <left>`；`diff scope=range` 三种形态；不存在的修订、以 `-` 开头的修订（AC10）。
 - **完成标准**：AC4/AC6/AC7 的 Host 部分有测试；`make check` 绿。
 
-### T4：Client store（待开始）
+### T4：Client store（完成）
 
 - **目标**：三个 React 无关的 store，负责加载、分页、选择、丢弃过期响应与中止。
 - **涉及文件**：新建 `src/client/store/{blame-store,file-history-store,compare-store}.ts` 与测试；新建 `src/client/workbench-intents.ts`（按会话的意图队列）与测试。
@@ -179,10 +179,11 @@ Host 约束（各任务共用）：
 - 2026-10-27 — T1 完成（补提交：覆盖层层级清单测试 `336a0c7`）：`protocol.ts` B2 类型与 `DiffScope` `range`、`git-client` 三个方法、`workbench-overlay.ts` 三种覆盖层（含一级 `back`）、references §15 spike 两问（源码查证）
 - 2026-10-27 — T2 完成：`src/host/git/{blame,revision,worktree-read}.ts`，`blame` 进 `RPC_ENDPOINTS` 并路由（按 path/rev/start/limit 缓存）；`merge-file.ts` 的工作区读取改用共用 `readWorktreeFile`
 - 2026-10-27 — T3 完成：`src/host/git/{file-history,compare}.ts`、`diff.ts` 的 `scope: 'range'`（含导出 `mergeBaseOf`）、`log.ts` 导出 `LOG_RECORD_FORMAT`/`parseLogRecord`/`normalizeLogLimit`（行为不变）；`fileHistory`/`compare` 进 `RPC_ENDPOINTS` 并路由；`diff` 的缓存键与参数解析加入 range 字段
+- 2026-10-27 — T4 完成：`src/client/store/{blame-store,file-history-store,compare-store}.ts`、`src/client/workbench-intents.ts`；`diff-store` 的请求身份比较加入 `from/to/mergeBase`（交换比较方向时不再显示旧方向内容）
 
 ## 下一步
 
-- T4：先写 `test/client/store/{blame-store,file-history-store,compare-store}.test.ts` 与 `test/client/workbench-intents.test.ts`，再实现对应 store 与 `src/client/workbench-intents.ts`；参照现有 `src/client/store/diff-store.ts` 的中止与过期丢弃写法（worktree `.claude/worktrees/b2-history-blame`）。
+- T5：先写 `test/client/pages/BlameView.test.tsx`（静态渲染：段首/续行 gutter、空状态、加载更多）与 `test/client/blame-page.test.tsx` 的新断言（随 `navigation` 变化重新 `open`），再实现 `src/client/pages/BlameView.tsx`、`BlameHoverCard.tsx`、新分区 `locales/history.ts`，改写 `src/client/blame-page.tsx`，在 `GitWorkbench.tsx` 渲染 `blame` 覆盖层。store 用 T4 的 `createBlameStore({ sessionId, load })`（worktree `.claude/worktrees/b2-history-blame`）。
 
 ## 决策记录
 
@@ -198,6 +199,8 @@ Host 约束（各任务共用）：
 - 2026-10-27 T2 — 裁定：`BlameCommit.shortSha` 取 sha 前 7 位，不按仓库 `core.abbrev` 算 — porcelain 不给缩写；逐个 `rev-parse --short` 太贵。代价：极大仓库里 7 位可能与日志的 `%h` 长度不同（只影响显示）。
 - 2026-10-27 T3 — 裁定：比较与 `diff` range 的合并基用 `git merge-base` 显式求出，没有公共祖先时退回两点比较（`right left`） — `A...B` 在无关历史上直接报错；退回两点至少能看到差异。代价：无关历史时「左边自分叉以来」的语义不成立，列表实际是两端快照之差（极少见）。
 - 2026-10-27 T3 — 裁定：比较的每一页都重新给出差异文件（不只第一页） — 端点无状态，且 `handleCached` 按 version 缓存；代价：翻页多跑一次 `diff --raw`。
+- 2026-10-27 T4 — 裁定：store 构造参数仿照现有 `diff-store` 注入加载函数（`{ sessionId, load, diff? }`），不直接持有 `GitClient`；`open` 收目标对象（`{ path, rev? }` / `{ left, right }`），比较 store 另有 `canSwap()` — 与仓库内其余 store 一致，测试不必伪造整个客户端。代价：接线处多写一行 `load: (r, s) => client.blame(r, s)`。
+- 2026-10-27 T4 — 裁定：翻页时若响应的 `version` 与第一页不同，从第一页重新加载，而不是把新页接在旧内容后面 — 文件在两次翻页之间变了，拼接会混合两个版本（AC11）。代价：仓库频繁变化时大文件翻页可能反复回到第一页。
 - 2026-10-27 — B2 不加 feature flag — 全部为只读视图，没有写回风险；出问题可直接隐藏入口。
 - 2026-10-27 — 修订号先解析为 sha 再参与后续 git 调用 — 同时解决参数注入与「同一请求内 ref 移动」的竞态。
 

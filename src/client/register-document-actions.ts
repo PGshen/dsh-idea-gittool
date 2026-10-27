@@ -15,8 +15,11 @@ import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-documentpreview/client'
 import type {} from '@deepseek-ai/dsh-client-ui-slots'
 import { BlamePage } from './blame-page.tsx'
+import type { BlamePageInjected } from './blame-page.tsx'
 import { DocumentActions } from './document-actions.tsx'
 import { text } from './localized-text.ts'
+import type { LocalizedText } from './localized-text.ts'
+import type { WorkbenchIntent } from './workbench-intents.ts'
 import { statusLetterOf } from './document-actions.tsx'
 import type { DocumentActionsInjected, FileStatusLetter } from './document-actions.tsx'
 
@@ -52,6 +55,11 @@ export interface RegisterDocumentActionsOptions {
    * @param sessionId - 会话 id。
    */
   readonly useStatus?: (absolutePath: string, sessionId: string) => FileStatusLetter | null
+  /**
+   * B2: hand an intent (file history, worktree diff, select the change) to the session's Git tab.
+   * @returns a user-facing failure, or null.
+   */
+  readonly openInGit?: (sessionId: string, intent: WorkbenchIntent) => LocalizedText | null
 }
 
 function blameDefinition(): SidebarRightTabDefinition {
@@ -67,8 +75,9 @@ function blameDefinition(): SidebarRightTabDefinition {
 /**
  * Register the `git.blame` page: its type face and its body.
  * @param ctx - client context carrying the tab registry and the slot registry.
+ * @param face - what the body reads blame with and how it reaches the Git tab (B2).
  */
-export function registerBlameTab(ctx: ClientContext): void {
+export function registerBlameTab(ctx: ClientContext, face: BlamePageInjected): void {
   ctx.effect(
     () => ctx.sidebarRightTabs.register(blameDefinition()),
     'git: blame tab type',
@@ -78,6 +87,7 @@ export function registerBlameTab(ctx: ClientContext): void {
       name: 'sidebar.right.pane.tab',
       key: BLAME_TAB_ID,
       locale: 'gitWorkbench',
+      inject: () => face,
     }, BlamePage)),
     'git: blame body',
   )
@@ -111,6 +121,7 @@ export function registerDocumentActions(
         statusFor: absolutePath => statusLetterOf(options.statusCodeFor?.(absolutePath, sessionId)),
         repoRootFor: absolutePath => options.repoRootFor?.(absolutePath, sessionId) ?? null,
         useStatus: absolutePath => options.useStatus?.(absolutePath, sessionId) ?? null,
+        ...(options.openInGit === undefined ? {} : { openInGit: (intent: WorkbenchIntent) => options.openInGit?.(sessionId, intent) ?? null }),
       }),
     }, DocumentActions)),
     'git: document actions',

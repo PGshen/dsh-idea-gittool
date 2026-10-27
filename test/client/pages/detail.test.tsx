@@ -367,6 +367,17 @@ describe('CommitDetail 交互', () => {
     expect(opened).toEqual([entry])
   })
 
+  it('B2：文件行右键把条目与指针位置交给文件菜单回调，并声明有菜单', () => {
+    const menus: Array<[CommitFileEntry, unknown]> = []
+    const entry = file('src/log/LogTable.tsx', 'M', 3, 1)
+    const row = FileRow({ file: entry, name: 'LogTable.tsx', depth: 1, showDirectory: false, onFileMenu: (value, anchor) => menus.push([value, anchor]) })
+    if (!isElement(row)) throw new Error('expected element')
+    const props = row.props as { 'aria-haspopup'?: string; onContextMenu?: (event: { preventDefault(): void; clientX: number; clientY: number }) => void }
+    expect(props['aria-haspopup']).toBe('menu')
+    props.onContextMenu?.({ preventDefault: () => undefined, clientX: 12, clientY: 34 })
+    expect(menus).toEqual([[entry, { kind: 'point', x: 12, y: 34 }]])
+  })
+
   it('文件模式切换按钮在树/扁平之间切换', () => {
     const modes: string[] = []
     const tree = FilesModeToggle({ t: zhT, mode: 'tree', onChange: mode => modes.push(mode) })

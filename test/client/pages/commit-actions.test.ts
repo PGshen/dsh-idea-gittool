@@ -28,8 +28,10 @@ describe('commitActions', () => {
     const items = commitActions(commit(), ctx())
     expect(items.map(item => item.id)).toEqual([
       'copyHash', 'copyShortHash', 'copyMessage', 'checkout', 'newBranch', 'cherryPick', 'revert', 'resetTo', 'goParent', 'goChild',
+      'compareWorktree', 'compareSelected',
     ])
-    expect(items.every(item => item.disabledReason === undefined)).toBe(true)
+    // B2: comparing needs two selected commits; everything else is enabled on a normal commit.
+    expect(items.filter(item => item.disabledReason !== undefined).map(item => item.id)).toEqual(['compareSelected'])
   })
 
   it('only the reset item is drawn in the danger tone; checkout warns about detached HEAD', () => {
@@ -113,5 +115,31 @@ describe('loaded neighbours', () => {
     expect(commitActionContext(log, log[1]!, base)).toEqual({ writable: true, operation: null, parentLoaded: true, childLoaded: true })
     expect(commitActionContext(log, log[0]!, base)).toMatchObject({ parentLoaded: true, childLoaded: false })
     expect(commitActionContext([log[1]!], log[1]!, base)).toMatchObject({ parentLoaded: false })
+  })
+})
+
+describe('B2 compare items', () => {
+  const base = { writable: true, operation: null, parentLoaded: true, childLoaded: true }
+  const one: CommitSummary = { sha: 'a'.repeat(40), shortSha: 'aaaaaaa', parents: ['p'], author: 'A', email: 'a@x', date: '2026-10-27T00:00:00Z', subject: 'one' }
+  const two: CommitSummary = { ...one, sha: 'b'.repeat(40), shortSha: 'bbbbbbb', subject: 'two' }
+  const reasonOf = (selection: string[]): string | undefined =>
+    commitActions(one, { ...base, selection }).find(item => item.id === 'compareSelected')?.disabledReason?.key
+
+  it('compare with the worktree is always offered', () => {
+    expect(commitActions(one, base).find(item => item.id === 'compareWorktree')?.disabledReason).toBeUndefined()
+    expect(commitActionEffect('compareWorktree', one, null)).toEqual({
+      kind: 'overlay', overlay: { kind: 'compare', left: one.sha, right: null, leftLabel: 'aaaaaaa', rightLabel: null },
+    })
+  })
+
+  it('compare selected needs exactly two selected commits including this one', () => {
+    expect(reasonOf([])).toBe('commit.disabled.compareNeedsTwo')
+    expect(reasonOf([one.sha])).toBe('commit.disabled.compareNeedsTwo')
+    expect(reasonOf([one.sha, two.sha])).toBeUndefined()
+    expect(reasonOf([one.sha, two.sha, 'c'.repeat(40)])).toBe('commit.disabled.compareTooMany')
+    expect(commitActionEffect('compareSelected', one, null, [one, two])).toEqual({
+      kind: 'overlay', overlay: { kind: 'compare', left: one.sha, right: two.sha, leftLabel: 'aaaaaaa', rightLabel: 'bbbbbbb' },
+    })
+    expect(commitActionEffect('compareSelected', one, null, [one])).toBeNull()
   })
 })

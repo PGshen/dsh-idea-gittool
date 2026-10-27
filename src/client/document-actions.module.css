@@ -1,5 +1,6 @@
 .row {
   display: inline-flex;
+  flex: 0 0 auto;
   align-items: center;
   gap: 4px;
 }
@@ -27,6 +28,7 @@
   font: inherit;
   font-size: 12px;
   line-height: 1.5;
+  white-space: nowrap;
   cursor: pointer;
 }
 
@@ -41,5 +43,50 @@
 
 .failure {
   color: var(--dsw-alias-state-error-primary);
+  font-size: 11px;
+}
+
+/* B2: the status letter is a jump to the Commit page. */
+.badgeButton {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.badgeButton:disabled {
+  cursor: default;
+}
+
+/* Narrow header: history and diff under ⋯. */
+.more {
+  position: relative;
+}
+
+.more > summary {
+  list-style: none;
+}
+
+.more > summary::-webkit-details-marker {
+  display: none;
+}
+
+.moreMenu {
+  position: absolute;
+  right: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 6px;
+  background: var(--dsw-specific-menu);
+  box-shadow: var(--dsw-elevation-panel);
+  backdrop-filter: var(--dsw-menu-backdrop-filter);
+  white-space: nowrap;
+}
+
+.note {
+  color: var(--dsw-alias-label-tertiary);
   font-size: 11px;
 }

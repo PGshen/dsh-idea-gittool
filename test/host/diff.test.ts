@@ -300,3 +300,77 @@ describe('readDiff', () => {
     expect(fake.spawns.at(-1)?.spec.env?.GIT_LITERAL_PATHSPECS).toBe('1')
   })
 })
+
+describe('readDiff scope range (B2 T3)', () => {
+  function forkedRepo(): ReturnType<typeof createTempRepo> {
+    const repo = makeRepo()
+    repo.write('f.txt', 'base\n')
+    repo.commit('base')
+    repo.git('checkout', '-q', '-b', 'feature')
+    repo.write('f.txt', 'base\nfeature\n')
+    repo.commit('feature')
+    repo.git('checkout', '-q', 'main')
+    repo.write('f.txt', 'main\n')
+    repo.commit('main')
+    return repo
+  }
+
+  const added = (value: Awaited<ReturnType<typeof readDiff>>): string[] =>
+    value.hunks.flatMap(hunk => hunk.lines.filter(line => line.type === 'add').map(line => line.text))
+
+  it('diffs two revisions directly', async () => {
+    const repo = forkedRepo()
+    const value = await readDiff(run, repo.root, { path: 'f.txt', scope: 'range', from: 'main', to: 'feature' })
+    expect(added(value)).toEqual(['base', 'feature'])
+  })
+
+  it('diffs from the merge base with mergeBase', async () => {
+    const repo = forkedRepo()
+    const value = await readDiff(run, repo.root, { path: 'f.txt', scope: 'range', from: 'main', to: 'feature', mergeBase: true })
+    expect(added(value)).toEqual(['feature'])
+  })
+
+  it('diffs a revision against the worktree when to is null', async () => {
+    const repo = forkedRepo()
+    repo.write('f.txt', 'main\ndirty\n')
+    const value = await readDiff(run, repo.root, { path: 'f.txt', scope: 'range', from: 'feature', to: null })
+    expect(added(value)).toEqual(['main', 'dirty'])
+  })
+
+  it('rejects range fields on other scopes, a missing from and option-like revisions', async () => {
+    const repo = forkedRepo()
+    expect(await codeOf(readDiff(run, repo.root, { path: 'f.txt', scope: 'worktree', from: 'main' }))).toBe('git/invalid-payload')
+    expect(await codeOf(readDiff(run, repo.root, { path: 'f.txt', scope: 'range', to: null }))).toBe('git/invalid-payload')
+    expect(await codeOf(readDiff(run, repo.root, { path: 'f.txt', scope: 'range', from: '--output=x', to: null }))).toBe('git/invalid-payload')
+  })
+})
+
+describe('readDiff scope range is limited to the file (终审 I3)', () => {
+  it('scans only the requested path (and its origPath), still seeing the rename', async () => {
+    const repo = makeRepo()
+    repo.write('old.txt', 'one\ntwo\nthree\nfour\n')
+    repo.write('other.txt', 'x\n')
+    repo.commit('base')
+    repo.git('checkout', '-q', '-b', 'feature')
+    repo.git('mv', 'old.txt', 'new.txt')
+    repo.write('other.txt', 'y\n')
+    repo.commit('rename')
+    const calls: string[][] = []
+    const recording: typeof run = async (argv, options) => {
+      calls.push([...argv])
+      return run(argv, options)
+    }
+    const value = await readDiff(recording, repo.root, { path: 'new.txt', origPath: 'old.txt', scope: 'range', from: 'main', to: 'feature' })
+    expect(value).toMatchObject({ status: 'R', oldPath: 'old.txt', newPath: 'new.txt' })
+    const raw = calls.find(argv => argv.includes('--raw'))
+    expect(raw?.slice(raw.indexOf('--') + 1)).toEqual(['old.txt', 'new.txt'])
+  })
+
+  it('rejects origPath outside scope range and validates it like a path', async () => {
+    const repo = makeRepo()
+    repo.write('a.txt', 'a\n')
+    repo.commit('base')
+    expect(await codeOf(readDiff(run, repo.root, { path: 'a.txt', origPath: 'b.txt', scope: 'worktree' }))).toBe('git/invalid-payload')
+    expect(await codeOf(readDiff(run, repo.root, { path: 'a.txt', origPath: '../b', scope: 'range', from: 'HEAD', to: null }))).toBe('git/invalid-payload')
+  })
+})

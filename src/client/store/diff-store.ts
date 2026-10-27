@@ -116,13 +116,17 @@ export function createDiffStore(options: DiffStoreOptions): DiffStore {
   }
 }
 
-/** 请求身份比较：路径、scope、提交与父提交都相同才算同一请求。 */
+/** 请求身份比较：路径、scope、提交与父提交（B2：以及 range 的两端与合并基）都相同才算同一请求。 */
 function sameDiffRequest(left: DiffRequest, right: DiffRequest): boolean {
   return (
     left.path === right.path &&
     left.scope === right.scope &&
     left.sha === right.sha &&
-    left.parent === right.parent
+    left.parent === right.parent &&
+    left.from === right.from &&
+    left.to === right.to &&
+    left.mergeBase === right.mergeBase &&
+    left.origPath === right.origPath
   )
 }
 

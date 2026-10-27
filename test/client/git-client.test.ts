@@ -80,3 +80,35 @@ describe('createGitClient / non-2xx responses (B1 acceptance demo)', () => {
     expect(result).toEqual({ ok: false, error: { code: 'git/exec-failed', message: 'HTTP 500: status' } })
   })
 })
+
+describe('createGitClient / B2 history endpoints', () => {
+  it('posts blame, fileHistory and compare to their endpoint paths', async () => {
+    const fetch = vi.fn(async () => new Response(JSON.stringify({ ok: true, value: {} })))
+    vi.stubGlobal('fetch', fetch)
+    const client = createGitClient(undefined)
+
+    await client.blame({ sessionId: 's', path: 'a b.txt', rev: 'main', start: 2001, limit: 2000 })
+    expect(fetch).toHaveBeenLastCalledWith('dsh-git/blame', expect.objectContaining({
+      body: JSON.stringify({ sessionId: 's', path: 'a b.txt', rev: 'main', start: 2001, limit: 2000 }),
+    }))
+    await client.fileHistory({ sessionId: 's', path: 'src/x.ts', cursor: 'v1:abc:50' })
+    expect(fetch).toHaveBeenLastCalledWith('dsh-git/fileHistory', expect.objectContaining({
+      body: JSON.stringify({ sessionId: 's', path: 'src/x.ts', cursor: 'v1:abc:50' }),
+    }))
+    await client.compare({ sessionId: 's', left: 'feature', right: null })
+    expect(fetch).toHaveBeenLastCalledWith('dsh-git/compare', expect.objectContaining({
+      body: JSON.stringify({ sessionId: 's', left: 'feature', right: null }),
+    }))
+  })
+
+  it('passes the range scope of diff through unchanged', async () => {
+    const fetch = vi.fn(async () => new Response(JSON.stringify({ ok: true, value: {} })))
+    vi.stubGlobal('fetch', fetch)
+    const client = createGitClient(undefined)
+
+    await client.diff({ sessionId: 's', path: 'a.txt', scope: 'range', from: 'main', to: 'feature', mergeBase: true })
+    expect(fetch).toHaveBeenLastCalledWith('dsh-git/diff', expect.objectContaining({
+      body: JSON.stringify({ sessionId: 's', path: 'a.txt', scope: 'range', from: 'main', to: 'feature', mergeBase: true }),
+    }))
+  })
+})

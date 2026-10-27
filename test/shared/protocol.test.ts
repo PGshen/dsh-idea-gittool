@@ -49,6 +49,15 @@ describe('RPC 协议常量', () => {
   })
 })
 
+describe('B2 历史端点', () => {
+  it('blame、fileHistory、compare 都是读端点', () => {
+    for (const endpoint of ['blame', 'fileHistory', 'compare']) {
+      expect([...RPC_ENDPOINTS], endpoint).toContain(endpoint)
+      expect(isWriteEndpoint(endpoint), endpoint).toBe(false)
+    }
+  })
+})
+
 describe('B1 合并端点（T1 契约冻结）', () => {
   const B1_READ = ['mergeFile'] as const
   const B1_WRITE = ['mergeDraftSave', 'mergeApply', 'unresolveConflict'] as const

@@ -88,7 +88,8 @@ const LINE_CLASS: Record<DiffLine['type'], string | undefined> = {
   context: undefined,
 }
 
-function LineCode({ text, spans }: { text: string; spans: HighlightSpan[] | undefined }): ReactNode {
+/** One line of code, highlighted when spans are given (shared with the B2 blame view). */
+export function LineCode({ text, spans }: { text: string; spans: HighlightSpan[] | undefined }): ReactNode {
   if (spans === undefined) return <span className={css.code}>{text}</span>
   return (
     <span className={css.code}>

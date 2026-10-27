@@ -12,8 +12,6 @@
 // - 符号链接（120000）与子模块（160000）冲突给 `special`，不读三方内容（子模块的 commit 不在本仓库），窗口降级。
 
 import { createHash } from 'node:crypto'
-import { lstat, readFile, realpath } from 'node:fs/promises'
-import { join, relative, isAbsolute } from 'node:path'
 
 import type { ConflictKind, MergeDraft, MergeFileSpecial, MergeFileValue, MergeSide, MergeStageShas } from '../../shared/protocol.ts'
 import { MERGE_DRAFT_VERSION, validDraftChunkRange } from '../../shared/protocol.ts'
@@ -22,6 +20,7 @@ import { GitCommandFailure } from '../git-executor.ts'
 import type { StageEntries } from './conflict.ts'
 import { hasMarkers, parseStageRecords, unmergedEntries } from './conflict.ts'
 import { detectOperation } from './status.ts'
+import { readWorktreeFile } from './worktree-read.ts'
 import { JsonRefInvalid, query, queryOk, readJsonRef, readRunner, redactedFailure } from './write-support.ts'
 
 /** Per-side limits above which the window falls back to choose-one. */
@@ -95,19 +94,8 @@ function textOf(text: string): string | null {
  * inside the repository, within the side limits and valid UTF-8 text; anything else is null.
  */
 export async function readWorktreeText(repoRoot: string, path: string): Promise<string | null> {
-  const file = join(repoRoot, path)
-  try {
-    const info = await lstat(file)
-    if (!info.isFile() || info.size > MERGE_SIDE_MAX_BYTES) return null
-    // A symlinked parent directory could lead outside the repository.
-    const inside = relative(await realpath(repoRoot), await realpath(file))
-    if (inside === '' || inside.startsWith('..') || isAbsolute(inside)) return null
-    const bytes = await readFile(file)
-    if (bytes.length > MERGE_SIDE_MAX_BYTES) return null
-    return textOf(bytes.toString('utf8'))
-  } catch {
-    return null
-  }
+  const file = await readWorktreeFile(repoRoot, path, MERGE_SIDE_MAX_BYTES)
+  return file.kind === 'file' ? textOf(file.bytes.toString('utf8')) : null
 }
 
 /** Blob of `path` in the worktree through the clean filter; null when the file is missing. */

@@ -16,6 +16,7 @@ import type {
 } from '../store/changes-store.ts'
 import { copyText } from './BranchPanel.tsx'
 import css from './ChangesTree.module.css'
+import { fileActions } from './file-actions.ts'
 
 
 export type DiffOpenScope = 'worktree' | 'staged'
@@ -36,6 +37,9 @@ export interface ChangesTreeProps {
   /** "Add to VCS" for untracked files. */
   onAddToVcs?: (paths: string[]) => void
   onCopyPath?: (path: string) => void
+  /** B2 entries: file history and worktree blame of one change. */
+  onFileHistory?: (path: string) => void
+  onBlame?: (path: string) => void
 }
 
 /** File rows in display order (skips collapsed subtrees); drives arrow-key navigation. */
@@ -116,6 +120,9 @@ export interface ChangeContextMenuProps {
   onRollback?: (() => void) | undefined
   onAddToVcs?: (() => void) | undefined
   onCopyPath: () => void
+  /** B2: open the file history / the worktree blame of this file. */
+  onFileHistory?: (() => void) | undefined
+  onBlame?: (() => void) | undefined
   onClose?: () => void
   /** Viewport coordinates; omitted in static rendering. */
   position?: { x: number; y: number }
@@ -171,6 +178,30 @@ export function ChangeContextMenu(props: ChangeContextMenuProps): ReactNode {
       {entry.group === 'untracked' ? item(t('changes.menuAddToVcs'), props.onAddToVcs, writeDisabled, 'add') : null}
       <div role="separator" className={css.menuSeparator} />
       {item(t('changes.menuCopyPath'), props.onCopyPath, false, 'copy')}
+      {props.onFileHistory === undefined && props.onBlame === undefined ? null : (
+        <>
+          <div role="separator" className={css.menuSeparator} />
+          {fileActions({ kind: 'change', status: entry.status }).map((action) => {
+            const run = action.id === 'fileHistory' ? props.onFileHistory : props.onBlame
+            const reason = action.disabledReason === undefined ? null : t(action.disabledReason.key)
+            return (
+              <button
+                key={action.id}
+                type="button"
+                role="menuitem"
+                className={css.menuItem}
+                disabled={reason !== null || run === undefined}
+                data-menu={action.id}
+                {...(reason === null ? {} : { title: reason })}
+                onClick={run}
+              >
+                {t(action.label.key)}
+                {reason === null ? null : <span className={css.menuReason}>{reason}</span>}
+              </button>
+            )
+          })}
+        </>
+      )}
     </div>
   )
 }
@@ -400,6 +431,8 @@ export function ChangesTree(props: ChangesTreeProps): ReactNode {
                 ? undefined
                 : () => { props.onAddToVcs?.([menu.entry.path]); setMenu(null) }}
               onCopyPath={() => { copy(menu.entry.path); setMenu(null) }}
+              onFileHistory={props.onFileHistory === undefined ? undefined : () => { props.onFileHistory?.(menu.entry.path); setMenu(null) }}
+              onBlame={props.onBlame === undefined ? undefined : () => { props.onBlame?.(menu.entry.path); setMenu(null) }}
             />
           )}
     </section>

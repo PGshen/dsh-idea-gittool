@@ -8,6 +8,9 @@ import { zhT } from './i18n-helpers.tsx'
 
 import {
   DocumentActions,
+  DocumentActionsView,
+  documentActionStates,
+  layoutWidth,
   statusLetterOf,
   toRepoRelativePath,
 } from '../../src/client/document-actions.tsx'
@@ -89,16 +92,20 @@ describe('DocumentActions', () => {
     expect(html).toContain('Blame')
   })
 
-  it('marks the not-yet-implemented actions disabled', () => {
-    const html = renderActions({ absolutePath: '/repo/src/a.ts', statusFor: () => 'A', openBlame: () => null })
+  it('B2: history and diff go to the Git tab for a file of the repository', () => {
+    const html = renderActions({ absolutePath: '/repo/src/a.ts', statusFor: () => 'M', repoRootFor: () => '/repo', openInGit: () => null, openBlame: () => null })
     const history = html.match(/<button[^>]*>历史<\/button>/u)?.[0]
     const diff = html.match(/<button[^>]*>Diff<\/button>/u)?.[0]
-    expect(history).toBeDefined()
-    expect(diff).toBeDefined()
-    expect(history).toContain('disabled')
-    expect(diff).toContain('disabled')
+    expect(history).not.toContain('disabled')
+    expect(diff).not.toContain('disabled')
+    expect(html).toMatch(/<button[^>]*data-status="M"/u)
   })
 
+  it('B2: without a repository path history, diff and the status jump are unavailable, with the reason', () => {
+    const html = renderActions({ absolutePath: '/elsewhere/a.ts', statusFor: () => 'M', repoRootFor: () => '/repo', openInGit: () => null })
+    expect(html.match(/<button[^>]*>历史<\/button>/u)?.[0]).toContain('disabled')
+    expect(html).toContain('文件不在当前会话的 Git 仓库中')
+  })
   it('exposes the repo-relative path when a root is supplied', () => {
     const html = renderActions({ absolutePath: '/repo/src/a.ts', repoRootFor: () => '/repo' })
     expect(html).toContain('data-repo-path="src/a.ts"')
@@ -107,5 +114,77 @@ describe('DocumentActions', () => {
   it('omits the repo-relative path when the root is unknown', () => {
     const html = renderActions({ absolutePath: '/repo/src/a.ts' })
     expect(html).not.toContain('data-repo-path')
+  })
+})
+
+describe('documentActionStates (B2)', () => {
+  const wired = { openInGit: true, openBlame: true }
+  it('enables everything for a modified file of the repository', () => {
+    expect(documentActionStates({ repoPath: 'src/a.ts', status: 'M', ...wired })).toEqual({
+      blame: null, history: null, diff: null, status: null,
+    })
+  })
+
+  it('a clean file has no worktree diff and no change to select', () => {
+    const states = documentActionStates({ repoPath: 'src/a.ts', status: null, ...wired })
+    expect(states.diff?.key).toBe('document.diff.clean')
+    expect(states.status?.key).toBe('document.diff.clean')
+    expect(states.history).toBeNull()
+  })
+
+  it('outside the repository only Blame stays (its page explains), the rest name the reason', () => {
+    const states = documentActionStates({ repoPath: null, status: 'M', ...wired })
+    expect(states.blame).toBeNull()
+    expect([states.history?.key, states.diff?.key, states.status?.key]).toEqual(['document.notInRepo', 'document.notInRepo', 'document.notInRepo'])
+  })
+
+  it('U (untracked or conflicted) keeps history available; the history page explains an empty one', () => {
+    expect(documentActionStates({ repoPath: 'n.txt', status: 'U', ...wired }).history).toBeNull()
+  })
+
+  it('nothing wired: every action is unavailable', () => {
+    const states = documentActionStates({ repoPath: 'src/a.ts', status: 'M', openInGit: false, openBlame: false })
+    expect(Object.values(states).every(reason => reason !== null)).toBe(true)
+  })
+})
+
+describe('DocumentActionsView compact (B2)', () => {
+  it('keeps status and Blame visible and folds history and diff under ⋯', () => {
+    const html = renderToStaticMarkup(
+      <DocumentActionsView
+        t={zhT}
+        status="M"
+        repoPath="src/a.ts"
+        compact
+        failure={null}
+        states={{ blame: null, history: null, diff: null, status: null }}
+        onBlame={() => undefined}
+        onIntent={() => undefined}
+      />,
+    )
+    expect(html).toContain('<details')
+    expect(html).toContain('⋯')
+    expect(html.indexOf('Blame')).toBeLessThan(html.indexOf('<details'))
+    expect(html.indexOf('历史')).toBeGreaterThan(html.indexOf('<details'))
+  })
+})
+
+describe('layoutWidth (L4)', () => {
+  type Fake = { clientWidth: number; display: string; parentElement: Fake | null }
+  const chain = (...nodes: Array<[number, string]>): Fake => {
+    let parent: Fake | null = null
+    for (const [clientWidth, display] of [...nodes].reverse()) parent = { clientWidth, display, parentElement: parent }
+    if (parent === null) throw new Error('empty chain')
+    return parent
+  }
+  const displayOf = (node: Fake): string => node.display
+
+  it('skips display: contents wrappers and measures the first laid-out ancestor', () => {
+    const row = chain([120, 'inline-flex'], [0, 'contents'], [647, 'flex'])
+    expect(layoutWidth(row, displayOf)).toBe(647)
+  })
+
+  it('returns null when nothing above has a width', () => {
+    expect(layoutWidth(chain([120, 'inline-flex'], [0, 'contents']), displayOf)).toBeNull()
   })
 })

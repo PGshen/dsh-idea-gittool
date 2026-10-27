@@ -15,7 +15,7 @@
 
 | 优先级 | 事项 | 来源 | 备注 |
 |---|---|---|---|
-| P1 | 按 B1 → B2 → B3 → B4 依次拆分计划（下一个：B2 历史与 Blame） | [设计决策 v0.2](../design/2026-10-25-产品设计决策-v0.2.md) §4 | 每个里程碑一份计划，执行前批准 |
+| P1 | 按 B1 → B2 → B3 → B4 依次拆分计划（下一个：B3） | [设计决策 v0.2](../design/2026-10-25-产品设计决策-v0.2.md) §4 | 每个里程碑一份计划，执行前批准 |
 | P2 | 筛选/仓库栏/分支右键菜单改用 ui-primitives `MenuSurface`/`Menu` | A1 走查，2026-10-25 | 当前按 [ADR 0006](../decisions/0006-浮层菜单材质例外.md) 手写菜单材质，迁移后废弃该 ADR |
 | P2 | 向 DSH 反馈：`workspace-write` 的 Seatbelt profile 放行 `DARWIN_USER_CACHE_DIR`，否则 osxkeychain 凭据助手在 confine 下不可用 | A2 T1 spike，2026-10-26 | 见 [references §13](../references/dsh-integration-feasibility.md)「写执行与沙箱」；只反馈不改 DSH 仓库，由负责人决定是否提 |
 | P2 | 分支树改为单一 Tab 停靠点（roving tabindex：选中行或首行为 0，其余 -1）；菜单 ↑↓ 是否停在不可用项上以便读屏听到原因，与负责人确认 | A3 I-1 评审，2026-10-26 | 当前每个叶子行各占一个 Tab 停靠点；↑↓ 跳过不可用项 |
@@ -37,11 +37,13 @@
 | P2 | `answerLeave('save')` 保存失败、或 `closeIf` 关窗时，被拦住的「未提交改动」询问（`dirtyWorktree`）一直挂起 | B1 终审，2026-10-27 | 保存失败时保留询问可再答；`closeIf` 时按取消回应 |
 | P2 | 补测试：continue 失败后的草稿、忙碌时 dispatch 被忽略、conflict/cancelled 结果文案、`dirtyWorktree` → `cancelStash` 接线、`git-client` 新端点的请求体断言 | B1 终审，2026-10-27 | B1 终审列出的缺口 |
 | P2 | A1–A3 样式引用了 DSH 中不存在的变量（--dsw-alias-state-success/warn、--dsw-font-mono、--dsw-alias-interactive-bg-selected），状态色/等宽字体实际未生效；需负责人确认后全局替换并把静态检查扩到全部样式 | B1 验收演示，2026-10-27 | B1 的 `MergeWindow*.module.css`、`ConflictsPage.module.css` 已替换，静态检查 `test/client/pages/css-tokens.test.ts` 目前只覆盖这两类文件（`GUARDED`） |
+| P2 | B2 终审 Minor（10 条）：Blame 未提交行双击应显示 HEAD→工作区（含已暂存）；修订版 Blame「文件不存在」文案区分修订并给「文件历史」按钮；文件历史第 2 页起合并条目路径退回新名（游标带当前路径）；文档头部 bootstrap 未到时误报「不在仓库」；`openTab` 失败后意图残留在队列；分支比较传 `entry.ref` 而非 `entry.name`（同名标签）；被该提交删除的文件禁用「与工作区比较」；窄头部 `⋯` 点动作/外部/Esc 收起；`git.blame` 页无返回时不吞 Esc；GitWorkbench 卸载时 `historyStore.close()`；（L4）干净文件的状态位「·」提示仍是 M0 的「Git 状态待接入」，应改为「没有未提交的改动」 | B2 终审，2026-10-27 | 细节见 [b2 计划](completed/b2-历史与Blame.md)「决策记录」终审条目 |
 
 ## 已完成
 
 | 完成日期 | 事项 | 计划 |
 |---|---|---|
+| 2026-10-27 | B2 历史与 Blame：Host `blame`/`fileHistory`/`compare` 与 `diff` range（修订号先解析成 sha）、三个 store 与跨 tab 意图队列、Blame 视图（Git tab 覆盖层 + `git.blame` 页）、文件历史页、比较页、覆盖层返回链、文件/提交/分支菜单与文档头部「历史」「Diff」；整分支终审 + L4 走查各一轮修复，负责人验收通过 | [b2-历史与Blame](completed/b2-历史与Blame.md) |
 | 2026-10-27 | B1 三栏合并：Host 合并端点（读三方、草稿 ref、经索引写回、还原冲突解决）、纯合并模型（Myers/diff3/按词简单冲突/草稿往返）、合并 store、CodeMirror 三栏窗口（块操作、同步滚动、宿主全屏、键盘）、冲突列表增强与审查更改；请求体按端点限额（ADR 0009）；AI 逐任务评审 + 整分支终审，负责人验收通过，`mergeWindow` 默认开启 | [b1-三栏合并](completed/b1-三栏合并.md) |
 | 2026-10-26 | A3 分支/贮藏/冲突最小闭环：分支页与分支动作（智能签出按 IntelliJ 行为）、合并/变基/拣选/回滚/重置/获取/拉取/更新项目（强推恢复带备份分支）、智能贮藏与待恢复标记（ADR 0008）、操作控制与合并提交、冲突列表、贮藏页、整行焦点；TD-5/8/9/10；AI 逐任务评审 + 整分支评审，负责人验收通过 | [a3-分支贮藏冲突](completed/a3-分支贮藏冲突.md) |
 | 2026-10-26 | A2 提交闭环：写执行层（confine/写队列/门禁）、按文件提交、Amend、回滚、加入 VCS、推送与 Push Rejected、中英双语（TD-6）；AI 评审与负责人验收通过 | [a2-提交闭环](completed/a2-提交闭环.md) |

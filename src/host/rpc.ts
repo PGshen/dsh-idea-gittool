@@ -13,7 +13,13 @@ import type {
 } from '@deepseek-ai/dsh-client-connection'
 
 import type {
+  BlameRequest,
+  BlameValue,
   BootstrapValue,
+  CompareRequest,
+  CompareValue,
+  FileHistoryRequest,
+  FileHistoryValue,
   BranchesValue,
   CommitDetailValue,
   ConflictCommandValue,
@@ -78,6 +84,9 @@ import { createWriteQueue } from './write-queue.ts'
 import { readBranches } from './git/branches.ts'
 import { readCommit } from './git/commit.ts'
 import type { DiffQuery } from './git/diff.ts'
+import { readBlame } from './git/blame.ts'
+import { readCompare } from './git/compare.ts'
+import { readFileHistory } from './git/file-history.ts'
 import { readDiff, validateRepoPath } from './git/diff.ts'
 import type { LogQuery } from './git/log.ts'
 import { logFilterSignature, normalizeLogFilters, readLog } from './git/log.ts'
@@ -102,6 +111,9 @@ const OPERATION_STATE_CACHE_KEY = 'operationState'
 const RESET_PREVIEW_CACHE_PREFIX = 'resetPreview'
 const STASH_LIST_CACHE_KEY = 'stashList'
 const STASH_FILES_CACHE_PREFIX = 'stashFiles'
+const BLAME_CACHE_PREFIX = 'blame'
+const FILE_HISTORY_CACHE_PREFIX = 'fileHistory'
+const COMPARE_CACHE_PREFIX = 'compare'
 /** Longest accepted requestId (client-generated UUIDs are 36). */
 const MAX_REQUEST_ID_LENGTH = 100
 
@@ -323,7 +335,7 @@ export function createRpcRuntime(deps: RpcDeps): RpcRuntime {
             runtime,
             payload,
             signal,
-            `${DIFF_CACHE_PREFIX}:${JSON.stringify([query.scope, query.sha ?? '', query.parent ?? '', query.path])}`,
+            `${DIFF_CACHE_PREFIX}:${JSON.stringify([query.scope, query.sha ?? '', query.parent ?? '', query.path, query.from ?? null, query.to ?? null, query.mergeBase ?? null, query.origPath ?? null])}`,
             (root) => readDiff(deps.runner, root, query, { signal }),
           )
         }
@@ -382,6 +394,42 @@ export function createRpcRuntime(deps: RpcDeps): RpcRuntime {
           const version = runtime.cache().versionOf(root)
           const ctx = bindWriteContext(deps.runner, root, { kind: 'unconfined' }, signal)
           return ok<MergeFileValue>({ ...(await readMergeFile(ctx, path)), version })
+        }
+        case 'blame': {
+          parseSessionId(payload)
+          const request = payload as BlameRequest
+          return await handleCached<BlameValue>(
+            deps,
+            runtime,
+            payload,
+            signal,
+            `${BLAME_CACHE_PREFIX}:${JSON.stringify([request.path, request.rev ?? null, request.start ?? 1, request.limit ?? null])}`,
+            (root) => readBlame(deps.runner, root, request, { signal }),
+          )
+        }
+        case 'fileHistory': {
+          parseSessionId(payload)
+          const request = payload as FileHistoryRequest
+          return await handleCached<FileHistoryValue>(
+            deps,
+            runtime,
+            payload,
+            signal,
+            `${FILE_HISTORY_CACHE_PREFIX}:${JSON.stringify([request.path, request.rev ?? null, request.cursor ?? null, request.limit ?? null])}`,
+            (root) => readFileHistory(deps.runner, root, request, { signal }),
+          )
+        }
+        case 'compare': {
+          parseSessionId(payload)
+          const request = payload as CompareRequest
+          return await handleCached<CompareValue>(
+            deps,
+            runtime,
+            payload,
+            signal,
+            `${COMPARE_CACHE_PREFIX}:${JSON.stringify([request.left, request.right, request.cursor ?? null, request.limit ?? null])}`,
+            (root) => readCompare(deps.runner, root, request, { signal }),
+          )
         }
         default:
           if (isWriteEndpoint(endpoint)) {
@@ -707,6 +755,11 @@ function parseDiffQuery(payload: unknown): DiffQuery & { path: string } {
   const query: DiffQuery & { path: string } = { path, scope: record.scope }
   if (record.sha !== undefined) query.sha = record.sha
   if (record.parent !== undefined) query.parent = record.parent
+  // B2 range fields: readDiff validates them (revisions are resolved there).
+  if (record.from !== undefined) query.from = record.from
+  if (record.to !== undefined) query.to = record.to
+  if (record.mergeBase !== undefined) query.mergeBase = record.mergeBase
+  if (record.origPath !== undefined) query.origPath = record.origPath
   return query
 }
 

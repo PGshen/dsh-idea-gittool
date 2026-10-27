@@ -33,6 +33,9 @@ export type BranchActionId =
   | 'copyRef'
   | 'filterLog'
   | 'showInLog'
+  // B2 compare mode
+  | 'compareWithCurrent'
+  | 'compareWithWorktree'
 
 export interface BranchActionItem {
   id: BranchActionId
@@ -134,6 +137,10 @@ export function branchActions(entry: BranchEntry, context: BranchActionContext):
   items.push(item('copyName', 'branch.menu.copyName', 4, undefined), item('copyRef', 'branch.menu.copyRef', 4, undefined))
   if (!isTag) items.push(item('filterLog', 'branch.menu.filter', 5, undefined))
   items.push(item('showInLog', 'branch.action.showInLog', 5, undefined))
+  items.push(
+    item('compareWithCurrent', 'branch.action.compareWithCurrent', 6, entry.current ? IS_CURRENT : undefined),
+    item('compareWithWorktree', 'branch.action.compareWithWorktree', 6, undefined),
+  )
   return items
 }
 
@@ -298,6 +305,8 @@ export interface BranchActionRunnerDeps {
   openPush: () => void
   /** Every finished write outcome (the workbench turns it into a notice). */
   onOutcome: (outcome: ActionOutcome<unknown>) => void
+  /** B2: the current branch's name, the label of "compare with current" (HEAD when detached). */
+  currentBranch?: () => string | null
 }
 
 export interface BranchActionRunner {
@@ -383,6 +392,12 @@ export function createBranchActionRunner(deps: BranchActionRunnerDeps): BranchAc
         return
       case 'copyRef':
         deps.copy(entry.ref)
+        return
+      case 'compareWithCurrent':
+        deps.openOverlay({ kind: 'compare', left: entry.name, right: 'HEAD', leftLabel: entry.name, rightLabel: deps.currentBranch?.() ?? 'HEAD' }, trigger)
+        return
+      case 'compareWithWorktree':
+        deps.openOverlay({ kind: 'compare', left: entry.name, right: null, leftLabel: entry.name, rightLabel: null }, trigger)
         return
       case 'showInLog':
         deps.showInLog(entry)

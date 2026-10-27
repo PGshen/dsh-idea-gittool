@@ -65,6 +65,9 @@ export interface CommitPanelProps {
   onRollback?: (paths: string[]) => void
   onAddToVcs?: (paths: string[]) => void
   onCopyPath?: (path: string) => void
+  /** B2: file history / worktree blame from a change row's menu. */
+  onFileHistory?: (path: string) => void
+  onBlame?: (path: string) => void
   /** After a successful commit: refresh status/log and highlight the new HEAD. */
   onCommitted?: (result: CommitResultValue, info: CommittedInfo) => void
   /** "Commit and push": push directly when `openPushPage` is false, otherwise open the Push page. */
@@ -150,6 +153,8 @@ function OperationCommitPanel(props: CommitPanelProps): ReactNode {
           checksDisabled
           onOpenDiff={props.onOpenDiff}
           {...(props.onCopyPath === undefined ? {} : { onCopyPath: props.onCopyPath })}
+          {...(props.onFileHistory === undefined ? {} : { onFileHistory: props.onFileHistory })}
+          {...(props.onBlame === undefined ? {} : { onBlame: props.onBlame })}
         />
       </div>
       <div className={css.bottom}>
@@ -255,6 +260,8 @@ function NormalCommitPanel(props: CommitPanelProps): ReactNode {
           {...(props.onRollback === undefined ? {} : { onRollback: props.onRollback })}
           {...(props.onAddToVcs === undefined ? {} : { onAddToVcs: props.onAddToVcs })}
           {...(props.onCopyPath === undefined ? {} : { onCopyPath: props.onCopyPath })}
+          {...(props.onFileHistory === undefined ? {} : { onFileHistory: props.onFileHistory })}
+          {...(props.onBlame === undefined ? {} : { onBlame: props.onBlame })}
         />
       </div>
       <div className={css.bottom}>

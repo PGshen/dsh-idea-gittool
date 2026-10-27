@@ -285,7 +285,7 @@ export function LogPage({
         : (
             <CommitContextMenu
               commit={menu.commit}
-              items={commitActions(menu.commit, commitActionContext(state.commits, menu.commit, commitMenu))}
+              items={commitActions(menu.commit, commitActionContext(state.commits, menu.commit, { ...commitMenu, selection: state.selection }))}
               anchor={menu.anchor}
               onClose={() => { closeMenu(true) }}
               onSelect={(id) => {

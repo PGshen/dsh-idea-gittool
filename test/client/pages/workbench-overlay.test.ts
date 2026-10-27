@@ -6,7 +6,9 @@ import {
   CLOSED_ROUTE,
   OVERLAY_LEVEL,
   actionOverlayWiring,
+  asBack,
   closeOverlay,
+  keepsFileHistory,
   createOverlayController,
   dirtySheetHandlers,
   handleOverlayEscape,
@@ -68,6 +70,51 @@ describe('closeOverlay', () => {
   it('closing a closed route is a no-op', () => {
     expect(closeOverlay(CLOSED_ROUTE)).toEqual({ route: CLOSED_ROUTE, left: null, focus: null })
   })
+
+  it('B2: an overlay with `back` returns to that overlay, keeping the page trigger for the final close', () => {
+    const trigger = target()
+    const history = { kind: 'fileHistory', path: 'a.txt' } as const
+    const blame: WorkbenchOverlay = { kind: 'blame', path: 'a.txt', rev: 'abc', back: history }
+    const open = openOverlay(openOverlay(CLOSED_ROUTE, history, trigger).route, blame, null).route
+    const back = closeOverlay(open)
+    expect(back.route).toEqual({ overlay: history, returnFocus: trigger })
+    expect(back.left).toBe(blame)
+    expect(back.focus).toBeNull()
+    expect(closeOverlay(back.route).focus).toBe(trigger)
+  })
+
+  it('B2: closing to the page skips the back chain', () => {
+    const trigger = target()
+    const blame: WorkbenchOverlay = { kind: 'blame', path: 'a.txt', back: { kind: 'fileHistory', path: 'a.txt' } }
+    const open = openOverlay(CLOSED_ROUTE, blame, trigger).route
+    expect(closeOverlay(open, { toPage: true })).toEqual({ route: CLOSED_ROUTE, left: blame, focus: trigger })
+  })
+})
+
+describe('keepsFileHistory (B2)', () => {
+  it('keeps the history store while the history page or an overlay returning to it is open', () => {
+    expect(keepsFileHistory({ kind: 'fileHistory', path: 'a' })).toBe(true)
+    expect(keepsFileHistory({ kind: 'blame', path: 'a', back: { kind: 'fileHistory', path: 'a' } })).toBe(true)
+    expect(keepsFileHistory({ kind: 'blame', path: 'a' })).toBe(false)
+    expect(keepsFileHistory(null)).toBe(false)
+  })
+})
+
+describe('asBack', () => {
+  it('drops the back of an overlay so chains stay one level deep', () => {
+    const blame: WorkbenchOverlay = { kind: 'blame', path: 'a.txt', rev: 'abc', back: { kind: 'fileHistory', path: 'a.txt' } }
+    expect(asBack(blame)).toEqual({ kind: 'blame', path: 'a.txt', rev: 'abc' })
+  })
+})
+
+describe('createOverlayController dismiss (B2)', () => {
+  it('closes the whole chain at once', () => {
+    const routes: Array<WorkbenchOverlay | null> = []
+    const controller = createOverlayController({ onChange: route => { routes.push(route.overlay) } })
+    controller.open({ kind: 'blame', path: 'a.txt', back: { kind: 'fileHistory', path: 'a.txt' } }, null)
+    controller.dismiss()
+    expect(routes.at(-1)).toBeNull()
+  })
 })
 
 describe('handleOverlayEscape', () => {
@@ -95,9 +142,11 @@ describe('handleOverlayEscape', () => {
 describe('WorkbenchOverlay kinds', () => {
   it('every kind has a navigation level (1 = overlay page, 2 = sheet)', () => {
     expect(Object.keys(OVERLAY_LEVEL).sort()).toEqual([
-      'branchSheet', 'commitOp', 'conflicts', 'diff', 'dirtyWorktree', 'fetch', 'merge', 'mergeWindow', 'pull', 'push', 'pushRejected',
-      'rebase', 'reset', 'rollback', 'smartCheckout', 'stashCreate', 'updateProject',
+      'blame', 'branchSheet', 'commitOp', 'compare', 'conflicts', 'diff', 'dirtyWorktree', 'fetch', 'fileHistory', 'merge', 'mergeWindow',
+      'pull', 'push', 'pushRejected', 'rebase', 'reset', 'rollback', 'smartCheckout', 'stashCreate', 'updateProject',
     ])
+    // B2 T1: blame, file history and compare are overlay pages with "← back".
+    expect([OVERLAY_LEVEL.blame, OVERLAY_LEVEL.fileHistory, OVERLAY_LEVEL.compare]).toEqual([1, 1, 1])
     // B1 T6: the three-pane merge window is an overlay page (it also enters host fullscreen).
     expect(OVERLAY_LEVEL.mergeWindow).toBe(1)
     expect(OVERLAY_LEVEL.diff).toBe(1)

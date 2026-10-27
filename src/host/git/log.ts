@@ -414,6 +414,20 @@ function compileMatcher(filters: LogFilters, regexTimeoutMs?: number): BatchMatc
   }
 }
 
+/** The page format of an unfiltered log record, shared by file history and compare (B2). */
+export const LOG_RECORD_FORMAT = PRETTY_FORMAT
+
+/** Parse one {@link LOG_RECORD_FORMAT} record (B2). */
+export function parseLogRecord(record: string): CommitSummary {
+  return parseCommitRecord(record, false).commit
+}
+
+/** Page size of a log-like request: default, positive integer, clamped to the log maximum (B2). */
+export function normalizeLogLimit(limit: unknown): number {
+  if (limit !== undefined && typeof limit !== 'number') throw invalidPayload('log limit must be a positive integer', { limit })
+  return normalizeLimit(limit, LOG_PAGE_DEFAULT_LIMIT)
+}
+
 function normalizeLimit(limit: number | undefined, fallback: number): number {
   if (limit === undefined) return clampLimit(fallback)
   if (!Number.isInteger(limit) || limit < 1) {

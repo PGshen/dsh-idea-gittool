@@ -1,0 +1,233 @@
+/* Blame 视图（设计 §9.7）：覆盖层铺满 Git tab 内容区，或作为 git.blame 页正文铺满页面。 */
+.host {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+}
+
+.root {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: var(--dsw-alias-bg-base);
+  color: var(--dsw-alias-label-primary);
+  font-size: 12px;
+  outline: none;
+}
+
+.header {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+  padding: 4px 8px;
+  border-bottom: 0.5px solid var(--dsw-alias-border-l2);
+}
+
+.back,
+.toggle {
+  flex: 0 0 auto;
+}
+
+.path {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  direction: rtl;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.meta {
+  flex: 0 0 auto;
+  color: var(--dsw-alias-label-secondary);
+  white-space: nowrap;
+}
+
+.body {
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.state {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+  margin: auto;
+  padding: 16px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.command {
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: var(--dsw-alias-bg-layer-1);
+  font-family: var(--dsw-font-markdown-code-block-font-family);
+  user-select: all;
+}
+
+.scroller {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  font-family: var(--dsw-font-markdown-code-block-font-family);
+}
+
+.canvas {
+  position: relative;
+  min-width: 100%;
+  width: max-content;
+}
+
+.row {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  box-sizing: border-box;
+  min-width: 100%;
+  line-height: 20px;
+  white-space: pre;
+  cursor: default;
+}
+
+.row:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.row[data-selected] {
+  background: var(--dsw-alias-interactive-bg-active);
+}
+
+.segmentStart {
+  border-top: 0.5px solid var(--dsw-alias-border-l2);
+}
+
+.gutter {
+  position: sticky;
+  left: 0;
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  width: 240px;
+  overflow: hidden;
+  padding: 0 8px;
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-secondary);
+  text-overflow: ellipsis;
+  user-select: none;
+}
+
+.gutterCompact {
+  width: 72px;
+}
+
+.row[data-uncommitted] .gutter {
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.lineNumber {
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  width: 48px;
+  padding: 0 6px;
+  color: var(--dsw-alias-label-tertiary);
+  text-align: right;
+  user-select: none;
+}
+
+.more {
+  display: flex;
+  justify-content: center;
+  padding: 8px;
+}
+
+.hoverCard {
+  position: absolute;
+  left: 8px;
+  z-index: 3;
+  max-width: 420px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--dsw-specific-menu);
+  box-shadow: var(--dsw-elevation-panel);
+  /* The menu fill is translucent by design; the blur makes it read as a solid card (L4). */
+  backdrop-filter: var(--dsw-menu-backdrop-filter);
+  white-space: normal;
+}
+
+.hoverSubject,
+.footerSubject {
+  margin: 0 0 4px;
+  color: var(--dsw-alias-label-primary);
+  font-weight: 600;
+}
+
+.hoverMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 4px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.hoverActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  margin: 0;
+}
+
+.link {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--dsw-alias-brand-primary);
+  font: inherit;
+  cursor: pointer;
+}
+
+.link:hover {
+  text-decoration: underline;
+}
+
+.footer {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  max-height: 45%;
+  padding: 6px 8px;
+  border-top: 0.5px solid var(--dsw-alias-border-l2);
+  background: var(--dsw-alias-bg-layer-1);
+}
+
+.footerHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.footerDiff {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 160px;
+}
+
+/* Keyboard (终审 I4): the lines are one tab stop. */
+.scroller:focus-visible {
+  outline: 1px solid var(--dsw-alias-brand-primary);
+  outline-offset: -1px;
+}

@@ -6,6 +6,7 @@ import type { CommitFileEntry } from '../../shared/protocol.ts'
 import { useT } from '../i18n.tsx'
 import { StatusLetter } from '../ui/StatusLetter.tsx'
 import css from './ChangedFilesTree.module.css'
+import type { MenuAnchor } from './menu-position.ts'
 
 /** 目录节点：`count` 是子树里的文件总数（根节点展示它）。 */
 export interface ChangedTreeDir {
@@ -37,6 +38,8 @@ export interface ChangedFilesTreeProps {
   /** 初次渲染就折叠的目录路径。 */
   initialCollapsedDirs?: string[]
   onOpenFile?: (file: CommitFileEntry) => void
+  /** B2：文件行右键（或菜单键）打开文件菜单，锚点是指针位置。 */
+  onFileMenu?: FileMenuHandler
   /** 没有变更文件时的提示；由调用方本地化。 */
   emptyHint?: string
   /** 当前选中的文件路径（从 Diff 返回时保留选中，设计 §8.1.6）。 */
@@ -126,14 +129,18 @@ export interface FileRowProps {
   showDirectory: boolean
   selected?: boolean
   onOpenFile?: ((file: CommitFileEntry) => void) | undefined
+  onFileMenu?: FileMenuHandler | undefined
 }
+
+/** B2 file menu request: the row's entry and where the menu opens. */
+export type FileMenuHandler = (file: CommitFileEntry, anchor: MenuAnchor) => void
 
 /**
  * 单个文件行（无 hook，便于无 DOM 单测直接取元素触发点击）。
  * @param props - 文件条目、显示名、缩进深度与点击回调。
  * @returns 文件行按钮。
  */
-export function FileRow({ file, name, depth, showDirectory, selected = false, onOpenFile }: FileRowProps): ReactNode {
+export function FileRow({ file, name, depth, showDirectory, selected = false, onOpenFile, onFileMenu }: FileRowProps): ReactNode {
   const stat = statText(file)
   const directory = directoryOf(file.path)
   return (
@@ -146,6 +153,11 @@ export function FileRow({ file, name, depth, showDirectory, selected = false, on
       data-path={file.path}
       data-parent={file.parentSha}
       onClick={onOpenFile === undefined ? undefined : () => onOpenFile(file)}
+      aria-haspopup={onFileMenu === undefined ? undefined : 'menu'}
+      onContextMenu={onFileMenu === undefined ? undefined : (event) => {
+        event.preventDefault()
+        onFileMenu(file, { kind: 'point', x: event.clientX, y: event.clientY })
+      }}
     >
       <StatusLetter status={file.status} />
       <span className={css.name}>{name}</span>
@@ -155,19 +167,20 @@ export function FileRow({ file, name, depth, showDirectory, selected = false, on
   )
 }
 
-function TreeRows({ nodes, depth, collapsed, selectedPath, onToggle, onOpenFile }: {
+function TreeRows({ nodes, depth, collapsed, selectedPath, onToggle, onOpenFile, onFileMenu }: {
   nodes: ChangedTreeNode[]
   depth: number
   collapsed: ReadonlySet<string>
   selectedPath: string | undefined
   onToggle: (path: string) => void
   onOpenFile?: ((file: CommitFileEntry) => void) | undefined
+  onFileMenu?: FileMenuHandler | undefined
 }): ReactNode {
   return (
     <>
       {nodes.map((node) => {
         if (node.kind === 'file') {
-          return <FileRow key={node.path} file={node.file} name={node.name} depth={depth} showDirectory={false} selected={node.path === selectedPath} onOpenFile={onOpenFile} />
+          return <FileRow key={node.path} file={node.file} name={node.name} depth={depth} showDirectory={false} selected={node.path === selectedPath} onOpenFile={onOpenFile} onFileMenu={onFileMenu} />
         }
         const isCollapsed = collapsed.has(node.path)
         return (
@@ -184,7 +197,7 @@ function TreeRows({ nodes, depth, collapsed, selectedPath, onToggle, onOpenFile 
               <span className={css.count}>{node.count}</span>
             </button>
             {isCollapsed ? null : (
-              <TreeRows nodes={node.children} depth={depth + 1} collapsed={collapsed} selectedPath={selectedPath} onToggle={onToggle} onOpenFile={onOpenFile} />
+              <TreeRows nodes={node.children} depth={depth + 1} collapsed={collapsed} selectedPath={selectedPath} onToggle={onToggle} onOpenFile={onOpenFile} onFileMenu={onFileMenu} />
             )}
           </div>
         )
@@ -204,6 +217,7 @@ export function ChangedFilesTree({
   mode = 'tree',
   initialCollapsedDirs,
   onOpenFile,
+  onFileMenu,
   emptyHint,
   selectedPath,
   headerExtra,
@@ -245,10 +259,11 @@ export function ChangedFilesTree({
             showDirectory
             selected={file.path === selectedPath}
             onOpenFile={onOpenFile}
+            onFileMenu={onFileMenu}
           />
         ))
       ) : (
-        <TreeRows nodes={tree} depth={0} collapsed={collapsed} selectedPath={selectedPath} onToggle={toggle} onOpenFile={onOpenFile} />
+        <TreeRows nodes={tree} depth={0} collapsed={collapsed} selectedPath={selectedPath} onToggle={toggle} onOpenFile={onOpenFile} onFileMenu={onFileMenu} />
       )}
     </div>
   )

@@ -49,6 +49,8 @@ import type { LocalizedText } from '../i18n.tsx'
 import { readOnlyMessage } from '../localized-text.ts'
 import { ReadOnlyBanner } from '../read-only-banner.tsx'
 import { createDetailStore, useDetailState } from '../store/detail-store.ts'
+import { createDiffStore } from '../store/diff-store.ts'
+import { createFileHistoryStore } from '../store/file-history-store.ts'
 import { createLogStore } from '../store/log-store.ts'
 import { ActionNotice } from './ActionNotice.tsx'
 import { BranchPanel } from './BranchPanel.tsx'
@@ -68,7 +70,9 @@ import type { ActionNotice as ActionNoticeValue, BranchActionRunnerDeps, QuickAc
 import { createBranchesStore, useBranchesState } from './branch-store.ts'
 import { CommitDetail } from './CommitDetail.tsx'
 import { BlameOverlay } from './BlameView.tsx'
+import { ComparePage } from './ComparePage.tsx'
 import { DiffViewer } from './DiffViewer.tsx'
+import { FileHistoryPage } from './FileHistoryPage.tsx'
 import { DirtyWorktreeSheet } from './DirtyWorktreeSheet.tsx'
 import css from './GitWorkbench.module.css'
 import { LogPage } from './LogPage.tsx'
@@ -79,6 +83,7 @@ import { StatusBar } from './StatusBar.tsx'
 import {
   actionOverlayWiring,
   asBack,
+  keepsFileHistory,
   dirtySheetHandlers,
   handleOverlayEscape,
   overlayLeaveEffects,
@@ -260,6 +265,13 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
   // 覆盖层同一时刻只有一个（设计 §5.3）：打开新的替换旧的；离开智能操作询问即视为取消。
   // B1 T7: a dirty merge window is asked before another entry point replaces it (mergeLeaveGuard is
   // filled by the open window); leaving it updates the conflict list / Review queue (mergeLeft).
+  // B2 file history: kept above the overlay so "← back" from Blame finds selection and scroll as they were.
+  const historyDiffStore = useMemo(() => createDiffStore({ load: (request, signal) => client.diff(request, signal) }), [client])
+  const historyStore = useMemo(
+    () => createFileHistoryStore({ sessionId, load: (request, signal) => client.fileHistory(request, signal), diff: historyDiffStore }),
+    [client, historyDiffStore, sessionId],
+  )
+  const historyScroll = useRef(0)
   const mergeLeaveGuard = useRef<((go: () => void, cancel?: () => void) => boolean) | null>(null)
   const mergeLeft = useRef<(path: string, next: WorkbenchOverlay | null) => void>(() => {})
   const leaveEffects = overlayLeaveEffects(actions)
@@ -267,6 +279,8 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
     (left, next) => {
       leaveEffects(left, next)
       if (left.kind === 'mergeWindow') mergeLeft.current(left.path, next)
+      // B2: the history page keeps its store across Blame/compare and back; release it after.
+      if (!keepsFileHistory(next)) historyStore.close()
     },
     // A pending action's dirty-worktree ask held by the window's question: not leaving cancels it.
     (current, next, proceed) => current.kind === 'mergeWindow'
@@ -867,6 +881,35 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
             onBack={() => { overlays.close() }}
             onShowInLog={showCommitInLog}
             onFileHistory={(path) => { overlays.open({ kind: 'fileHistory', path, back: asBack(overlay) }) }}
+          />
+        ) : null}
+        {overlay?.kind === 'fileHistory' ? (
+          <FileHistoryPage
+            store={historyStore}
+            diff={historyDiffStore}
+            target={overlay.rev === undefined ? { path: overlay.path } : { path: overlay.path, rev: overlay.rev }}
+            scroll={historyScroll}
+            onBack={() => { overlays.close() }}
+            onAction={(id, entry) => {
+              const back = asBack(overlay)
+              if (id === 'blameRevision') overlays.open({ kind: 'blame', path: entry.path, rev: entry.sha, back })
+              else if (id === 'compareWorktree') overlays.open({ kind: 'compare', left: entry.sha, right: null, leftLabel: entry.shortSha, rightLabel: null, back })
+              else if (id === 'showInLog') showCommitInLog(entry.sha)
+              else void globalThis.navigator?.clipboard?.writeText(entry.path)
+            }}
+          />
+        ) : null}
+        {overlay?.kind === 'compare' ? (
+          <ComparePage
+            sessionId={sessionId}
+            left={overlay.left}
+            right={overlay.right}
+            leftLabel={overlay.leftLabel}
+            rightLabel={overlay.rightLabel}
+            load={(request, signal) => client.compare(request, signal)}
+            loadDiff={(request, signal) => client.diff(request, signal)}
+            onBack={() => { overlays.close() }}
+            onShowInLog={showCommitInLog}
           />
         ) : null}
         {push === null || value.repoRoot === null ? null : (

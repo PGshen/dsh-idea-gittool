@@ -16,7 +16,7 @@ const MISSING_TOKENS: Readonly<Record<string, string>> = {
 }
 
 /** Styles in scope of the guard (B1, B2); widen to every file once A1–A3 are migrated. */
-const GUARDED = /^pages\/(MergeWindow[^/]*|ConflictsPage|BlameView|FileHistoryPage|ComparePage)\.module\.css$/
+const GUARDED = /^pages\/(MergeWindow[^/]*|ConflictsPage|BlameView|HistoryPages)\.module\.css$/
 
 interface TokenUse { file: string; name: string; fallback: boolean }
 
@@ -46,7 +46,7 @@ describe('DSH CSS tokens', () => {
 
   it('scans the guarded B1/B2 styles', () => {
     const files = new Set(uses.filter(use => GUARDED.test(use.file)).map(use => use.file))
-    expect([...files].sort()).toEqual(['pages/BlameView.module.css', 'pages/ConflictsPage.module.css', 'pages/MergeWindow.module.css'])
+    expect([...files].sort()).toEqual(['pages/BlameView.module.css', 'pages/ConflictsPage.module.css', 'pages/HistoryPages.module.css', 'pages/MergeWindow.module.css'])
   })
 
   it('B1 styles do not use DSH tokens that are missing at runtime without a fallback', () => {

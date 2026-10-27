@@ -8,6 +8,7 @@ import {
   actionOverlayWiring,
   asBack,
   closeOverlay,
+  keepsFileHistory,
   createOverlayController,
   dirtySheetHandlers,
   handleOverlayEscape,
@@ -87,6 +88,15 @@ describe('closeOverlay', () => {
     const blame: WorkbenchOverlay = { kind: 'blame', path: 'a.txt', back: { kind: 'fileHistory', path: 'a.txt' } }
     const open = openOverlay(CLOSED_ROUTE, blame, trigger).route
     expect(closeOverlay(open, { toPage: true })).toEqual({ route: CLOSED_ROUTE, left: blame, focus: trigger })
+  })
+})
+
+describe('keepsFileHistory (B2)', () => {
+  it('keeps the history store while the history page or an overlay returning to it is open', () => {
+    expect(keepsFileHistory({ kind: 'fileHistory', path: 'a' })).toBe(true)
+    expect(keepsFileHistory({ kind: 'blame', path: 'a', back: { kind: 'fileHistory', path: 'a' } })).toBe(true)
+    expect(keepsFileHistory({ kind: 'blame', path: 'a' })).toBe(false)
+    expect(keepsFileHistory(null)).toBe(false)
   })
 })
 

@@ -57,6 +57,13 @@ export type WorkbenchOverlay =
 /** An overlay "← back" can return to; one level only, so it never carries its own `back`. */
 export type BackOverlay = DistributiveOmit<WorkbenchOverlay, 'back'>
 
+/** Whether the workbench-level file history store is still needed with `overlay` on screen. */
+export function keepsFileHistory(overlay: WorkbenchOverlay | null): boolean {
+  if (overlay === null) return false
+  if (overlay.kind === 'fileHistory') return true
+  return 'back' in overlay && overlay.back?.kind === 'fileHistory'
+}
+
 /** `overlay` as the target of another overlay's `back` (its own `back` dropped). */
 export function asBack(overlay: WorkbenchOverlay): BackOverlay {
   const copy: { back?: unknown } & BackOverlay = { ...overlay }

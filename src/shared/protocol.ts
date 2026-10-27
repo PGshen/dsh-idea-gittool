@@ -398,7 +398,8 @@ export interface CommitDetailValue {
   version?: number
 }
 
-export type DiffScope = 'worktree' | 'staged' | 'commit'
+/** `range`（B2）：两个修订之间，或修订与工作区之间的单文件 diff。 */
+export type DiffScope = 'worktree' | 'staged' | 'commit' | 'range'
 
 export interface DiffRequest extends RpcRequest {
   /** repo 相对 POSIX 路径；Host 侧拒绝绝对路径与 `..`。 */
@@ -408,6 +409,12 @@ export interface DiffRequest extends RpcRequest {
   sha?: string
   /** 合并提交按父提交比较时指定；省略表示第一父。 */
   parent?: string
+  /** scope=range 时必填：旧侧修订（ref 或 sha）。 */
+  from?: string
+  /** scope=range 时必填：新侧修订；null 表示工作区。 */
+  to?: string | null
+  /** scope=range 且 `to` 非 null 时：从 `from` 与 `to` 的合并基算起（`from...to`）。 */
+  mergeBase?: boolean
 }
 
 export type DiffLineKind = 'context' | 'add' | 'del'
@@ -443,6 +450,127 @@ export interface DiffFileValue {
   truncated: boolean
   /** 截断原因：bytes / lines / binary。 */
   truncatedReason?: 'bytes' | 'lines' | 'binary'
+  version?: number
+}
+
+// --- B2 历史与 Blame（T1 冻结） ----------------------------------------------
+
+/** Blame 每页行数的缺省值与上限（设计 §9.6：每次 2000 行）。 */
+export const BLAME_PAGE_MAX_LINES = 2000
+/** Blame 的文件大小上限：超过即 `tooLarge`，只给终端命令。 */
+export const BLAME_MAX_BYTES = 8 * 1024 * 1024
+
+export interface BlameRequest extends RpcRequest {
+  /** repo 相对 POSIX 路径。 */
+  path: string
+  /** 修订（ref 或 sha）；省略表示工作区内容。 */
+  rev?: string
+  /** 本页起始行（1 起），缺省 1。 */
+  start?: number
+  /** 本页行数，缺省与上限 {@link BLAME_PAGE_MAX_LINES}。 */
+  limit?: number
+}
+
+export interface BlameCommit {
+  sha: string
+  shortSha: string
+  author: string
+  email: string
+  /** ISO 8601 作者时间。 */
+  date: string
+  subject: string
+  /** 工作区中尚未提交的行（sha 全 0）。 */
+  uncommitted: boolean
+  /** 浅克隆或 blame 起点的边界提交。 */
+  boundary: boolean
+  /** 该提交的上一版本（porcelain `previous`）；根提交与边界提交省略。 */
+  previous?: { sha: string; path: string }
+}
+
+/** 同一提交的一段连续行。 */
+export interface BlameSegment {
+  sha: string
+  /** 段首行号（文件内的绝对行号，1 起）。 */
+  start: number
+  count: number
+  /** 这些行在该提交里的路径，与当前路径不同时出现。 */
+  origPath?: string
+}
+
+export interface BlameValue {
+  path: string
+  /** 解析后的完整 sha；工作区为 null。 */
+  rev: string | null
+  totalLines: number
+  /** 本页起始行（1 起）。 */
+  start: number
+  /** 本页文本，每项一行，不含行尾。 */
+  lines: string[]
+  segments: BlameSegment[]
+  commits: Record<string, BlameCommit>
+  /** 下一页起始行；没有更多时省略。 */
+  next?: number
+  binary: boolean
+  tooLarge: boolean
+  /** `tooLarge` 时给出可复制的终端命令。 */
+  terminalCommand?: string
+  version?: number
+}
+
+export interface FileHistoryRequest extends RpcRequest {
+  path: string
+  /** 从哪个修订往回看，缺省 HEAD。 */
+  rev?: string
+  cursor?: LogCursor
+  /** 缺省与上限同 log（{@link LOG_PAGE_DEFAULT_LIMIT}/{@link LOG_PAGE_MAX_LIMIT}）。 */
+  limit?: number
+}
+
+export interface FileHistoryEntry extends CommitSummary {
+  /** 该提交时文件的路径（跨重命名时与请求路径不同）。 */
+  path: string
+  /** 该提交把文件从这个路径重命名/复制过来。 */
+  origPath?: string
+  status: FileStatusCode
+  additions?: number
+  deletions?: number
+  binary?: boolean
+}
+
+export interface FileHistoryValue {
+  path: string
+  entries: FileHistoryEntry[]
+  next?: LogCursor
+  /** 历史跨过了重命名（任一条目带 `origPath`）；UI 提示「历史可能不连续」。 */
+  followedRename: boolean
+  truncated: boolean
+  version?: number
+}
+
+export interface CompareRequest extends RpcRequest {
+  /** 左侧修订：列表显示「左边有而右边没有」的提交。 */
+  left: string
+  /** 右侧修订；null 表示工作区（只比较文件，没有提交列表）。 */
+  right: string | null
+  cursor?: LogCursor
+  limit?: number
+}
+
+export interface CompareRev {
+  /** 请求里的原文（分支名、标签或 sha）。 */
+  input: string
+  sha: string
+}
+
+export interface CompareValue {
+  left: CompareRev
+  right: CompareRev | null
+  /** `right..left`；`right` 为 null 时为空。 */
+  commits: CommitSummary[]
+  next?: LogCursor
+  /** `right...left`（以合并基为起点）；`right` 为 null 时为 `left` 对工作区。 */
+  files: FileEntry[]
+  filesTruncated: boolean
   version?: number
 }
 

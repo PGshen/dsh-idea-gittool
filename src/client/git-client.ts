@@ -3,6 +3,12 @@
 // 形状错误都收敛成结构化的 GitError，调用方不需要 try/catch。
 import { RPC_CHANNEL, isRpcResult } from '../shared/protocol.ts'
 import type {
+  BlameRequest,
+  BlameValue,
+  CompareRequest,
+  CompareValue,
+  FileHistoryRequest,
+  FileHistoryValue,
   AddToVcsRequest,
   AddToVcsValue,
   AmendMessageRequest,
@@ -95,6 +101,10 @@ export interface GitClient {
   stashDrop: WriteMethod<'stashDrop'>
   // B1 three-way merge: the read feeds the merge window; writes go through the action store.
   mergeFile(request: MergeFileRequest, signal?: AbortSignal): Promise<RpcResult<MergeFileValue>>
+  // B2 读端点（T1 冻结类型；Host 在 T2/T3 登记实现）。
+  blame(request: BlameRequest, signal?: AbortSignal): Promise<RpcResult<BlameValue>>
+  fileHistory(request: FileHistoryRequest, signal?: AbortSignal): Promise<RpcResult<FileHistoryValue>>
+  compare(request: CompareRequest, signal?: AbortSignal): Promise<RpcResult<CompareValue>>
   mergeDraftSave: WriteMethod<'mergeDraftSave'>
   mergeApply: WriteMethod<'mergeApply'>
   unresolveConflict: WriteMethod<'unresolveConflict'>
@@ -198,6 +208,9 @@ export function createGitClient(_ctx: unknown): GitClient {
     stashApply: write('stashApply'),
     stashDrop: write('stashDrop'),
     mergeFile: (request, signal) => call<MergeFileValue>('mergeFile', request, signal),
+    blame: (request, signal) => call<BlameValue>('blame', request, signal),
+    fileHistory: (request, signal) => call<FileHistoryValue>('fileHistory', request, signal),
+    compare: (request, signal) => call<CompareValue>('compare', request, signal),
     mergeDraftSave: write('mergeDraftSave'),
     mergeApply: write('mergeApply'),
     unresolveConflict: write('unresolveConflict'),

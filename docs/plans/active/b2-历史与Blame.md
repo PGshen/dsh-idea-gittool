@@ -99,7 +99,7 @@ Host 约束（各任务共用）：
 
 <!-- 状态：待开始 / 进行中 / 完成 / 阻塞 -->
 
-### T1：契约冻结 + 宿主 spike（待开始）
+### T1：契约冻结 + 宿主 spike（完成）
 
 - **目标**：冻结上面的类型与端点；用实测回答两个宿主问题，结论写进 references 与本计划「意外与发现」。
 - **涉及文件**：`src/shared/protocol.ts`、`src/host/rpc.ts`（三个端点先返回 `not implemented`）、`src/client/git-client.ts`（三个方法 + `diff` 透传新字段）、`src/client/pages/workbench-overlay.ts`（新增三种覆盖层，见 T5/T6 接口）、`docs/references/dsh-integration-feasibility.md`。
@@ -175,11 +175,12 @@ Host 约束（各任务共用）：
 
 <!-- 每完成一步追加一行：日期 — 任务 — 结果（commit 短哈希） -->
 
-- 无
+- 2026-10-27 — 预检：T2/T3 产出端点实现、T4 消费 T1 的类型与 `git-client` 方法；T5/T6 消费 T4 的 store；T7 消费 T5/T6 的覆盖层类型（T1 已在 `workbench-overlay.ts` 定义）。未发现冲突。
+- 2026-10-27 — T1 完成：`protocol.ts` B2 类型与 `DiffScope` `range`、`git-client` 三个方法、`workbench-overlay.ts` 三种覆盖层（含一级 `back`）、references §15 spike 两问（源码查证）
 
 ## 下一步
 
-- 从 T1 开始（worktree `.claude/worktrees/b2-history-blame`，分支 `b2-history-blame`）：先写 `protocol.ts` 新类型与 `git-client` 请求体断言测试，再做 spike 两问。
+- T2：在 `test/host/blame.test.ts` 先写 `parseLinePorcelain` 与 `readBlame` 的真实仓库测试，再实现 `src/host/git/blame.ts`，同时把 `blame` 加入 `RPC_ENDPOINTS`/`RpcEndpointTypes` 并在 `rpc.ts` 路由（worktree `.claude/worktrees/b2-history-blame`）。
 
 ## 决策记录
 
@@ -187,6 +188,9 @@ Host 约束（各任务共用）：
 
 - 2026-10-27 — worktree 内 `node_modules` 软链到主 checkout — `package.json` 的 `link:../deepseek-harness/...` 是相对仓库根的路径，worktree 深度不同导致 `pnpm install --frozen-lockfile` 失败；软链不改 lockfile。
 - 2026-10-27 — 用本计划的「进度」「决策记录」作执行账本，不用 executing-plans 的 `task-start`/`task-done` 脚本 — 脚本只认 `Task N` 标题，本仓库计划模板用 `T1`。
+- 2026-10-27 T1 — 裁定：端点不在 T1 登记，`blame` 随 T2、`fileHistory`/`compare` 随 T3 与实现一起进 `RPC_ENDPOINTS`/`RpcEndpointTypes` — 现有测试 `rpc.test.ts`「implements every registered endpoint」禁止「not implemented」占位，T1 登记会让 `make check` 红；`git-client` 的 `call` 接受任意端点名，客户端方法可先行。代价：无（T2/T3 本来就要改这两处）。
+- 2026-10-27 T1 — 裁定：spike 以 DSH 源码查证代替截图，浏览器实测并入自验证 L4 — 两问都能从 `service.ts`/`tab-domain.ts` 读出确定答案；代价：若运行时行为与源码不符，T5 的 `git.blame` 换文件逻辑需改用 `replaceTab`。
+- 2026-10-27 T1 — 裁定：意图不走 `openTab` 的 `params` — 见 references §15 (b)，避免刷新后重放一次性动作。
 - 2026-10-27 — B2 不加 feature flag — 全部为只读视图，没有写回风险；出问题可直接隐藏入口。
 - 2026-10-27 — 修订号先解析为 sha 再参与后续 git 调用 — 同时解决参数注入与「同一请求内 ref 移动」的竞态。
 
@@ -194,7 +198,7 @@ Host 约束（各任务共用）：
 
 <!-- 和预期不一致的事、SDK 的新发现（同时写进 references/）、临时绕过的问题（同时登记到 tech-debt）。 -->
 
-- 无
+- 2026-10-27 T1 — spike (a)：已打开的同 kind 页再 `openTab` 会经 `tabDomain.navigate` 收到新 `params`（`revision` 递增），所以 `git.blame` 换文件只需跟随 `navigation`，不需要 `replaceTab`；去重只在目标 pane 内。(b)：`openTab('git')` 未打开则新开、已打开则聚焦。详见 [references §15](../../references/dsh-integration-feasibility.md)。
 
 ## 阻塞
 

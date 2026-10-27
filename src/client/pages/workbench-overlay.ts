@@ -47,6 +47,17 @@ export type WorkbenchOverlay =
   | { kind: 'smartCheckout'; target: CheckoutTarget; paths: string[]; untracked?: string[] }
   /** "Uncommitted changes" question of the action store (DirtyWorktreeSheet reads the ask). */
   | { kind: 'dirtyWorktree' }
+  /** B2 line-segment blame of one file; `rev` absent = worktree. `back` is the overlay "← back" returns to. */
+  | { kind: 'blame'; path: string; rev?: string; back?: BackOverlay }
+  /** B2 history of one file (follows renames). */
+  | { kind: 'fileHistory'; path: string; rev?: string; back?: BackOverlay }
+  /** B2 compare: commits in `left` but not in `right`, plus changed files; `right` null = worktree. */
+  | { kind: 'compare'; left: string; right: string | null; leftLabel: string; rightLabel: string | null; back?: BackOverlay }
+
+/** An overlay "← back" can return to; one level only, so it never carries its own `back`. */
+export type BackOverlay = DistributiveOmit<WorkbenchOverlay, 'back'>
+
+type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never
 
 export type WorkbenchOverlayKind = WorkbenchOverlay['kind']
 
@@ -69,6 +80,9 @@ export const OVERLAY_LEVEL: Record<WorkbenchOverlayKind, 1 | 2> = {
   branchSheet: 2,
   smartCheckout: 2,
   dirtyWorktree: 2,
+  blame: 1,
+  fileHistory: 1,
+  compare: 1,
 }
 
 export interface OverlayRoute {

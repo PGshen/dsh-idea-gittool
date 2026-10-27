@@ -34,9 +34,16 @@ function copyToClipboard(text: string): void {
   void navigator.clipboard.writeText(text).catch(() => undefined)
 }
 
-/** 请求的稳定身份（滚动位置缓存、内容区 key）。 */
+/** 请求的稳定身份（滚动位置缓存）。 */
 function requestKey(request: DiffRequest): string {
   return [request.scope, request.sha ?? '', request.parent ?? '', request.path].join('\u0000')
+}
+
+/**
+ * 内容区的身份：B3b 的显示选项变了，hunk 列表就不同，折叠/展开/滚动等状态必须重置（评审 I5）。
+ */
+export function diffContentKey(request: DiffRequest): string {
+  return [requestKey(request), request.ignoreWhitespace === true ? 'w' : '', request.context ?? 'default'].join('\u0000')
 }
 
 function shortHash(sha: string | undefined): string {
@@ -329,7 +336,7 @@ export function DiffViewerView({
   if (state.value !== null) {
     main = (
       <DiffContent
-        key={requestKey(current)}
+        key={diffContentKey(current)}
         request={current}
         value={state.value}
         loading={state.status === 'loading'}
@@ -480,6 +487,13 @@ export function DiffViewer({
 
   // 打开即聚焦，保证 Esc 能被覆盖层收到。
   useEffect(() => { rootRef.current?.focus() }, [])
+  // B3b 评审 I6：内容到了就把焦点交给滚动区，`n`/`p` 立即可用（Esc 仍冒泡到根）。
+  const hasContent = state.value !== null
+  useEffect(() => {
+    const root = rootRef.current
+    if (!hasContent || root === null || globalThis.document?.activeElement !== root) return
+    root.querySelector<HTMLElement>('[data-diff-hunks]')?.focus()
+  }, [hasContent, state.request])
 
   const current = state.request ?? request
   const currentKey = requestKey(current)

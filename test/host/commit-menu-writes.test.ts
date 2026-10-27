@@ -10,7 +10,7 @@ import { applyPatchOperation, readFormatPatch } from '../../src/host/git/patch.t
 import { pushOperation, readPushPreview } from '../../src/host/git/push.ts'
 import { createTagOperation } from '../../src/host/git/tag-write.ts'
 import { createFakeSubprocess } from './fake-subprocess.ts'
-import { createTempRepo } from './fixtures.ts'
+import { createTempRepo, writeExecutableScript } from './fixtures.ts'
 import type { TempRepo } from './fixtures.ts'
 import { contextFor, createRemoteSetup } from './remote-fixtures.ts'
 
@@ -196,6 +196,31 @@ describe('fixupCommit', () => {
     const head = repo.git('rev-parse', 'HEAD').trim()
     expect((await failureOf(write(fixupCommitOperation, repo, { target: c1, paths: ['f1.txt'], kind: 'fixup' }))).code).toBe('git/dirty-worktree')
     expect(repo.git('rev-parse', 'HEAD').trim()).toBe(head)
+  })
+
+  it('refuses when the range already has fixup!/squash!/amend! commits, before committing (review I3)', async () => {
+    const repo = makeRepo()
+    const [c1, c2] = linear(repo, 2)
+    repo.write('f2.txt', '2 pending\n')
+    repo.commit(`fixup! c2`)
+    repo.write('f1.txt', '1 new\n')
+    const head = repo.git('rev-parse', 'HEAD').trim()
+    const failure = await failureOf(write(fixupCommitOperation, repo, { target: c1, paths: ['f1.txt'], kind: 'fixup' }))
+    expect(failure).toMatchObject({ code: 'git/invalid-payload', details: { reason: 'pending-autosquash' } })
+    expect(repo.git('rev-parse', 'HEAD').trim()).toBe(head)
+    void c2
+  })
+
+  it('takes the fixup commit back when the rebase fails without stopping (review I4)', async () => {
+    const repo = makeRepo()
+    const [c1] = linear(repo, 2)
+    writeExecutableScript(join(repo.root, '.git', 'hooks'), 'pre-rebase', '#!/bin/sh\nexit 1\n')
+    const head = repo.git('rev-parse', 'HEAD').trim()
+    repo.write('f1.txt', '1 fixed\n')
+    const failure = await failureOf(write(fixupCommitOperation, repo, { target: c1, paths: ['f1.txt'], kind: 'fixup' }))
+    expect(failure.code).toBe('git/hook-failed')
+    expect(repo.git('rev-parse', 'HEAD').trim()).toBe(head)
+    expect(readFileSync(join(repo.root, 'f1.txt'), 'utf8')).toBe('1 fixed\n')
   })
 
   it('refuses a target off the current branch', async () => {

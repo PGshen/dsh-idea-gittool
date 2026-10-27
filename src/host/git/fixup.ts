@@ -7,6 +7,7 @@ import { commitFilesOperation } from './commit-write.ts'
 import { parseFullSha } from './integrate.ts'
 import { rebaseOutcome } from './interactive-rebase.ts'
 import { readRebasePlan } from './rebase-plan.ts'
+import { detectOperationIn } from './status.ts'
 import { dirtyTrackedPaths, dirtyWorktree, withSmartStash, writeGitDir } from './smart-stash.ts'
 import {
   assertNoOperation,
@@ -54,6 +55,10 @@ export const fixupCommitOperation: WriteOperation<FixupCommitInput, Omit<Interac
     if (plan.blocked !== undefined || target === undefined) {
       throw invalidPayload('the target is not on the current branch', { reason: plan.blocked ?? 'not-ancestor' })
     }
+    // Autosquash folds every `fixup!`/`squash!`/`amend!` commit of the range, not only ours (review I3).
+    if (plan.commits.some(commit => /^(?:fixup|squash|amend)! /u.test(commit.subject))) {
+      throw invalidPayload('the branch already has fixup!/squash!/amend! commits after the target', { reason: 'pending-autosquash' })
+    }
     // Changes outside the chosen paths would stop the autosquash: decide before committing anything,
     // so answering the stash question never creates a second fixup commit.
     const chosen = new Set(input.paths)
@@ -61,6 +66,7 @@ export const fixupCommitOperation: WriteOperation<FixupCommitInput, Omit<Interac
     if (others.length > 0 && !input.stash) throw dirtyWorktree(others, 'rebase')
 
     const extra = input.kind === 'squash' && input.message !== undefined ? `\n\n${input.message}` : ''
+    const before = plan.head
     await commitFilesOperation.run(ctx, { paths: input.paths, message: `${input.kind}! ${target.subject}${extra}`, amend: false })
     const gitDir = await writeGitDir(ctx)
     const { value, outcome } = await withSmartStash(ctx, { stash: input.stash, operation: 'rebase' }, async () => {
@@ -75,7 +81,16 @@ export const fixupCommitOperation: WriteOperation<FixupCommitInput, Omit<Interac
         ],
         { timeoutMs: AUTOSQUASH_TIMEOUT_MS },
       )
-      return await rebaseOutcome(ctx, gitDir, result)
+      try {
+        return await rebaseOutcome(ctx, gitDir, result)
+      } catch (error) {
+        // Nothing is in progress (refused by a hook, failed to start): take our commit back so a
+        // retry does not stack a second one; the changes return to the index (review I4).
+        if ((await detectOperationIn(gitDir)) === null) {
+          await ctx.git([...GIT_BASE_ARGV, 'reset', '-q', '--soft', before, '--'])
+        }
+        throw error
+      }
     })
     const response: Omit<InteractiveRebaseValue, 'version'> = { head: (await readHead(ctx)).sha, completed: !value.open, ...outcome }
     if (value.stop !== undefined) response.stop = value.stop

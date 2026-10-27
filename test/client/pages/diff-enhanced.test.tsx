@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { DiffHunks, buildDiffRows, nextAnchorRow } from '../../../src/client/pages/DiffHunks.tsx'
-import { DiffViewerHeader } from '../../../src/client/pages/DiffViewer.tsx'
+import { DiffViewerHeader, diffContentKey } from '../../../src/client/pages/DiffViewer.tsx'
 import { DIFF_SETTINGS_KEY, readDiffMode, writeDiffMode } from '../../../src/client/settings.ts'
 import { createDiffStore, createDiffViewerController } from '../../../src/client/store/diff-store.ts'
 import type { DiffHunk, DiffLine, DiffRequest, DiffFileValue, RpcResult } from '../../../src/shared/protocol.ts'
@@ -114,5 +114,14 @@ describe('persisted diff mode (B3b)', () => {
     expect(readDiffMode()).toBe('unified')
     expect(() => { writeDiffMode('split') }).not.toThrow()
     expect(DIFF_SETTINGS_KEY).toBe('dsh-idea-git.settings.v1')
+  })
+})
+
+describe('diff content identity (B3b review I5)', () => {
+  it('changes with the diff options so per-file view state resets', () => {
+    const base = { sessionId: 's', path: 'a.ts', scope: 'worktree' as const }
+    expect(diffContentKey(base)).not.toBe(diffContentKey({ ...base, ignoreWhitespace: true }))
+    expect(diffContentKey(base)).not.toBe(diffContentKey({ ...base, context: 'full' }))
+    expect(diffContentKey(base)).toBe(diffContentKey({ ...base }))
   })
 })

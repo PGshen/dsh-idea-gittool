@@ -5,6 +5,7 @@ import {
   CHANGELISTS_KEY_PREFIX,
   DEFAULT_LIST,
   addList,
+  changelistSections,
   emptyChangelists,
   listOf,
   loadChangelists,
@@ -80,5 +81,45 @@ describe('changelist persistence', () => {
     expect(loadChangelists(throwing, '/repo')).toEqual(emptyChangelists())
     expect(() => { saveChangelists(throwing, '/repo', emptyChangelists()) }).not.toThrow()
     expect(loadChangelists(null, '/repo')).toEqual(emptyChangelists())
+  })
+})
+
+describe('changelistSections', () => {
+  const entry = (path: string, group = 'modified'): { path: string; group: string } => ({ path, group })
+
+  it('groups visible changes by list, default first, with tri-state checks and the active mark', () => {
+    const { state, id } = addList(emptyChangelists(), '调试')
+    const assigned = setActive(moveTo(state, ['b.txt'], id), id)
+    const sections = changelistSections([entry('a.txt'), entry('b.txt'), entry('c.txt')], assigned, new Set(['a.txt', 'b.txt']))
+    expect(sections.map(section => [section.list.id, section.entries.map(change => change.path), section.check, section.active])).toEqual([
+      [DEFAULT_LIST, ['a.txt', 'c.txt'], 'some', false],
+      [id, ['b.txt'], 'all', true],
+    ])
+  })
+
+  it('keeps empty lists and leaves conflicts uncheckable', () => {
+    const { state } = addList(emptyChangelists(), 'empty')
+    const sections = changelistSections([entry('x.txt', 'conflicts')], state, new Set())
+    expect(sections).toHaveLength(2)
+    expect(sections[0]?.check).toBe('none')
+    expect(sections[0]?.checkable).toBe(false)
+    expect(sections[1]?.entries).toEqual([])
+  })
+})
+
+describe('changelist grouping preference', () => {
+  it('is remembered in the settings', async () => {
+    const { readChangelistGrouping, writeChangelistGrouping } = await import('../../../src/client/settings.ts')
+    const data: Record<string, string> = {}
+    const storage = { getItem: (key: string) => data[key] ?? null, setItem: (key: string, value: string) => { data[key] = value } }
+    const original = (globalThis as { localStorage?: unknown }).localStorage
+    ;(globalThis as { localStorage?: unknown }).localStorage = storage
+    try {
+      expect(readChangelistGrouping()).toBe(false)
+      writeChangelistGrouping(true)
+      expect(readChangelistGrouping()).toBe(true)
+    } finally {
+      ;(globalThis as { localStorage?: unknown }).localStorage = original
+    }
   })
 })

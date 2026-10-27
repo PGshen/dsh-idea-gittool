@@ -29,6 +29,17 @@ export const zhShelf = {
   'shelf.shelve.explain': '这些文件的改动会保存到搁架并从工作区撤下（未跟踪的文件会被删除），之后可以在贮藏页的「搁架」里取回。',
   'shelf.shelve.submit': '搁置',
   'changes.menuShelve': '搁置…',
+  'changelist.default': 'Changes',
+  'changelist.group': '按 Changelist 分组',
+  'changelist.new': '新建 Changelist…',
+  'changelist.rename': '重命名',
+  'changelist.remove': '删除',
+  'changelist.setActive': '设为活动',
+  'changelist.activeBadge': '活动',
+  'changelist.toggle': '展开 / 折叠',
+  'changelist.checkAll': '勾选「{name}」中的全部文件',
+  'changelist.empty': '（空）把文件拖到这里',
+  'changelist.moveTo': '移到 Changelist',
 }
 
 export const enShelf = {
@@ -60,4 +71,15 @@ export const enShelf = {
   'shelf.shelve.explain': 'The changes of these files are saved to the shelf and taken out of the working tree (untracked files are deleted); unshelve them from the Shelf segment of the Stash page.',
   'shelf.shelve.submit': 'Shelve',
   'changes.menuShelve': 'Shelve…',
+  'changelist.default': 'Changes',
+  'changelist.group': 'Group by changelist',
+  'changelist.new': 'New changelist…',
+  'changelist.rename': 'Rename',
+  'changelist.remove': 'Delete',
+  'changelist.setActive': 'Set active',
+  'changelist.activeBadge': 'Active',
+  'changelist.toggle': 'Expand / collapse',
+  'changelist.checkAll': 'Check every file in "{name}"',
+  'changelist.empty': '(empty) drag files here',
+  'changelist.moveTo': 'Move to changelist',
 } satisfies Record<keyof typeof zhShelf, string>

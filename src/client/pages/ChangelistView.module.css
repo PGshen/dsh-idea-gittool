@@ -1,0 +1,125 @@
+/* B3c 提交页按 Changelist 分组：每个列表一个可折叠段，组头可接收拖放。 */
+.root {
+  position: relative;
+  min-height: 0;
+  overflow: auto;
+  color: var(--dsw-alias-label-primary);
+  font-size: 12px;
+}
+
+.section {
+  border-bottom: 0.5px solid var(--dsw-alias-border-l2);
+}
+
+.header {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding: 3px 8px;
+  background: var(--dsw-alias-bg-layer-1);
+}
+
+.active .name {
+  font-weight: 600;
+}
+
+.chevron,
+.action,
+.newButton,
+.menuItem {
+  border: 0;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font: inherit;
+  cursor: pointer;
+}
+
+.action:hover,
+.newButton:hover,
+.menuItem:hover {
+  color: var(--dsw-alias-label-primary);
+}
+
+.name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.count {
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.badge {
+  padding: 0 4px;
+  border-radius: 4px;
+  background: var(--dsw-alias-interactive-bg-active);
+  color: var(--dsw-alias-label-secondary);
+}
+
+.spacer {
+  flex: 1 1 auto;
+}
+
+.files {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.file {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding: 2px 8px 2px 28px;
+  cursor: default;
+}
+
+.file:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.path {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.empty {
+  padding: 2px 8px 2px 28px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.edit {
+  min-width: 80px;
+  font: inherit;
+}
+
+.newRow,
+.newButton {
+  padding: 4px 8px;
+}
+
+.menu {
+  position: fixed;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  min-width: 140px;
+  padding: 4px 0;
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: 6px;
+  background: var(--dsw-alias-bg-base);
+}
+
+.menuTitle {
+  padding: 2px 10px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.menuItem {
+  padding: 3px 10px;
+  text-align: left;
+}

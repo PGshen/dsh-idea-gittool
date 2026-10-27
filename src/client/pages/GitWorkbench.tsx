@@ -77,6 +77,10 @@ import { ComparePage } from './ComparePage.tsx'
 import { InteractiveRebasePage, afterInteractiveRebase } from './InteractiveRebasePage.tsx'
 import { ApplyPatchPage, CreateTagSheet, FixupIntoSheet, PatchPage } from './CommitMenuSheets.tsx'
 import { ShelfPanel, ShelveSheet, shelvePaths, useShelfStore } from './ShelfPanel.tsx'
+import { ChangelistPanel } from './ChangelistView.tsx'
+import { addList, moveTo, removeList, renameList, setActive } from '../changelists/changelist-model.ts'
+import { useChangelists } from '../changelists/use-changelists.ts'
+import { readChangelistGrouping, writeChangelistGrouping } from '../settings.ts'
 import { DiffViewer } from './DiffViewer.tsx'
 import { FileHistoryPage } from './FileHistoryPage.tsx'
 import { fileActions } from './file-actions.ts'
@@ -233,6 +237,7 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
   )
   useEffect(() => { changesStore.setStatus(status) }, [changesStore, status])
   const changes = useChangesState(changesStore)
+  const changelists = useChangelists(value.repoRoot, changes.entries.map(entry => entry.path))
   const commit = useCommitState(commitStore)
   const statusSawCommit = useRef(false)
   const previousPhase = useRef<CommitPhase>(commit.phase)
@@ -654,6 +659,7 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
   // B3c: the Stash page has a Stash / Shelf segment; the shelf store lives with the workbench.
   const [stashSegment, setStashSegment] = useState<'stash' | 'shelf'>('stash')
   const shelfStore = useShelfStore(client, sessionId)
+  const [changelistGrouped, setChangelistGrouped] = useState(() => readChangelistGrouping())
   const mergeBlock = useRef<LocalizedText | null>(null)
   const overlayOpen = overlays.open
   const review = useMemo(() => createMergeReviewWiring({
@@ -911,6 +917,27 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
             writePolicy={value.writePolicy}
             {...(value.pendingWrites === undefined ? {} : { pendingWrites: value.pendingWrites })}
             onOpenDiff={openWorktreeDiff}
+            changelists={{
+              grouped: changelistGrouped,
+              onGrouped: (on) => { setChangelistGrouped(on); writeChangelistGrouping(on) },
+              panel: (
+                <ChangelistPanel
+                  entries={changes.entries}
+                  search={changes.search}
+                  checked={changes.checked}
+                  state={changelists.state}
+                  writeDisabled={!branchContext.writable}
+                  onToggleFile={(path) => { changesStore.toggleFile(path) }}
+                  onSetChecked={(paths, checked) => { changesStore.setChecked(paths, checked) }}
+                  onOpenDiff={(entry) => { openWorktreeDiff(entry.path, entry.diffScope) }}
+                  onMove={(paths, id) => { changelists.update(current => moveTo(current, paths, id)) }}
+                  onSetActive={(id) => { changelists.update(current => setActive(current, id)) }}
+                  onAdd={(name) => { changelists.update(current => addList(current, name).state) }}
+                  onRename={(id, name) => { changelists.update(current => renameList(current, id, name)) }}
+                  onRemove={(id) => { changelists.update(current => removeList(current, id)) }}
+                />
+              ),
+            }}
             onShelve={(path, trigger) => { overlays.open({ kind: 'shelve', paths: shelvePaths(path, changes.checked) }, trigger) }}
             onRollback={paths => {
               clearStaleCommitNotice()

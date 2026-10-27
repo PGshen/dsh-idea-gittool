@@ -80,28 +80,32 @@ interface ShelfEntry { id: string /* 时间戳 + 随机，[0-9a-z-]{1,64} */; na
 - `src/client/store/shelf-store.ts`、贮藏页分段、`ShelfPanel`、`ShelveSheet`、提交页入口。
 - 测试：store 单测、静态渲染、可用性。
 
-### T4：Changelist 模型（进行中）
+### T4：Changelist 模型（完成）
 - `src/client/changelists/changelist-model.ts`（纯函数）+ 持久化（读写都 try/catch）。
 - 测试：AC5。
 
-### T5：提交页 Changelist 分组（待开始）
+### T5：提交页 Changelist 分组（完成）
 - `ChangesTree` 分组模式、组头勾选、右键、拖放、列表管理浮层。
 - 测试：AC6 的纯函数与静态渲染部分。
 
-### T6：自验证与文档（待开始）
+### T6：自验证与文档（进行中）
 - L4、runbook、ARCHITECTURE、QUALITY、references。
 
 ## 进度
 
 - 2026-10-28 — T1+T2 — 协议与客户端方法、覆盖层 `shelve`、ADR 0011；Host `shelf.ts`（补丁含二进制与未跟踪、受限 ref 下的提交对象、先存后回滚、干净应用/三方合并、删除）与路由
 - 2026-10-28 — T3 — `shelf-store`、`ShelfPanel`（列表、预览、取回/取回并保留/删除、不能干净应用时的三方合并）、`ShelveSheet`、贮藏页「贮藏 | 搁架」分段、提交页文件右键「搁置…」（勾选中的行带上全部勾选文件）
+- 2026-10-28 — T4 — `changelist-model`（增删改、活动列表、移动、跟随当前改动、按仓库持久化与损坏回退）
+- 2026-10-28 — T5 — `changelistSections`、`ChangelistView`/`ChangelistPanel`（分段、三态勾选、拖放、「移到…」菜单、内联新建/重命名、设为活动、删除）、提交页「按 Changelist 分组」开关（`settings.ts` 记住）、`useChangelists`
 
 ## 下一步
 
-- T4：`src/client/changelists/changelist-model.ts`（纯函数 + 持久化），测试 `test/client/changelists/changelist-model.test.ts`。
+- T6：L4 走查（重启 3081 DSH 指向 b3c worktree），截图 `.evidence/b3c/`；runbook、ARCHITECTURE、QUALITY；然后整分支评审。
 
 ## 决策记录
 
+- 2026-10-28 — T5：分组视图里的文件行是平铺列表（不再按目录树），搜索沿用提交页的搜索词但分组视图本身不显示搜索框；行右键只有「移到 Changelist」（提交/回滚/搁置等仍在非分组视图的右键里）——控制范围，避免复制 `ChangesTree` 的全部交互。
+- 2026-10-28 — T4 提交只跑了 pre-commit（lint/类型），完整 `make check` 在 T5 结束时一起跑。
 - 2026-10-28 — T3：搁置入口只放在提交页文件右键（不另加工具栏按钮）：右键的行已勾选时搁置全部勾选文件，否则只搁置这一行；组件与测试同一步写（视图先于测试，静态渲染覆盖）。
 - 2026-10-28 — T1 与 T2 合并为一次提交：`shelfList` 只需会话参数，占位实现会让「已登记端点不得回答 not implemented」的路由测试失败。
 - 2026-10-28 — 搁架载体提交用固定身份 `dsh-git <dsh-git@localhost>`（仓库可能没配置 user.name）；它不会被签出或推送。

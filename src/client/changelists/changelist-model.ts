@@ -111,3 +111,35 @@ export function saveChangelists(storage: StorageLike | null, repoRoot: string, s
     // Storage unavailable: the lists last for this page only.
   }
 }
+
+/** One list as the commit page shows it. */
+export interface ChangelistSection<E extends { path: string }> {
+  list: Changelist
+  active: boolean
+  entries: E[]
+  check: 'none' | 'some' | 'all'
+  checkable: boolean
+}
+
+/**
+ * Visible changes per list (default first, then in creation order; empty lists kept so they can take
+ * drops). `checkable` follows the commit page: conflicts cannot be checked.
+ */
+export function changelistSections<E extends { path: string; group: string }>(
+  entries: readonly E[],
+  state: ChangelistState,
+  checked: ReadonlySet<string>,
+): ChangelistSection<E>[] {
+  return state.lists.map((list) => {
+    const members = entries.filter(entry => listOf(state, entry.path) === list.id)
+    const candidates = members.filter(entry => entry.group !== 'conflicts')
+    const count = candidates.filter(entry => checked.has(entry.path)).length
+    return {
+      list,
+      active: state.active === list.id,
+      entries: members,
+      check: count === 0 ? 'none' : count === candidates.length ? 'all' : 'some',
+      checkable: candidates.length > 0,
+    }
+  })
+}

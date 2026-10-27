@@ -31,7 +31,7 @@ SOP 的第 4 阶段（自验证）要求：**每条验收标准都有实际运�
 
 1. `pnpm build`；按「本地挂载」启动 DSH（3081 端口，不占用负责人的 3080）。
 2. 隔离的 DSH（临时 HOME、未登录、无 API Key）每次加载页面都会弹出宿主的「开始使用」登录对话框（`ui-primitives` `Modal`），它的遮罩是透明的、盖住整页（含右侧栏），点遮罩只会关掉对话框。所以刷新后先按 Esc 或点 × 关掉它，再操作 Git tab，否则第一次点击会被吞掉（B1 L4 误报过一次「第一次点『解决冲突…』没反应」，原因就是这个）。
-3. 开启 flag：在 Git tab 所在页面的控制台执行 `localStorage.setItem('dsh-git.feature.mergeWindow', '1')` 后刷新（改回 `'0'` 或 `removeItem` 关闭；`MERGE_WINDOW_DEFAULT` 在验收前保持 `false`）。
+3. flag：`MERGE_WINDOW_DEFAULT` 自 2026-10-27 验收通过后为 `true`，无需操作；要对照 A3 行为时在控制台执行 `localStorage.setItem('dsh-git.feature.mergeWindow', '0')` 后刷新（`removeItem` 恢复默认）。
 4. 建冲突仓库（临时目录，用完删除）：
 
 ```bash

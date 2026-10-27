@@ -18,7 +18,7 @@
 | P1 | B3a 交互式变基（从此处交互式变基、修改提交信息、丢弃/压缩提交） | [设计决策 v0.2](../design/2026-10-25-产品设计决策-v0.2.md) §4；B3 拆分由负责人 2026-10-27 选定 | 计划：[b3a-交互式变基](active/b3a-交互式变基.md)（执行中） |
 | P1 | B3b Diff 增强（并排、词级、忽略空白、折叠未改片段）+ 完整提交菜单（Fixup/Squash into、撤销提交、推送直到此提交、新建标签）+ 创建/应用补丁 | 同上 | 计划：[b3b-Diff增强与提交菜单](active/b3b-Diff增强与提交菜单.md)（执行中，从 B3a 分支切出） |
 | P1 | B3c Shelf（搁架）+ Changelist | 同上 | 计划：[b3c-搁架与Changelist](active/b3c-搁架与Changelist.md)（执行中，从 B3b 分支切出） |
-| P1 | B3d Worktree + Remotes + 标签推送/删除、远程分支删除、设/取消 upstream（A3 推迟项） | 同上；[A3 计划](completed/a3-分支贮藏冲突.md)「不包含」 | Worktree 用 feature flag |
+| P1 | B3d Worktree + Remotes + 标签推送/删除、远程分支删除、设/取消 upstream（A3 推迟项） | 同上；[A3 计划](completed/a3-分支贮藏冲突.md)「不包含」 | 计划：[b3d-Worktree与远程](active/b3d-Worktree与远程.md)（执行中，从 B3c 分支切出）；Worktree 用 feature flag |
 | P1 | B4 打磨（a11y、性能、i18n、跨平台、安装/升级验证、文档；Git Blame 渲染器与设置页） | [设计决策 v0.2](../design/2026-10-25-产品设计决策-v0.2.md) §4 | B3 全部完成后 |
 | P2 | 筛选/仓库栏/分支右键菜单改用 ui-primitives `MenuSurface`/`Menu` | A1 走查，2026-10-25 | 当前按 [ADR 0006](../decisions/0006-浮层菜单材质例外.md) 手写菜单材质，迁移后废弃该 ADR |
 | P2 | 向 DSH 反馈：`workspace-write` 的 Seatbelt profile 放行 `DARWIN_USER_CACHE_DIR`，否则 osxkeychain 凭据助手在 confine 下不可用 | A2 T1 spike，2026-10-26 | 见 [references §13](../references/dsh-integration-feasibility.md)「写执行与沙箱」；只反馈不改 DSH 仓库，由负责人决定是否提 |

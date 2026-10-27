@@ -117,3 +117,27 @@ git checkout -q feature && git rebase main   # stops at topic1; after continue, 
 ### 记录
 
 走完后在计划「验证记录」写明：每个 AC 的实测结论（通过 / 不通过 / 未验证及原因）、截图路径、`lib/client.js` 体积。发现问题登记进计划「意外与发现」或 TODO。
+
+## 历史与 Blame 实机验证（B2，L4）
+
+### 准备隔离 DSH（不碰负责人的 profile 与 3080）
+
+1. 在 worktree 里 `pnpm build`（worktree 内运行 pnpm 要带 `pnpm_config_verify_deps_before_run=false`，否则 lockfile 会被改写，见 b2 计划决策记录）。
+2. 临时 HOME：`H=<scratchpad>/dsh-home`，`mkdir -p $H/.dsh/profiles && cp -R ~/.dsh/profiles/web $H/.dsh/profiles/web`；把复制件里的 `node_modules/dsh-idea-gittool` 软链和 `package.json` 的 `link:` 改成 worktree 的绝对路径。
+3. `cd /Users/peng/Me/Ai/deepseek-harness && HOME=$H pnpm dsh web --no-open --port 3081`，日志里取带 token 的地址打开；先按 Esc 关掉「开始使用」对话框。
+4. 工作区指向走查仓库：「添加工作区」是原生目录选择器，自动化选不了。停掉 DSH，改 `$H/.dsh/storages/workspace.json` 里某个工作区的 `path`/`title`，以及 `storages/session_projcache/sessions/<会话>.json` 里的 `cwd`，再启动；在该工作区里新建会话，Cmd+Shift+G 打开 Git tab。Host 代码改动要重启 DSH，Client 改动 `pnpm build` 后热更。
+5. 内置浏览器截图常滞后一帧：判断以 DOM/文本读取为准，截图连截两张取第二张。
+
+### 走查要点
+
+| # | 操作 | 期望 |
+|---|---|---|
+| 1 | 日志选提交 → 变更文件右键 | 显示 Diff / 文件历史 / Blame（此版本）/ 与工作区比较 / 复制路径 |
+| 2 | 改过名的文件「文件历史」→ 选重命名前的提交 | M/R/A 都在，「历史可能不连续」，diff 按旧路径取，短哈希 |
+| 3 | 「Blame（此版本）」→「← 返回」 | 回到文件历史，选中与 diff 保留 |
+| 4 | 提交页变更树右键有改动的文件 →「Blame」 | 未提交行显示「未提交」，与 `git blame --root -s` 一致；hover card 不透明；双击底部显示该提交改动 |
+| 5 | 4500 行文件 Blame →「加载更多」到底 → Esc | 行号连续到 4500，按钮消失，Esc 仍能关闭 |
+| 6 | 二进制 / 空文件 / CRLF 的 Blame | 「二进制文件…」不显示行数 / 「空文件」/ 3 行不丢最后一行 |
+| 7 | 分支右键「与当前分支比较」→ 点文件 →「交换」；「与工作区比较」 | 与 `git log right..left`、`git diff --name-status right...left`、`git diff --name-status <rev>`（同一 HOME）一致 |
+| 8 | 日志 Cmd+点击选两个提交 → 右键 | 「比较所选的两个提交」可用；只选一个时禁用并说明 |
+| 9 | 文件页打开文件预览 → 头部 Blame / 历史 / Diff / 状态徽标；换一个文件再点 Blame | 同一个 Blame 标签换内容；历史、Diff 切到 Git tab；徽标切到提交页选中该文件；干净文件 Diff 禁用；宽头部不收进 ⋯ |

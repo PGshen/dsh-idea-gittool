@@ -1068,6 +1068,13 @@ CodeMirror 6（假设 1）：
 
 | 结论 | 状态 | 证据 |
 |---|---|---|
-| **(a) 已打开的 `git.blame` 页再 `openTab('git.blame', { params })` 会收到新参数**：`openTab` → `placeTab` → `place`，`openContent` 完成后对落定的 tab 调 `tabDomain.navigate(sessionId, tabId, { address, params })`；已有记录走 `existing.navigation.set({ ...target, revision: revision + 1 })`。正文经 `useTabInfo().tab.navigation` 读到新 `params` 与递增的 `revision`。所以换文件不需要 `replaceTab` 或 `openResource`，正文跟随 `navigation` 变化重新加载即可 | ✅ 源码 / ⏳ 待 L4 | `ui-sidebar-right/src/client/service.ts:398-440`；`tab-domain.ts:136-142`；`README.md:93` |
+| **(a) 已打开的 `git.blame` 页再 `openTab('git.blame', { params })` 会收到新参数**：`openTab` → `placeTab` → `place`，`openContent` 完成后对落定的 tab 调 `tabDomain.navigate(sessionId, tabId, { address, params })`；已有记录走 `existing.navigation.set({ ...target, revision: revision + 1 })`。正文经 `useTabInfo().tab.navigation` 读到新 `params` 与递增的 `revision`。所以换文件不需要 `replaceTab` 或 `openResource`，正文跟随 `navigation` 变化重新加载即可 | ✅ 源码 / ✅ 2026-10-27 L4 实测（3081：LogTable.ts 头部 Blame 后再在 new-name.ts 头部点 Blame，仍是同一个 Blame 标签，内容换成 new-name.ts） | `ui-sidebar-right/src/client/service.ts:398-440`；`tab-domain.ts:136-142`；`README.md:93` |
 | 去重范围是**目标 pane 内**（「ordinary page tabs always deduplicate within the target pane」）：`git.blame` 页在另一个 pane 时，会在当前活动 docked pane 再开一个。可接受（与 Git tab 同一规则） | ✅ 源码 | `README.md:93`；`service.ts:443-447`（`findPaneContentTab`） |
-| **(b) 文档头部 `openTab('git')`**：未打开时在活动 docked pane 新开并展开侧栏；已打开（同 pane）时聚焦已有 tab；没有会话在屏时 `openTab` 抛错（M0 已处理为头部提示 `document.noSession`）。`params` 同样经 `navigate` 送达，但 B2 不用它传意图：`navigation` 是 tab 记录上的「最近一次导航」，刷新恢复后是否重放未查证，用它传「打开某覆盖层」这类一次性动作有重放风险；意图改走同 bundle 内按会话的队列（计划 T4 `workbench-intents.ts`） | ✅ 源码 / ⏳ 待 L4 | `service.ts:332-357,398-440`；`src/client/register-document-actions.ts` |
+| **(b) 文档头部 `openTab('git')`**：未打开时在活动 docked pane 新开并展开侧栏；已打开（同 pane）时聚焦已有 tab；没有会话在屏时 `openTab` 抛错（M0 已处理为头部提示 `document.noSession`）。`params` 同样经 `navigate` 送达，但 B2 不用它传意图：`navigation` 是 tab 记录上的「最近一次导航」，刷新恢复后是否重放未查证，用它传「打开某覆盖层」这类一次性动作有重放风险；意图改走同 bundle 内按会话的队列（计划 T4 `workbench-intents.ts`） | ✅ 源码 / ✅ 2026-10-27 L4 实测（Git tab 已打开时，头部「历史」「Diff」「状态徽标」都切到 Git tab 并执行意图；「Git tab 未打开过」的情况未实测，由意图队列单测覆盖） | `service.ts:332-357,398-440`；`src/client/register-document-actions.ts` |
+
+B2 L4 另外两条宿主事实（2026-10-27，3081 实测）：
+
+| 结论 | 状态 | 证据 |
+|---|---|---|
+| 文档预览头部的 slot 内容外面包着一层 `display: contents` 的 `div`（`clientWidth` 为 0），实际排版的是宿主的 `…_header`（flex）。量「头部宽度」要跳过 `contents` 祖先 | ✅ 实测 | DOM：`.git-document-actions` → `div(display: contents, w=0)` → `I8TdXa_header(flex, w=647)` |
+| 菜单材质 `--dsw-specific-menu` 是半透明填充，必须配 `backdrop-filter: var(--dsw-menu-backdrop-filter)` 才不透出下层文字（提交菜单就是这样配的） | ✅ 实测 | Blame hover card 补上前后的截图 `.evidence/b2/08-blame-hover-card.jpg`、`23-hover-card-solid.jpg` |

@@ -74,6 +74,7 @@ import { CommitDetail } from './CommitDetail.tsx'
 import { ActionMenu } from './ActionMenu.tsx'
 import { BlameOverlay } from './BlameView.tsx'
 import { ComparePage } from './ComparePage.tsx'
+import { InteractiveRebasePage, afterInteractiveRebase } from './InteractiveRebasePage.tsx'
 import { DiffViewer } from './DiffViewer.tsx'
 import { FileHistoryPage } from './FileHistoryPage.tsx'
 import { fileActions } from './file-actions.ts'
@@ -968,6 +969,23 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
             loadDiff={(request, signal) => client.diff(request, signal)}
             onBack={() => { overlays.close() }}
             onShowInLog={showCommitInLog}
+          />
+        ) : null}
+        {overlay?.kind === 'interactiveRebase' ? (
+          <InteractiveRebasePage
+            sessionId={sessionId}
+            base={overlay.base}
+            preset={overlay.preset}
+            load={(request, signal) => client.rebasePlan(request, signal)}
+            actions={actions}
+            onBack={() => { overlays.close() }}
+            onDone={(result, trigger) => {
+              afterInteractiveRebase(result, {
+                openConflicts: () => { overlays.open({ kind: 'conflicts' }, trigger) },
+                close: () => { overlays.closeIf('interactiveRebase') },
+                refresh: () => { void onRefresh() },
+              })
+            }}
           />
         ) : null}
         {push === null || value.repoRoot === null ? null : (

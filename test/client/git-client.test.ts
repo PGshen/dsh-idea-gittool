@@ -35,3 +35,48 @@ describe('createGitClient', () => {
     expect(fetch).toHaveBeenLastCalledWith('dsh-git/stashDrop', expect.anything())
   })
 })
+
+describe('createGitClient / B1 merge endpoints', () => {
+  it('posts mergeFile and the three merge writes to their endpoint paths', async () => {
+    const fetch = vi.fn(async () => new Response(JSON.stringify({ ok: true, value: { path: 'a.txt' } })))
+    vi.stubGlobal('fetch', fetch)
+    const client = createGitClient(undefined)
+    const stages = { base: null, ours: 'o'.repeat(40), theirs: 't'.repeat(40) }
+
+    await client.mergeFile({ sessionId: 's', path: 'a.txt' })
+    expect(fetch).toHaveBeenLastCalledWith('dsh-git/mergeFile', expect.objectContaining({
+      body: JSON.stringify({ sessionId: 's', path: 'a.txt' }),
+    }))
+    const draft = { version: 1 as const, stages, result: 'x\n', chunks: [{ state: 'pending' as const, leftDone: false, rightDone: false }], savedAt: '2026-10-26T00:00:00.000Z' }
+    await client.mergeDraftSave({ sessionId: 's', requestId: 'r', path: 'a.txt', draft })
+    expect(fetch).toHaveBeenLastCalledWith('dsh-git/mergeDraftSave', expect.objectContaining({
+      body: JSON.stringify({ sessionId: 's', requestId: 'r', path: 'a.txt', draft }),
+    }))
+    await client.mergeApply({ sessionId: 's', requestId: 'r', path: 'a.txt', result: 'x\n', stages, expectedWorktreeSha: null })
+    expect(fetch).toHaveBeenLastCalledWith('dsh-git/mergeApply', expect.anything())
+    await client.unresolveConflict({ sessionId: 's', requestId: 'r', path: 'a.txt' })
+    expect(fetch).toHaveBeenLastCalledWith('dsh-git/unresolveConflict', expect.anything())
+  })
+})
+
+describe('createGitClient / non-2xx responses (B1 acceptance demo)', () => {
+  it('surfaces the structured error body of a non-2xx response instead of "HTTP <status>"', async () => {
+    const error = { code: 'git/invalid-payload', message: 'request body too large', details: { reason: 'body-too-large', limit: 1 } }
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ ok: false, error }), { status: 413 })))
+    const client = createGitClient(undefined)
+    const result = await client.mergeApply({ sessionId: 's', requestId: 'r', path: 'a.txt', result: 'x', stages: { base: null, ours: null, theirs: null }, expectedWorktreeSha: null })
+    expect(result).toEqual({ ok: false, error })
+  })
+
+  it('keeps the HTTP status message when the non-2xx body is not the protocol envelope', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('', { status: 401 })))
+    const result = await createGitClient(undefined).status('s')
+    expect(result).toEqual({ ok: false, error: { code: 'git/exec-failed', message: 'HTTP 401: status' } })
+  })
+
+  it('never turns a non-2xx response into success', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ ok: true, value: 1 }), { status: 500 })))
+    const result = await createGitClient(undefined).status('s')
+    expect(result).toEqual({ ok: false, error: { code: 'git/exec-failed', message: 'HTTP 500: status' } })
+  })
+})

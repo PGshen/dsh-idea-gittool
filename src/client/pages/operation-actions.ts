@@ -4,16 +4,23 @@
 import type {
   CommitResultValue,
   ConflictResolution,
+  FileEntry,
+  MergeFileValue,
   OperationCommitValue,
   OperationControlAction,
   OperationControlValue,
   OperationStateValue,
+  RpcResult,
 } from '../../shared/protocol.ts'
 import type { FocusTarget } from '../focus.ts'
 import { text } from '../localized-text.ts'
 import type { LocalizedText } from '../localized-text.ts'
 import type { ActionOutcome, ActionStore, ActionStatus } from '../store/action-store.ts'
 import type { CommitPageMode } from '../store/commit-store.ts'
+import { allResolved, autoMerge } from '../merge/merge-model.ts'
+import { isTextConflict } from '../store/conflict-store.ts'
+import type { ConflictStore } from '../store/conflict-store.ts'
+import { mergeTexts } from '../store/merge-store.ts'
 import { normalizeMessage } from '../store/commit-store.ts'
 import type { ActionNotice } from './branch-actions.ts'
 import { failedNotice, stashNotice } from './branch-actions.ts'
@@ -88,6 +95,109 @@ export async function resolveConflictFile(
       return outcome.error.code === 'git/stale-target'
         ? { kind: 'error', message: outcome.message, stale: true }
         : { kind: 'error', message: outcome.message }
+  }
+}
+
+/**
+ * 「还原冲突解决」 of a resolved row (`git checkout -m`, AC9). The Host answers `git/exec-failed`
+ * when the resolution cannot be undone here (a delete-kind conflict: restore it in a terminal) and
+ * `git/stale-target` when the path has no conflict record to restore (never conflicted).
+ */
+export async function unresolveConflictFile(deps: OperationDeps, path: string): Promise<ResolveResult> {
+  const outcome = await deps.actions.run('unresolveConflict', { path }, { target: path, trigger: deps.trigger })
+  switch (outcome.kind) {
+    case 'done':
+      return { kind: 'done' }
+    case 'cancelled':
+      return { kind: 'stay' }
+    case 'conflict':
+      return { kind: 'error', message: text('action.error.git/conflict') }
+    case 'failed':
+      if (outcome.error.code === 'git/exec-failed') return { kind: 'error', message: text('conflict.unresolve.terminal') }
+      if (outcome.error.code === 'git/stale-target') return { kind: 'error', message: text('conflict.unresolve.unavailable'), stale: true }
+      return { kind: 'error', message: outcome.message }
+  }
+}
+
+export interface SimpleAllDeps extends OperationDeps {
+  loadFile: (path: string) => Promise<RpcResult<MergeFileValue>>
+}
+
+export interface SimpleAllOutcome {
+  /** Written back with mergeApply (resolved but not reviewed). */
+  resolved: string[]
+  /**
+   * Left for the user: not a text conflict, unreadable, has a draft, edited in the worktree (no
+   * markers left, ruling 19), not fully automatic, or the write failed.
+   */
+  manual: string[]
+}
+
+/**
+ * 「全部简单冲突」 (design §10.2 P1, AC6): one file after another (serially, through the write queue)
+ * load the three sides, replay applyNonConflicting('all') + resolveSimple, and write the Result back
+ * only when every chunk is resolved. Nothing else is written (no drafts). A file with a saved draft, or
+ * whose worktree no longer has conflict markers (ruling 19), is someone's work in progress and is left alone.
+ */
+export async function resolveAllSimple(deps: SimpleAllDeps, entries: readonly FileEntry[]): Promise<SimpleAllOutcome> {
+  const outcome: SimpleAllOutcome = { resolved: [], manual: [] }
+  for (const entry of entries) {
+    const path = entry.path
+    if (!isTextConflict(entry)) {
+      outcome.manual.push(path)
+      continue
+    }
+    let loaded: RpcResult<MergeFileValue>
+    try {
+      loaded = await deps.loadFile(path)
+    } catch {
+      outcome.manual.push(path)
+      continue
+    }
+    const file = loaded.ok ? loaded.value : null
+    // Ruling 19: a worktree without conflict markers was edited after the conflict (by hand, an
+    // agent or rerere); writing the Result would overwrite that work, so it is left to the user.
+    const texts = file === null || file.worktreeHasMarkers === false ? null : mergeTexts(file)
+    const model = texts === null || file?.draft !== null ? null : autoMerge(texts)
+    if (file === null || model === null || !allResolved(model)) {
+      outcome.manual.push(path)
+      continue
+    }
+    const applied = await deps.actions.run('mergeApply', {
+      path,
+      result: model.result,
+      stages: { base: file.base?.blob ?? null, ours: file.ours?.blob ?? null, theirs: file.theirs?.blob ?? null },
+      expectedWorktreeSha: file.worktreeSha,
+    }, { target: path, trigger: deps.trigger })
+    if (applied.kind === 'done') outcome.resolved.push(path)
+    else outcome.manual.push(path)
+  }
+  return outcome
+}
+
+/** 「已解决 N 个文件，M 个文件需要手动处理」. */
+export function simpleAllSummary(outcome: SimpleAllOutcome): LocalizedText {
+  return text('conflict.simpleAll.done', { resolved: outcome.resolved.length, manual: outcome.manual.length })
+}
+
+/**
+ * The list's 「全部简单冲突」: written files are not reviewed (confirmation 2) and their counts reload;
+ * the list always reloads. Never rejects: a thrown write ends with `conflict.simpleAll.failed`.
+ */
+export async function runSimpleAll(
+  deps: SimpleAllDeps,
+  entries: readonly FileEntry[],
+  store: Pick<ConflictStore, 'unmarkReviewed' | 'invalidateCount' | 'refresh'>,
+): Promise<LocalizedText> {
+  try {
+    const outcome = await resolveAllSimple(deps, entries)
+    store.unmarkReviewed(outcome.resolved)
+    for (const path of outcome.resolved) store.invalidateCount(path)
+    return simpleAllSummary(outcome)
+  } catch {
+    return text('conflict.simpleAll.failed')
+  } finally {
+    void store.refresh()
   }
 }
 

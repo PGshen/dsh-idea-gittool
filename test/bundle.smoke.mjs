@@ -63,6 +63,8 @@ if (registration === undefined) {
     // HMR：factory 再次执行时必须更新已有 <style> 的内容，而不是跳过（否则改 CSS 要整页刷新）。
     const styles = []
     const fakeDocument = {
+      // B1 T6: CodeMirror (inlined) probes `document.documentElement.style` at module init.
+      documentElement: { style: {} },
       querySelector: (selector) =>
         styles.find(style => selector.includes(`"${style.attrs['data-plugin-css']}"`)) ?? null,
       createElement: () => ({ attrs: {}, textContent: '', setAttribute(key, value) { this.attrs[key] = value } }),

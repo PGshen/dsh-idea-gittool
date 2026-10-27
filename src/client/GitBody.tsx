@@ -16,6 +16,8 @@ import { useBootstrap } from './use-bootstrap.ts'
 export interface GitBodyInjected {
   bootstrapCache: BootstrapCache
   gitClient: GitClient
+  /** Toggles host fullscreen of the panel containing `element` (B1 merge window). */
+  toggleFullscreen?: (element: Element | null) => void
 }
 
 /**
@@ -34,9 +36,9 @@ export function GitBody(props: GitBodyProps): ReactNode {
 
 function GitBodyContent(props: GitBodyProps): ReactNode {
   const t = useT()
-  const { sessionId, useTabInfo, useSessions, bootstrapCache, gitClient } = props
+  const { sessionId, useTabInfo, useSessions, bootstrapCache, gitClient, toggleFullscreen } = props
   const cwd = useSessions(state => state.byId[sessionId]?.cwd)
-  const { tab } = useTabInfo()
+  const { tab, sidebar } = useTabInfo()
   const visible = tab.visible
   const value = useBootstrap(bootstrapCache, sessionId)
   const failure = bootstrapCache.getFailure(sessionId)
@@ -86,6 +88,8 @@ function GitBodyContent(props: GitBodyProps): ReactNode {
       autoRefresh={autoRefresh}
       onToggleAutoRefresh={() => { setAutoRefresh(enabled => !enabled) }}
       lastRefreshAt={lastRefreshAt}
+      // Public tab info (references §14): includes the auto fullscreen of narrow viewports.
+      sidebar={toggleFullscreen === undefined ? undefined : { fullscreen: sidebar.fullscreen, toggle: toggleFullscreen }}
     />
   )
 }

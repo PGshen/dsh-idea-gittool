@@ -21,6 +21,7 @@ import { redactCredentials } from '../console.ts'
 import type { GitRunResult, GitRunner, WriteContext, WriteOperation } from '../git-executor.ts'
 import { GIT_BASE_ARGV, GitCommandFailure, failureFromExit } from '../git-executor.ts'
 import {
+  OBJECT_ID_PATTERN,
   assertPushTarget,
   authRequired,
   firstLine,
@@ -45,8 +46,6 @@ export interface PushInput {
   /** TD-10: the remote tip the user saw; only together with `forceWithLease`. */
   expectedRemoteSha?: string
 }
-
-const SHA_PATTERN = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/
 
 /** One porcelain ref line: `<flag>\t<from>:<to>\t<summary>`. */
 export interface PushRefResult {
@@ -165,7 +164,7 @@ async function readRemoteState(
     if (fetched.exitCode !== 0) return { remoteCommits: [] }
     const tracking = `refs/remotes/${remote}/${branch}`
     const tip = await query(ctx, ['rev-parse', '-q', '--verify', tracking])
-    const remoteSha = tip.exitCode === 0 && SHA_PATTERN.test(tip.stdout.trim()) ? tip.stdout.trim() : undefined
+    const remoteSha = tip.exitCode === 0 && OBJECT_ID_PATTERN.test(tip.stdout.trim()) ? tip.stdout.trim() : undefined
     const log = await query(ctx, logArgv(PUSH_PREVIEW_COMMIT_LIMIT, [tracking, '--not', 'HEAD']))
     const remoteCommits = log.exitCode === 0 ? parseCommitSummaries(log.stdout) : []
     return remoteSha === undefined ? { remoteCommits } : { remoteCommits, remoteSha }
@@ -265,7 +264,7 @@ export const pushOperation: WriteOperation<PushInput, Omit<PushValue, 'version'>
     }
     const expected = record.expectedRemoteSha
     if (expected !== undefined) {
-      if (typeof expected !== 'string' || !SHA_PATTERN.test(expected)) {
+      if (typeof expected !== 'string' || !OBJECT_ID_PATTERN.test(expected)) {
         throw invalidPayload('expectedRemoteSha must be a full lowercase hexadecimal object name')
       }
       if (!input.forceWithLease) throw invalidPayload('expectedRemoteSha is only valid together with forceWithLease')

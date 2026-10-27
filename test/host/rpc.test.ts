@@ -517,6 +517,20 @@ describe('createRpcHandler / A1 read endpoints', () => {
   })
 })
 
+describe('endpoint registry (B1 T1)', () => {
+  it('registers every B1 endpoint', () => {
+    expect(RPC_ENDPOINTS).toEqual(expect.arrayContaining(['mergeFile', 'mergeDraftSave', 'mergeApply', 'unresolveConflict']))
+  })
+
+  it('B1 write endpoints still require a requestId before anything else', async () => {
+    const { handler } = makeHandler()
+    for (const endpoint of ['mergeDraftSave', 'mergeApply', 'unresolveConflict']) {
+      const error = errorOf(await handler(endpoint, { sessionId: 'session-1', path: 'a.txt' }, SIGNAL))
+      expect({ endpoint, code: error.code }).toEqual({ endpoint, code: 'git/invalid-payload' })
+    }
+  })
+})
+
 describe('endpoint registry (A3 T1)', () => {
   it('routes every registered endpoint (none answers "unknown RPC endpoint")', async () => {
     const { handler } = makeHandler()
@@ -533,6 +547,15 @@ describe('endpoint registry (A3 T1)', () => {
       const result = await handler(endpoint, { sessionId: 'session-1', requestId: 'r-1' }, SIGNAL)
       if (!result.ok) expect(result.error.message, endpoint).not.toBe('not implemented')
     }
+  })
+
+  it('serves mergeFile (B1 T2): validates the path and answers stale-target outside a conflict', async () => {
+    const { handler } = makeHandler()
+    expect(errorOf(await handler('mergeFile', { sessionId: 'session-1', path: '../x' }, SIGNAL)).code).toBe(
+      'git/invalid-payload',
+    )
+    const error = errorOf(await handler('mergeFile', { sessionId: 'session-1', path: 'README.md' }, SIGNAL))
+    expect(error).toMatchObject({ code: 'git/stale-target', details: { target: 'conflict' } })
   })
 
   it('serves stashList and stashFiles (T5) as versioned reads and validates the sha', async () => {

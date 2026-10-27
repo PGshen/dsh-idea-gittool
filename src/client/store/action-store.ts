@@ -160,6 +160,7 @@ const STALE_TARGET_KEY: Record<StaleTargetDetails['target'], GitWorkbenchKey> = 
 const INVALID_REASON_KEY: Record<string, GitWorkbenchKey> = {
   'nothing-to-stash': 'action.error.nothing-to-stash',
   'no-upstream': 'action.error.no-upstream',
+  'body-too-large': 'action.error.body-too-large',
 }
 
 /** Error code (+ details) → localized, actionable text. */

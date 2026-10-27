@@ -13,6 +13,9 @@ import { GIT_BASE_ARGV, GitCommandFailure, failureFromExit } from '../git-execut
 import { validateRepoPath } from './diff.ts'
 import { detectOperation } from './status.ts'
 
+/** A full object id (SHA-1 or SHA-256 hex). */
+export const OBJECT_ID_PATTERN = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/
+
 /** Hook output kept in `git/hook-failed` details (UTF-8 bytes). */
 export const HOOK_OUTPUT_MAX_BYTES = 4096
 
@@ -96,6 +99,76 @@ export async function queryOk(ctx: WriteContext, args: readonly string[], label:
   const result = await query(ctx, args)
   if (result.exitCode !== 0) throw redactedFailure(result, label)
   return result.stdout
+}
+
+/** The ref exists but does not hold a readable JSON blob. */
+export class JsonRefInvalid extends Error {
+  constructor(readonly ref: string, reason: string) {
+    super(`${ref}: ${reason}`)
+    this.name = 'JsonRefInvalid'
+  }
+}
+
+/**
+ * Read a JSON blob stored behind a ref (ADR 0008: ref → `cat-file blob` → JSON).
+ * A missing ref yields null; an unreadable blob or malformed JSON throws {@link JsonRefInvalid}
+ * so callers can tell "nothing saved" from "saved but unusable".
+ */
+export async function readJsonRef(ctx: WriteContext, ref: string): Promise<unknown> {
+  const resolved = await query(ctx, ['rev-parse', '-q', '--verify', ref])
+  if (resolved.exitCode === 1) return null
+  if (resolved.exitCode !== 0) throw redactedFailure(resolved, 'git rev-parse')
+  const blob = await query(ctx, ['cat-file', 'blob', resolved.stdout.trim()])
+  if (blob.exitCode !== 0) throw new JsonRefInvalid(ref, 'not a readable blob')
+  try {
+    return JSON.parse(blob.stdout) as unknown
+  } catch {
+    throw new JsonRefInvalid(ref, 'malformed JSON')
+  }
+}
+
+/** Write `value` as a JSON blob (`hash-object -w --stdin`, confined); returns the blob id. */
+export async function storeJsonBlob(ctx: WriteContext, value: unknown): Promise<string> {
+  const blob = await ctx.git([...GIT_BASE_ARGV, 'hash-object', '-w', '--stdin'], { stdin: JSON.stringify(value) })
+  const sha = blob.stdout.trim()
+  if (blob.exitCode !== 0 || !OBJECT_ID_PATTERN.test(sha)) throw redactedFailure(blob, 'git hash-object')
+  return sha
+}
+
+/**
+ * Point `ref` at a new JSON blob holding `value` (ADR 0008). `alsoUpdate` ref → object pairs
+ * join the same `update-ref --stdin` transaction.
+ */
+export async function writeJsonRef(
+  ctx: WriteContext,
+  ref: string,
+  value: unknown,
+  alsoUpdate: ReadonlyArray<readonly [string, string]> = [],
+): Promise<void> {
+  const sha = await storeJsonBlob(ctx, value)
+  const lines = [[ref, sha] as const, ...alsoUpdate].map(([name, id]) => `update ${name} ${id}\n`)
+  const updated = await ctx.git([...GIT_BASE_ARGV, 'update-ref', '--stdin'], { stdin: lines.join('') })
+  if (updated.exitCode !== 0) throw redactedFailure(updated, 'git update-ref')
+}
+
+/**
+ * Delete every ref under the given prefix(es) in one transaction, except those in `keep`.
+ * Returns how many refs were deleted.
+ */
+export async function deleteRefs(
+  ctx: WriteContext,
+  prefix: string | readonly string[],
+  keep: ReadonlySet<string> = new Set(),
+): Promise<number> {
+  const prefixes = typeof prefix === 'string' ? [prefix] : prefix
+  const listed = await queryOk(ctx, ['for-each-ref', '--format=%(refname)', ...prefixes], 'git for-each-ref')
+  const refs = listed.split('\n').map((line) => line.trim()).filter((ref) => ref !== '' && !keep.has(ref))
+  if (refs.length === 0) return 0
+  const deleted = await ctx.git([...GIT_BASE_ARGV, 'update-ref', '--stdin'], {
+    stdin: refs.map((ref) => `delete ${ref}\n`).join(''),
+  })
+  if (deleted.exitCode !== 0) throw redactedFailure(deleted, 'git update-ref')
+  return refs.length
 }
 
 /** Operations that block an ordinary commit/pull (A3 owns committing inside them). */

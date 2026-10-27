@@ -5,8 +5,8 @@
 export const RPC_CHANNEL = '/dsh-git'
 
 /**
- * 全部端点。A1 读端点；A2 写端点与推送预览；A3 端点在 T1 一次登记（契约冻结），
- * 未实现的先返回 `git/exec-failed`（`not implemented`），由 T2–T5 逐个替换。
+ * 全部端点。A1 读端点；A2 写端点与推送预览；A3 端点在 T1 一次登记（契约冻结）；
+ * B1 合并端点在 B1 T1 登记。未实现的先返回 `git/exec-failed`（`not implemented`），由后续任务逐个替换。
  * 每个端点的请求/响应类型见文末 {@link RpcEndpointTypes}。
  */
 export const RPC_ENDPOINTS = [
@@ -55,12 +55,17 @@ export const RPC_ENDPOINTS = [
   'stashCreate',
   'stashApply',
   'stashDrop',
+  // B1 三栏合并（T1 登记；T2 读、T3 写）
+  'mergeFile',
+  'mergeDraftSave',
+  'mergeApply',
+  'unresolveConflict',
 ] as const
 
 export type RpcEndpoint = (typeof RPC_ENDPOINTS)[number]
 
 /**
- * 写端点（A2 + A3）：都要求 `requestId`，经每仓库写队列与写门禁执行，只读模式下拒绝。
+ * 写端点（A2 + A3 + B1）：都要求 `requestId`，经每仓库写队列与写门禁执行，只读模式下拒绝。
  * 客户端用 {@link WriteEndpoint} 约束写动作入口（A3 T6 `actions.run`）。
  */
 export const WRITE_ENDPOINTS = [
@@ -89,6 +94,9 @@ export const WRITE_ENDPOINTS = [
   'stashCreate',
   'stashApply',
   'stashDrop',
+  'mergeDraftSave',
+  'mergeApply',
+  'unresolveConflict',
 ] as const satisfies readonly RpcEndpoint[]
 
 export type WriteEndpoint = (typeof WRITE_ENDPOINTS)[number]
@@ -1102,6 +1110,149 @@ export interface StashDropValue {
   version?: number
 }
 
+// --- 三栏合并（B1） ---------------------------------------------------------------
+
+/**
+ * 一个冲突文件的三方 blob sha（索引 stage 1/2/3；已解决路径取自 resolve-undo）。
+ * 某一侧不存在（删除类冲突、双方新增没有 base）时为 null。
+ */
+export interface MergeStageShas {
+  base: string | null
+  ours: string | null
+  theirs: string | null
+}
+
+/** 合并块的状态（与客户端合并模型的状态机一一对应）。 */
+export const MERGE_CHUNK_STATES = [
+  'pending',
+  'left',
+  'right',
+  'both-left-first',
+  'both-right-first',
+  'ignored',
+  'edited',
+] as const
+
+export type MergeChunkState = (typeof MERGE_CHUNK_STATES)[number]
+
+/** {@link MergeDraft.version} 的当前取值；格式变化时递增，旧草稿按作废处理。 */
+export const MERGE_DRAFT_VERSION = 1
+
+/**
+ * 草稿中的一个块（与 diff3 分块按序号一一对应）。`resultStart`/`resultEnd` 是该块在 `result`
+ * 中的行区间（半开，行按保留行尾的方式切分）；两者同时出现或同时缺省，缺省时客户端按文本对齐恢复。
+ */
+export interface MergeDraftChunk {
+  state: MergeChunkState
+  leftDone: boolean
+  rightDone: boolean
+  resultStart?: number
+  resultEnd?: number
+}
+
+/** `MergeDraftChunk` 的可选行区间：同时缺省，或同时为非负整数且 `resultStart <= resultEnd`。 */
+export function validDraftChunkRange(chunk: { resultStart?: unknown; resultEnd?: unknown }): boolean {
+  const { resultStart: start, resultEnd: end } = chunk
+  if (start === undefined && end === undefined) return true
+  return Number.isSafeInteger(start) && Number.isSafeInteger(end) && (start as number) >= 0 && (start as number) <= (end as number)
+}
+
+/**
+ * 「保存并关闭」的半成品（Host 存为 `refs/worktree/dsh-git/merge-draft/<sha1(path)>` → JSON blob，ADR 0008）。
+ * `stages` 与当前索引三方不符时作废（`MergeFileValue.draftStale`）。
+ */
+export interface MergeDraft {
+  version: typeof MERGE_DRAFT_VERSION
+  stages: MergeStageShas
+  result: string
+  /** 与 diff3 分块一一对应（按块序号），加载时块数不一致即作废。 */
+  chunks: MergeDraftChunk[]
+  /** ISO 8601 时间。 */
+  savedAt: string
+}
+
+/** 三方中的一侧。`text` 为 null 表示二进制或超过上限（窗口降级为二选一）。 */
+export interface MergeSide {
+  blob: string
+  text: string | null
+  binary: boolean
+  /** blob 字节数。 */
+  size: number
+}
+
+/** `mergeFile`（读）：路径必须是未解决冲突，或本次操作中已解决（三方来自 resolve-undo）。 */
+export interface MergeFileRequest extends RpcRequest {
+  path: string
+}
+
+export interface MergeFileValue {
+  path: string
+  kind: ConflictKind
+  base: MergeSide | null
+  ours: MergeSide | null
+  theirs: MergeSide | null
+  /** 任一侧超过大小/行数上限。 */
+  tooLarge: boolean
+  /** 工作区文件的 `hash-object`（经 clean filter）；文件不存在或 `special` 非 null 时为 null。`mergeApply` 据此判断加载后是否被改。 */
+  worktreeSha: string | null
+  draft: MergeDraft | null
+  /** 存在草稿但 `stages` 与当前三方不符（已作废，`draft` 为 null）。 */
+  draftStale: boolean
+  /** 已解决路径：三方来自 resolve-undo。 */
+  resolved: boolean
+  /**
+   * 裁定 16（B1 T7，向后兼容扩展）：只对已解决路径给出——工作区文件的当前内容（未经 clean filter，
+   * 例如 autocrlf 下为 CRLF）。不是仓库内的普通文件（缺失、符号链接、经符号链接的目录指向仓库外）、
+   * 超过 2 MiB / 20 000 行、含 NUL 或不是合法 UTF-8 → null。未解决路径省略。
+   */
+  worktreeText?: string | null
+  /**
+   * 裁定 19（B1 终审，向后兼容扩展）：只对未解决的文本冲突给出——工作区文件是否仍含 `<<<<<<<`/`>>>>>>>`
+   * 冲突标记。false 表示加载前已被改过（手改、Agent、rerere），「应用更改」会覆盖这些修改。其他情况省略。
+   */
+  worktreeHasMarkers?: boolean
+  /** 符号链接（120000）或子模块（160000）冲突：三方不读内容（`text` 为 null），窗口降级为二选一 / 在终端解决。 */
+  special?: MergeFileSpecial
+  version?: number
+}
+
+/** 不能按文本合并的特殊条目。 */
+export type MergeFileSpecial = 'symlink' | 'submodule' | null
+
+/** `mergeDraftSave`：`draft.stages` 与当前索引不符 → `git/stale-target`（target `conflict`）。 */
+export interface MergeDraftSaveRequest extends WriteRequest {
+  path: string
+  draft: MergeDraft
+}
+
+export interface MergeDraftSaveValue {
+  path: string
+  version?: number
+}
+
+/**
+ * `mergeApply`：把 Result 写回并标记已解决（经索引：`hash-object -w --stdin --path` →
+ * `update-index --cacheinfo` → `checkout-index -f`）。三方或工作区哈希不符 → `git/stale-target`；
+ * 成功后删除该路径草稿。响应同 {@link ResolveConflictValue}。
+ */
+export interface MergeApplyRequest extends WriteRequest {
+  path: string
+  result: string
+  stages: MergeStageShas
+  expectedWorktreeSha: string | null
+}
+
+/**
+ * `unresolveConflict`：`git checkout -m -- <path>` 还原冲突解决。路径不在已解决列表 → `git/stale-target`；
+ * 没有 resolve-undo 信息 → `git/exec-failed`（提示在终端处理）。草稿保留。
+ */
+export interface UnresolveConflictRequest extends WriteRequest {
+  path: string
+}
+
+/** 与 {@link ResolveConflictValue} 同形：`remaining` 是执行后剩余的未解决冲突数。 */
+export type UnresolveConflictValue = ResolveConflictValue
+
 // --- 端点 → 请求/响应 ---------------------------------------------------------
 
 /**
@@ -1148,6 +1299,10 @@ export interface RpcEndpointTypes {
   stashCreate: { request: StashCreateRequest; value: StashCreateValue }
   stashApply: { request: StashApplyRequest; value: StashApplyValue }
   stashDrop: { request: StashDropRequest; value: StashDropValue }
+  mergeFile: { request: MergeFileRequest; value: MergeFileValue }
+  mergeDraftSave: { request: MergeDraftSaveRequest; value: MergeDraftSaveValue }
+  mergeApply: { request: MergeApplyRequest; value: ResolveConflictValue }
+  unresolveConflict: { request: UnresolveConflictRequest; value: UnresolveConflictValue }
 }
 
 /** 编译期检查：{@link RpcEndpointTypes} 恰好覆盖 {@link RpcEndpoint}，写端点请求都带 requestId。 */

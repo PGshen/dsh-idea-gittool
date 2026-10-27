@@ -22,6 +22,7 @@ import type { GitRunResult, WriteContext, WriteOperation } from '../git-executor
 import { GIT_BASE_ARGV, GitCommandFailure } from '../git-executor.ts'
 import { queryOf, readHeadPosition, withSmartStash } from './smart-stash.ts'
 import {
+  OBJECT_ID_PATTERN,
   assertNoOperation,
   invalidPayload,
   parseRefName,
@@ -32,7 +33,6 @@ import {
   redactedFailure,
 } from './write-support.ts'
 
-const SHA_PATTERN = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/
 const TARGET_KINDS: readonly CheckoutTargetKind[] = ['local', 'remote', 'tag', 'revision']
 const CHECKOUT_MODES: readonly CheckoutMode[] = ['normal', 'stash', 'force']
 
@@ -53,7 +53,7 @@ function requiredBoolean(record: Record<string, unknown>, key: string): boolean 
 export async function refSha(ctx: WriteContext, ref: string): Promise<string | undefined> {
   const result = await query(ctx, ['rev-parse', '-q', '--verify', '--end-of-options', ref])
   const sha = result.stdout.trim()
-  return result.exitCode === 0 && SHA_PATTERN.test(sha) ? sha : undefined
+  return result.exitCode === 0 && OBJECT_ID_PATTERN.test(sha) ? sha : undefined
 }
 
 /** The commit a user-supplied revision names, or `git/invalid-payload`. */
@@ -300,7 +300,7 @@ export const deleteBranchOperation: WriteOperation<DeleteBranchInput, Omit<Delet
     }
     const expected = record.expectedSha
     if (expected !== undefined) {
-      if (typeof expected !== 'string' || !SHA_PATTERN.test(expected)) {
+      if (typeof expected !== 'string' || !OBJECT_ID_PATTERN.test(expected)) {
         throw invalidPayload('expectedSha must be a full lowercase hexadecimal object name')
       }
       input.expectedSha = expected

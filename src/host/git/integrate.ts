@@ -29,6 +29,7 @@ import { logArgv, parseCommitSummaries } from './push.ts'
 import { dirtyTrackedPaths, dirtyWorktree, stashMessage, withSmartStash } from './smart-stash.ts'
 import { detectOperation } from './status.ts'
 import {
+  OBJECT_ID_PATTERN,
   assertNoOperation,
   hasHook,
   invalidPayload,
@@ -42,7 +43,6 @@ import {
   redactedFailure,
 } from './write-support.ts'
 
-const SHA_PATTERN = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/
 const RESET_MODES: readonly ResetMode[] = ['soft', 'mixed', 'hard']
 
 /**
@@ -66,7 +66,7 @@ const NOT_A_HOOK_PATTERNS: readonly RegExp[] = [
 
 /** A full lowercase object name, or `git/invalid-payload`. */
 export function parseFullSha(value: unknown, label: string): string {
-  if (typeof value !== 'string' || !SHA_PATTERN.test(value)) {
+  if (typeof value !== 'string' || !OBJECT_ID_PATTERN.test(value)) {
     throw invalidPayload(`${label} must be a full lowercase hexadecimal object name`)
   }
   return value

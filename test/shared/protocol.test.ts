@@ -7,9 +7,14 @@ import {
   DIFF_FILE_MAX_LINES,
   DIFF_RESPONSE_MAX_BYTES,
   LOG_PAGE_MAX_LIMIT,
+  MERGE_CHUNK_STATES,
+  MERGE_DRAFT_VERSION,
   RPC_CHANNEL,
   RPC_ENDPOINTS,
+  WRITE_ENDPOINTS,
   isRpcResult,
+  isWriteEndpoint,
+  validDraftChunkRange,
 } from '../../src/shared/protocol.ts'
 
 describe('RPC 协议常量', () => {
@@ -41,5 +46,38 @@ describe('RPC 协议常量', () => {
     expect(isRpcResult({ value: 1 })).toBe(false)
     expect(isRpcResult({ ok: true })).toBe(false)
     expect(isRpcResult({ ok: false })).toBe(false)
+  })
+})
+
+describe('B1 合并端点（T1 契约冻结）', () => {
+  const B1_READ = ['mergeFile'] as const
+  const B1_WRITE = ['mergeDraftSave', 'mergeApply', 'unresolveConflict'] as const
+
+  it('登记读 1、写 3 个端点', () => {
+    expect([...RPC_ENDPOINTS]).toEqual(expect.arrayContaining([...B1_READ, ...B1_WRITE]))
+    expect([...WRITE_ENDPOINTS]).toEqual(expect.arrayContaining([...B1_WRITE]))
+    for (const endpoint of B1_WRITE) expect(isWriteEndpoint(endpoint), endpoint).toBe(true)
+    for (const endpoint of B1_READ) expect(isWriteEndpoint(endpoint), endpoint).toBe(false)
+  })
+
+  it('写端点是端点表的子集且不重复', () => {
+    expect(new Set(WRITE_ENDPOINTS).size).toBe(WRITE_ENDPOINTS.length)
+    for (const endpoint of WRITE_ENDPOINTS) expect(RPC_ENDPOINTS, endpoint).toContain(endpoint)
+  })
+
+  it('草稿与块状态的取值固定', () => {
+    expect(MERGE_DRAFT_VERSION).toBe(1)
+    expect([...MERGE_CHUNK_STATES]).toEqual([
+      'pending', 'left', 'right', 'both-left-first', 'both-right-first', 'ignored', 'edited',
+    ])
+  })
+
+  it('草稿块的行区间要么同时缺省，要么是有序的非负整数', () => {
+    expect(validDraftChunkRange({})).toBe(true)
+    expect(validDraftChunkRange({ resultStart: 0, resultEnd: 0 })).toBe(true)
+    expect(validDraftChunkRange({ resultStart: 2, resultEnd: 5 })).toBe(true)
+    for (const bad of [{ resultStart: 1 }, { resultEnd: 1 }, { resultStart: -1, resultEnd: 1 }, { resultStart: 0.5, resultEnd: 1 }, { resultStart: '0', resultEnd: 1 }, { resultStart: 3, resultEnd: 2 }]) {
+      expect(validDraftChunkRange(bad)).toBe(false)
+    }
   })
 })

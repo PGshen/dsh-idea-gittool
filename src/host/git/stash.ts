@@ -33,12 +33,11 @@ import type { RawChange } from './commit.ts'
 import { COMMIT_FILE_LIMIT, parseRawNumstat, toFileEntry } from './commit.ts'
 import { parseFullSha } from './integrate.ts'
 import { queryOf, readPendingStash, removePendingStash, stashTop } from './smart-stash.ts'
-import { assertNoOperation, invalidPayload, outputSummary, payloadRecord, queryOk, redactedFailure } from './write-support.ts'
+import { OBJECT_ID_PATTERN, assertNoOperation, invalidPayload, outputSummary, payloadRecord, queryOk, redactedFailure } from './write-support.ts'
 
 /** Longest accepted stash message (characters, after whitespace is collapsed). */
 export const STASH_MESSAGE_MAX = 1000
 
-const SHA_PATTERN = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/
 /** sha, parents, reflog subject, committer date. */
 const LIST_FORMAT = '--format=%H%x00%P%x00%gs%x00%cI'
 
@@ -55,7 +54,7 @@ function parseList(stdout: string): ListedStash[] {
   for (const line of stdout.split('\n')) {
     if (line === '') continue
     const [sha = '', parents = '', subject = '', date = ''] = line.split('\0')
-    if (!SHA_PATTERN.test(sha)) continue
+    if (!OBJECT_ID_PATTERN.test(sha)) continue
     stashes.push({ sha, parents: parents === '' ? [] : parents.split(' '), subject, date })
   }
   return stashes

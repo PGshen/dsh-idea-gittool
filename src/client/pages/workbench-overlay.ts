@@ -29,6 +29,8 @@ export type WorkbenchOverlay =
   | { kind: 'pushRejected'; remote: string; branch: string; details: PushRejectedDetails }
   | { kind: 'rollback'; targets: RollbackTarget[] }
   | { kind: 'conflicts' }
+  /** B1 three-pane merge window for one conflicted file (puts the panel in host fullscreen). */
+  | { kind: 'mergeWindow'; path: string }
   | { kind: 'merge'; ref?: string }
   | { kind: 'rebase'; onto?: string }
   /** Pull page; `remote`/`branch` prefill it when opened from a branch row. */
@@ -54,6 +56,7 @@ export const OVERLAY_LEVEL: Record<WorkbenchOverlayKind, 1 | 2> = {
   push: 1,
   pushRejected: 1,
   conflicts: 1,
+  mergeWindow: 1,
   merge: 1,
   rebase: 1,
   pull: 1,
@@ -126,6 +129,12 @@ export interface OverlayControllerOptions {
   onLeave?: OverlayLeave
   /** Trigger used when `open` gets none: the focused element at call time. */
   currentTrigger?: () => FocusTarget | null
+  /**
+   * B1 T7: asked before `open` / `close` replace the current overlay. Returning true holds the change:
+   * the guard calls `proceed` later (e.g. after a dirty merge window's save / discard question).
+   * `closeIf` never asks (it follows an operation that already ended).
+   */
+  guard?: (current: WorkbenchOverlay, next: WorkbenchOverlay | null, proceed: () => void) => boolean
 }
 
 export interface OverlayController {
@@ -156,19 +165,28 @@ export function createOverlayController(options: OverlayControllerOptions): Over
     if (transition.left !== null) options.onLeave?.(transition.left, route.overlay)
   }
 
+  const doClose = (): void => {
+    const transition = closeOverlay(route)
+    pendingFocus = transition.focus
+    apply(transition)
+  }
+  const held = (next: WorkbenchOverlay | null, proceed: () => void): boolean =>
+    route.overlay !== null && options.guard?.(route.overlay, next, proceed) === true
+
   const controller: OverlayController = {
     open: (next, trigger) => {
-      pendingFocus = null
       const captured = trigger === undefined ? (options.currentTrigger?.() ?? null) : trigger
-      apply(openOverlay(route, next, captured))
+      const proceed = (): void => {
+        pendingFocus = null
+        apply(openOverlay(route, next, captured))
+      }
+      if (!held(next, proceed)) proceed()
     },
     close: () => {
-      const transition = closeOverlay(route)
-      pendingFocus = transition.focus
-      apply(transition)
+      if (!held(null, doClose)) doClose()
     },
     closeIf: (kind) => {
-      if (route.overlay?.kind === kind) controller.close()
+      if (route.overlay?.kind === kind) doClose()
     },
     route: () => route,
     flushFocus: () => {
@@ -186,14 +204,17 @@ export interface WorkbenchOverlayController extends Omit<OverlayController, 'flu
 }
 
 /** Thin React wrapper over {@link createOverlayController} for GitWorkbench. */
-export function useWorkbenchOverlay(onLeave?: OverlayLeave): WorkbenchOverlayController {
+export function useWorkbenchOverlay(onLeave?: OverlayLeave, guard?: OverlayControllerOptions['guard']): WorkbenchOverlayController {
   const [route, setRoute] = useState<OverlayRoute>(CLOSED_ROUTE)
   const onLeaveRef = useRef(onLeave)
   onLeaveRef.current = onLeave
+  const guardRef = useRef(guard)
+  guardRef.current = guard
   const controller = useMemo(() => createOverlayController({
     onChange: setRoute,
     onLeave: (left, next) => onLeaveRef.current?.(left, next),
     currentTrigger: activeFocusTarget,
+    guard: (current, next, proceed) => guardRef.current?.(current, next, proceed) ?? false,
   }), [])
   // Runs after the closed overlay unmounted (and after its own focus cleanup).
   useEffect(() => { controller.flushFocus() }, [controller, route])

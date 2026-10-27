@@ -1,0 +1,315 @@
+/* B1 three-pane merge window (design §10.3, §15): fills the Git tab content area like the other
+   level-1 overlays; the panel itself is put in host fullscreen while the window is open. */
+.root {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  background: var(--dsw-alias-bg-base);
+  color: var(--dsw-alias-label-primary);
+  font-size: 13px;
+}
+
+.window {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  outline: none;
+}
+
+.header,
+.footer {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  min-width: 0;
+  min-height: 36px;
+  padding: 4px 8px;
+}
+
+.header {
+  border-bottom: 0.5px solid var(--dsw-alias-border-l2);
+}
+
+.footer {
+  border-top: 0.5px solid var(--dsw-alias-border-l2);
+}
+
+.back {
+  flex: 0 0 auto;
+}
+
+.title {
+  overflow: hidden;
+  min-width: 0;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.counts {
+  flex: 0 0 auto;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.headerActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.spacer {
+  flex: 1 1 auto;
+}
+
+.notices {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: 4px;
+  padding: 4px 8px;
+  border-bottom: 0.5px solid var(--dsw-alias-border-l2);
+}
+
+.notice,
+.error,
+.hint,
+.note {
+  margin: 0;
+  font-size: 12px;
+}
+
+.notice {
+  color: var(--dsw-alias-label-secondary);
+}
+
+.error {
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.hint {
+  padding: 12px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.note {
+  flex: 0 0 auto;
+  padding: 4px 8px;
+  border-left: 2px solid var(--dsw-alias-state-warn-primary);
+  background: var(--dsw-alias-bg-layer-1);
+}
+
+.panes {
+  display: grid;
+  flex: 1 1 auto;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  min-width: 0;
+  min-height: 0;
+}
+
+.pane {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  border-right: 0.5px solid var(--dsw-alias-border-l2);
+}
+
+.pane:last-child {
+  border-right: 0;
+}
+
+.paneHead {
+  overflow: hidden;
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 4px 8px;
+  border-bottom: 0.5px solid var(--dsw-alias-border-l2);
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.editorHost {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* CodeMirror's own class names are global; the editor root gets `.editor`. */
+.editor {
+  position: absolute;
+  inset: 0;
+  height: 100%;
+  background: var(--dsw-alias-bg-base);
+  color: var(--dsw-alias-label-primary);
+  font-size: 12px;
+}
+
+.editor :global(.cm-scroller) {
+  overflow: auto;
+  font-family: var(--dsw-font-markdown-code-block-font-family, monospace);
+  line-height: 20px;
+}
+
+.editor :global(.cm-gutters) {
+  border: 0;
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.editor:global(.cm-focused) {
+  outline: none;
+}
+
+.editor :global(.cm-content) {
+  caret-color: var(--dsw-alias-label-primary);
+}
+
+/* Chunk colours: each tone sets the colour, edges draw the chunk borders. */
+.toneConflict,
+.toneChange,
+.toneResolved,
+.toneEdited {
+  background: color-mix(in srgb, var(--merge-tone) var(--merge-mix, 14%), transparent);
+}
+
+.toneConflict {
+  --merge-tone: var(--dsw-alias-state-error-primary);
+}
+
+.toneChange {
+  --merge-tone: var(--dsw-static-blue-500);
+}
+
+.toneResolved {
+  --merge-tone: var(--dsw-alias-state-success-primary);
+  --merge-mix: 8%;
+}
+
+.toneEdited {
+  --merge-tone: var(--dsw-alias-state-warn-primary);
+}
+
+.current {
+  --merge-mix: 26%;
+}
+
+.edgeFirst {
+  box-shadow: inset 0 1px 0 var(--merge-tone);
+}
+
+.edgeLast {
+  box-shadow: inset 0 -1px 0 var(--merge-tone);
+}
+
+.edgeSingle {
+  box-shadow: inset 0 1px 0 var(--merge-tone), inset 0 -1px 0 var(--merge-tone);
+}
+
+/* A chunk with no lines in this pane: a line marks where its text would go. */
+.gapBefore,
+.gapAfter {
+  background: transparent;
+}
+
+.gapBefore {
+  box-shadow: inset 0 2px 0 var(--merge-tone);
+}
+
+.gapAfter {
+  box-shadow: inset 0 -2px 0 var(--merge-tone);
+}
+
+.gutter {
+  min-width: 36px;
+}
+
+.gutterButton {
+  min-width: 16px;
+  height: 18px;
+  padding: 0 2px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font: inherit;
+  font-size: 12px;
+  line-height: 18px;
+  cursor: pointer;
+}
+
+.gutterButton:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
+}
+
+.gutterButton:focus-visible {
+  outline: 1px solid var(--dsw-alias-brand-primary);
+  outline-offset: -1px;
+}
+
+.menuAnchor {
+  position: relative;
+}
+
+.menu {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 0;
+  z-index: 5;
+}
+
+.confirm {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  padding: 8px;
+  border-top: 0.5px solid var(--dsw-alias-border-l2);
+  background: var(--dsw-alias-bg-layer-1);
+}
+
+.confirmActions {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.fallback {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+  overflow: auto;
+}
+
+.fallbackReason {
+  margin: 0;
+}
+
+.fallbackActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.status {
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+}

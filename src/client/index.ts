@@ -49,7 +49,20 @@ export function apply(ctx: ClientContext): void {
   }), 'git: shortcut')
 
   ctx.effect(() => ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register(
-    { name: 'sidebar.right.pane.tab', key: GIT_ID, locale: NS, inject: () => ({ bootstrapCache, gitClient }) },
+    {
+      name: 'sidebar.right.pane.tab',
+      key: GIT_ID,
+      locale: NS,
+      inject: () => ({
+        bootstrapCache,
+        gitClient,
+        // B1 merge window: host fullscreen of the pane that holds the Git tab (references §14).
+        toggleFullscreen: (element: Element | null) => {
+          const target = ctx.sidebarRight.commandTarget(element)
+          if (target !== undefined) ctx.sidebarRight.toggleFullscreen(target)
+        },
+      }),
+    },
     GitBody,
   )), 'git: tab body')
 

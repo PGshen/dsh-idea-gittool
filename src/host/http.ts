@@ -16,9 +16,30 @@ import type {} from '@deepseek-ai/dsh-host-webserver'
 import { RPC_CHANNEL, RPC_ENDPOINTS } from '../shared/protocol.ts'
 import type { RpcResult } from '../shared/protocol.ts'
 import type { GitRpcHandler } from './rpc.ts'
+import { MERGE_APPLY_RESULT_MAX_BYTES } from './git/merge-write.ts'
 
-/** 请求体上限：payload 只含 sessionId / 游标 / limit，256 KiB 足够且能挡住恶意体。 */
-const MAX_BODY_BYTES = 256 * 1024
+/** Default body limit: ordinary payloads carry ids / cursors / paths / messages; 256 KiB also stops abusive bodies. */
+export const DEFAULT_BODY_MAX_BYTES = 256 * 1024
+
+/**
+ * Body limit for `mergeApply` / `mergeDraftSave` (B1 acceptance demo: a 1.7 MiB file opened but
+ * neither could be sent through the 256 KiB default).
+ * - `result` ≤ 8 MiB of UTF-8; JSON escaping turns `\n`, `\t`, `"`, `\\` into two bytes, so a
+ *   result made only of such characters is 16 MiB on the wire (non-ASCII is sent raw, not `\u` escaped);
+ * - a draft lists ≤ 100 000 chunks of ≤ ~110 bytes each
+ *   (`{"state":"both-right-first","leftDone":false,"rightDone":false,"resultStart":…,"resultEnd":…}`) ≈ 10.5 MiB;
+ * - plus path, stages and envelope. 16 + 10.5 + slack → 32 MiB. The handler still enforces the
+ *   8 MiB `result` limit itself; pathological `\u00XX` control-character results may exceed this
+ *   body limit and are answered with `body-too-large` (the UI says to resolve it in a terminal).
+ */
+export const MERGE_BODY_MAX_BYTES = 4 * MERGE_APPLY_RESULT_MAX_BYTES
+
+const LARGE_BODY_ENDPOINTS: ReadonlySet<string> = new Set(['mergeApply', 'mergeDraftSave'])
+
+/** Request body limit for one endpoint. */
+export function bodyLimitFor(endpoint: string): number {
+  return LARGE_BODY_ENDPOINTS.has(endpoint) ? MERGE_BODY_MAX_BYTES : DEFAULT_BODY_MAX_BYTES
+}
 
 /** 单次 HTTP 请求的最长生命周期；git 自身另有 8s 超时。 */
 const REQUEST_TIMEOUT_MS = 15_000
@@ -41,17 +62,23 @@ function sendJson(res: ServerResponse, status: number, body: unknown): void {
   res.end(JSON.stringify(body))
 }
 
-function invalidPayload(message: string): RpcResult<never> {
-  return { ok: false, error: { code: 'git/invalid-payload', message } }
+function invalidPayload(message: string, details?: Record<string, unknown>): RpcResult<never> {
+  return { ok: false, error: { code: 'git/invalid-payload', message, ...(details === undefined ? {} : { details }) } }
 }
 
-async function readBody(req: IncomingMessage): Promise<string> {
+class BodyTooLargeError extends Error {
+  constructor(readonly limit: number) {
+    super('request body too large')
+  }
+}
+
+async function readBody(req: IncomingMessage, limit: number): Promise<string> {
   const chunks: Buffer[] = []
   let received = 0
   for await (const chunk of req) {
     const buffer = chunk as Buffer
     received += buffer.byteLength
-    if (received > MAX_BODY_BYTES) throw new Error('request body too large')
+    if (received > limit) throw new BodyTooLargeError(limit)
     chunks.push(buffer)
   }
   return Buffer.concat(chunks).toString('utf8')
@@ -95,8 +122,13 @@ export function registerRpcRoutes(ctx: Context, handler: GitRpcHandler): void {
         }
         let payload: unknown
         try {
-          payload = JSON.parse(await readBody(req)) as unknown
+          payload = JSON.parse(await readBody(req, bodyLimitFor(endpoint))) as unknown
         } catch (error) {
+          if (error instanceof BodyTooLargeError) {
+            // Structured, so the client can say "too large, resolve it in a terminal" instead of "HTTP 413".
+            sendJson(res, 413, invalidPayload(error.message, { reason: 'body-too-large', limit: error.limit }))
+            return
+          }
           sendJson(res, 400, invalidPayload(error instanceof Error ? error.message : 'body is not JSON'))
           return
         }

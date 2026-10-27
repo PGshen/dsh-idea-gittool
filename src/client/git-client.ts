@@ -19,6 +19,8 @@ import type {
   GitError,
   LogRequest,
   LogValue,
+  MergeFileRequest,
+  MergeFileValue,
   OperationStateValue,
   PullForPushRequest,
   PullForPushValue,
@@ -91,6 +93,11 @@ export interface GitClient {
   stashCreate: WriteMethod<'stashCreate'>
   stashApply: WriteMethod<'stashApply'>
   stashDrop: WriteMethod<'stashDrop'>
+  // B1 three-way merge: the read feeds the merge window; writes go through the action store.
+  mergeFile(request: MergeFileRequest, signal?: AbortSignal): Promise<RpcResult<MergeFileValue>>
+  mergeDraftSave: WriteMethod<'mergeDraftSave'>
+  mergeApply: WriteMethod<'mergeApply'>
+  unresolveConflict: WriteMethod<'unresolveConflict'>
 }
 
 /** Compile-time check: GitClient covers every write endpoint with the protocol's types. */
@@ -112,6 +119,19 @@ function endpointUrl(endpoint: string): string {
   return `${RPC_CHANNEL.slice(1)}/${endpoint}`
 }
 
+/**
+ * A non-2xx reply may still carry the protocol's error envelope (e.g. 413 body-too-large);
+ * surface that structured error instead of a bare "HTTP <status>". Never reads success from it.
+ */
+async function errorBodyOf<T>(response: Response): Promise<RpcResult<T> | undefined> {
+  try {
+    const raw: unknown = await response.json()
+    return isRpcResult<T>(raw) && !raw.ok ? raw : undefined
+  } catch {
+    return undefined
+  }
+}
+
 async function call<T>(endpoint: string, payload: unknown, signal?: AbortSignal): Promise<RpcResult<T>> {
   try {
     const response = await globalThis.fetch(endpointUrl(endpoint), {
@@ -121,7 +141,7 @@ async function call<T>(endpoint: string, payload: unknown, signal?: AbortSignal)
       ...(signal === undefined ? {} : { signal }),
     })
     // Transport failures read like Host errors (English, technical); the UI titles them by code.
-    if (!response.ok) return failure(`HTTP ${response.status}: ${endpoint}`)
+    if (!response.ok) return (await errorBodyOf<T>(response)) ?? failure(`HTTP ${response.status}: ${endpoint}`)
     const raw: unknown = await response.json()
     if (!isRpcResult<T>(raw)) return failure('Host response does not match the /dsh-git protocol')
     return raw
@@ -177,5 +197,9 @@ export function createGitClient(_ctx: unknown): GitClient {
     stashCreate: write('stashCreate'),
     stashApply: write('stashApply'),
     stashDrop: write('stashDrop'),
+    mergeFile: (request, signal) => call<MergeFileValue>('mergeFile', request, signal),
+    mergeDraftSave: write('mergeDraftSave'),
+    mergeApply: write('mergeApply'),
+    unresolveConflict: write('unresolveConflict'),
   }
 }

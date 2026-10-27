@@ -20,6 +20,7 @@ import type {
   ConsoleValue,
   DiffFileValue,
   LogValue,
+  MergeFileValue,
   OperationStateValue,
   PushPreviewValue,
   RefsValue,
@@ -47,6 +48,8 @@ import {
   deleteBranchOperation,
   renameBranchOperation,
 } from './git/branch-write.ts'
+import { readMergeFile } from './git/merge-file.ts'
+import { mergeApplyOperation, mergeDraftSaveOperation, unresolveConflictOperation } from './git/merge-write.ts'
 import { conflictCommandFor, resolveConflictOperation } from './git/conflict.ts'
 import { addToVcsOperation, amendMessageOperation, commitFilesOperation } from './git/commit-write.ts'
 import { operationCommitOperation, operationControlOperation, readOperationState } from './git/operation.ts'
@@ -105,7 +108,7 @@ const MAX_REQUEST_ID_LENGTH = 100
 /** A write endpoint's response without the version the RPC layer stamps on it. */
 export type WriteValue<E extends WriteEndpoint> = Omit<RpcEndpointTypes[E]['value'], 'version'>
 
-/** Write endpoints (A2 + A3) → their operations; tests override single entries. */
+/** Write endpoints (A2 + A3 + B1) → their operations; tests override single entries. */
 export type WriteOperations = { [E in WriteEndpoint]: WriteOperation<unknown, WriteValue<E>> }
 
 const DEFAULT_WRITE_OPERATIONS: WriteOperations = {
@@ -134,6 +137,9 @@ const DEFAULT_WRITE_OPERATIONS: WriteOperations = {
   stashCreate: stashCreateOperation,
   stashApply: stashApplyOperation,
   stashDrop: stashDropOperation,
+  mergeDraftSave: mergeDraftSaveOperation,
+  mergeApply: mergeApplyOperation,
+  unresolveConflict: unresolveConflictOperation,
 }
 
 /** Everything the handler needs; all session services are lazy and optional. */
@@ -367,6 +373,15 @@ export function createRpcRuntime(deps: RpcDeps): RpcRuntime {
             `${STASH_FILES_CACHE_PREFIX}:${sha}`,
             (root) => readStashFiles(deps.runner, root, sha, { signal }),
           )
+        }
+        case 'mergeFile': {
+          parseSessionId(payload)
+          const path = validateRepoPath((payload as { path?: unknown }).path)
+          const root = await repositoryRoot(deps, parseSessionId(payload), signal)
+          runtime.ensureWatch(root)
+          const version = runtime.cache().versionOf(root)
+          const ctx = bindWriteContext(deps.runner, root, { kind: 'unconfined' }, signal)
+          return ok<MergeFileValue>({ ...(await readMergeFile(ctx, path)), version })
         }
         default:
           if (isWriteEndpoint(endpoint)) {

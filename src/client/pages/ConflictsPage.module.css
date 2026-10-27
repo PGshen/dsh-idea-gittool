@@ -8,7 +8,7 @@
 .note {
   margin: 0;
   padding: 6px 8px;
-  border-left: 2px solid var(--dsw-alias-state-warn);
+  border-left: 2px solid var(--dsw-alias-state-warn-primary);
   background: var(--dsw-alias-bg-layer-1);
   color: var(--dsw-alias-label-secondary);
   font-size: 12px;
@@ -52,7 +52,7 @@
 
 .resolvedMark {
   width: 14px;
-  color: var(--dsw-alias-state-success);
+  color: var(--dsw-alias-state-success-primary);
   text-align: center;
 }
 
@@ -61,10 +61,28 @@
   min-width: 0;
   overflow: hidden;
   color: var(--dsw-alias-label-primary);
-  font-family: var(--dsw-font-mono, monospace);
+  font-family: var(--dsw-font-markdown-code-block-font-family, monospace);
   font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.pathButton {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.pathButton:hover {
+  color: var(--dsw-alias-link);
+  text-decoration: underline;
+}
+
+.pathButton:focus-visible {
+  outline: 1px solid var(--dsw-alias-brand-primary);
+  outline-offset: 1px;
 }
 
 .kind {
@@ -104,5 +122,38 @@
 
 .copied {
   color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+}
+
+/* B1 T7 (mergeWindow flag): chunk counts, selection, unreviewed mark, resolved row menu. */
+.chunks {
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.selected,
+.selected:hover {
+  background: var(--dsw-alias-interactive-bg-active);
+}
+
+.row[tabindex]:focus-visible {
+  outline: 1px solid var(--dsw-alias-brand-primary);
+  outline-offset: -1px;
+}
+
+.unreviewed {
+  padding: 0 4px;
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: 3px;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.rowError {
+  flex: 1 1 100%;
+  color: var(--dsw-alias-state-error-primary);
   font-size: 12px;
 }

@@ -20,6 +20,8 @@ import type {
   CompareValue,
   FormatPatchValue,
   ShelfListValue,
+  RemoteListValue,
+  WorktreeListValue,
   ShelfPatchValue,
   RebasePlanRequest,
   RebasePlanValue,
@@ -95,7 +97,9 @@ import { fixupCommitOperation } from './git/fixup.ts'
 import { interactiveRebaseOperation } from './git/interactive-rebase.ts'
 import { applyPatchOperation, parseFormatPatchShas, readFormatPatch } from './git/patch.ts'
 import { readRebasePlan } from './git/rebase-plan.ts'
-import { createTagOperation } from './git/tag-write.ts'
+import { createTagOperation, tagDeleteOperation, tagPushOperation } from './git/tag-write.ts'
+import { readRemoteList, remoteBranchDeleteOperation, remoteEditOperation, setUpstreamOperation } from './git/remote-write.ts'
+import { readWorktreeList, worktreeAddOperation, worktreePruneOperation, worktreeRemoveOperation } from './git/worktree.ts'
 import { parseShelfId, readShelfList, readShelfPatch, shelfApplyOperation, shelfCreateOperation, shelfDropOperation } from './git/shelf.ts'
 import { readFileHistory } from './git/file-history.ts'
 import { readDiff, validateRepoPath } from './git/diff.ts'
@@ -171,6 +175,14 @@ const DEFAULT_WRITE_OPERATIONS: WriteOperations = {
   shelfCreate: shelfCreateOperation,
   shelfApply: shelfApplyOperation,
   shelfDrop: shelfDropOperation,
+  remoteEdit: remoteEditOperation,
+  tagPush: tagPushOperation,
+  tagDelete: tagDeleteOperation,
+  remoteBranchDelete: remoteBranchDeleteOperation,
+  setUpstream: setUpstreamOperation,
+  worktreeAdd: worktreeAddOperation,
+  worktreeRemove: worktreeRemoveOperation,
+  worktreePrune: worktreePruneOperation,
 }
 
 /** Everything the handler needs; all session services are lazy and optional. */
@@ -458,6 +470,14 @@ export function createRpcRuntime(deps: RpcDeps): RpcRuntime {
             (root) => readCompare(deps.runner, root, request, { signal }),
           )
         }
+        case 'remoteList':
+          return await handleCached<RemoteListValue>(deps, runtime, payload, signal, 'remoteList', async (root) => ({
+            remotes: await readRemoteList(deps.runner, root, { signal }),
+          }))
+        case 'worktreeList':
+          return await handleCached<WorktreeListValue>(deps, runtime, payload, signal, 'worktreeList', async (root) => ({
+            worktrees: await readWorktreeList(deps.runner, root, { signal }),
+          }))
         case 'shelfList':
           return await handleCached<ShelfListValue>(deps, runtime, payload, signal, 'shelfList', async (root) => ({
             shelves: await readShelfList(deps.runner, root, { signal }),

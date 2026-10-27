@@ -39,7 +39,7 @@
 1. **新 worktree 的默认位置**：推荐默认 `<仓库根>/.worktrees/<分支名>`（在工作区写边界内，`workspace-write` 沙箱下也能创建），路径可改为仓库内的其他相对路径；同级目录（`../repo-branch`）在沙箱下会被拒绝，界面说明原因。代价：主工作区里会出现 `.worktrees/` 目录，需要用户自己加到 `.gitignore`（Host 不替用户改 `.gitignore`，页面给出提示）。
 2. **Worktree 用 feature flag**（设计 §17）：`worktrees` 开发期默认关，验收后再开。
 3. **删除远程标签/分支**：都要二次确认并写清远程名；删除标签浮层里「同时删除远程 `<remote>` 上的同名标签」默认不勾。
-4. **Remotes 的 URL 显示**：列表与表单都只显示脱敏后的 URL（`https://user:***@host`）；编辑时如果用户没改 URL 就不发送，避免把脱敏串写回去。
+4. **Remotes 的 URL 显示**：列表与表单都只显示脱敏后的 URL（沿用控制台的 `redactCredentials`：整段 userinfo 换成 `***`，即 `https://***@host`）；编辑时如果用户没改 URL 就不发送，避免把脱敏串写回去。
 
 ## 验收标准
 
@@ -71,10 +71,10 @@ worktreePrune: WriteRequest → { pruned: number }
 
 ## 任务
 
-### T1：契约冻结（待开始）
-### T2：Host 标签/远程分支/upstream/remotes（待开始）
+### T1：契约冻结（完成）
+### T2：Host 标签/远程分支/upstream/remotes（完成）
 - `src/host/git/remote-write.ts`（`remoteList`、`remoteEdit`、`remoteBranchDelete`、`setUpstream`）、`src/host/git/tag-write.ts` 扩展（`tagPush`、`tagDelete`）；网络命令走 `mode: 'network'` 与现有凭据失败分类。
-### T3：Host worktree（待开始）
+### T3：Host worktree（完成）
 - `src/host/git/worktree.ts`。
 ### T4：分支页菜单与浮层（待开始）
 - `branch-actions.ts` 新项与可用性；`TagSheets`（推送/删除）、`RemoteBranchDeleteSheet`、`UpstreamSheet`。
@@ -83,14 +83,15 @@ worktreePrune: WriteRequest → { pruned: number }
 
 ## 进度
 
-- 无
+- 2026-10-28 — T1–T3 — 协议与客户端方法；Host `remote-write`（列表脱敏、增改删重命名、删除远程分支、upstream）、`tag-write`（推送、删除本地/远程）、`worktree`（列表、新增、删除、清理）与路由
 
 ## 下一步
 
-- 从 T1 开始。
+- T4：`branch-actions.ts` 新菜单项与浮层（推送/删除标签、删除远程分支、设置/取消 upstream、在新 Worktree 中签出）。
 
 ## 决策记录
 
+- 2026-10-28 — T1–T3 合并为一次提交：`remoteList`/`worktreeList` 只需会话参数，占位实现会让路由登记测试失败（与 B3c 同理）。
 - 2026-10-28 — 待确认 1–4 按推荐执行（负责人授权 AI 自行推进 B3b–B3d，验收时统一 review）。
 
 ## 意外与发现

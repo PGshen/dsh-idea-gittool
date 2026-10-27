@@ -78,6 +78,17 @@ export const RPC_ENDPOINTS = [
   'shelfCreate',
   'shelfApply',
   'shelfDrop',
+  // B3d Worktree 与远程（T1 登记）
+  'remoteList',
+  'remoteEdit',
+  'tagPush',
+  'tagDelete',
+  'remoteBranchDelete',
+  'setUpstream',
+  'worktreeList',
+  'worktreeAdd',
+  'worktreeRemove',
+  'worktreePrune',
 ] as const
 
 export type RpcEndpoint = (typeof RPC_ENDPOINTS)[number]
@@ -122,6 +133,14 @@ export const WRITE_ENDPOINTS = [
   'shelfCreate',
   'shelfApply',
   'shelfDrop',
+  'remoteEdit',
+  'tagPush',
+  'tagDelete',
+  'remoteBranchDelete',
+  'setUpstream',
+  'worktreeAdd',
+  'worktreeRemove',
+  'worktreePrune',
 ] as const satisfies readonly RpcEndpoint[]
 
 export type WriteEndpoint = (typeof WRITE_ENDPOINTS)[number]
@@ -740,6 +759,126 @@ export interface ShelfDropRequest extends WriteRequest {
 
 export interface ShelfDropValue {
   id: string
+  version?: number
+}
+
+// --- B3d Worktree 与远程（T1 冻结） ---------------------------------------------
+
+/** 一个远程；URL 里的凭据已脱敏（`https://user:***@host`）。 */
+export interface RemoteEntry {
+  name: string
+  fetchUrl: string
+  pushUrl: string
+}
+
+export interface RemoteListValue {
+  remotes: RemoteEntry[]
+  version?: number
+}
+
+export type RemoteEditRequest = WriteRequest & (
+  | { action: 'add'; name: string; url: string }
+  | { action: 'setUrl'; name: string; url: string }
+  | { action: 'rename'; name: string; newName: string }
+  | { action: 'remove'; name: string }
+)
+
+export interface RemoteEditValue {
+  remotes: RemoteEntry[]
+  version?: number
+}
+
+export interface TagPushRequest extends WriteRequest {
+  name: string
+  remote: string
+}
+
+export interface TagPushValue {
+  name: string
+  remote: string
+  version?: number
+}
+
+/** `remote` 给出时同时删除该远程上的同名标签；远程失败不回滚本地删除，`remoteError` 说明原因。 */
+export interface TagDeleteRequest extends WriteRequest {
+  name: string
+  remote?: string
+}
+
+export interface TagDeleteValue {
+  name: string
+  localDeleted: boolean
+  remoteDeleted: boolean
+  remoteError?: string
+  version?: number
+}
+
+export interface RemoteBranchDeleteRequest extends WriteRequest {
+  remote: string
+  branch: string
+}
+
+export interface RemoteBranchDeleteValue {
+  remote: string
+  branch: string
+  version?: number
+}
+
+/** `upstream` 形如 `origin/x`；null 表示取消。 */
+export interface SetUpstreamRequest extends WriteRequest {
+  branch: string
+  upstream: string | null
+}
+
+export interface SetUpstreamValue {
+  branch: string
+  upstream: string | null
+  version?: number
+}
+
+export interface WorktreeEntry {
+  /** 绝对路径（realpath）。 */
+  path: string
+  head: string | null
+  /** 短分支名；detached 时为 null。 */
+  branch: string | null
+  current: boolean
+  locked: boolean
+  prunable: boolean
+  bare: boolean
+}
+
+export interface WorktreeListValue {
+  worktrees: WorktreeEntry[]
+  version?: number
+}
+
+/** `path` 相对仓库根，不能越出仓库根；`createBranch` 时从 `startPoint`（缺省 HEAD）新建分支。 */
+export interface WorktreeAddRequest extends WriteRequest {
+  path: string
+  branch: string
+  createBranch?: boolean
+  startPoint?: string
+}
+
+export interface WorktreeAddValue {
+  worktree: WorktreeEntry
+  version?: number
+}
+
+/** 有改动的 worktree 要 `force`（否则 `git/invalid-payload`，`reason: 'worktree-dirty'`）；不能删当前 worktree。 */
+export interface WorktreeRemoveRequest extends WriteRequest {
+  path: string
+  force?: boolean
+}
+
+export interface WorktreeRemoveValue {
+  path: string
+  version?: number
+}
+
+export interface WorktreePruneValue {
+  pruned: number
   version?: number
 }
 
@@ -1694,6 +1833,16 @@ export interface RpcEndpointTypes {
   shelfCreate: { request: ShelfCreateRequest; value: ShelfCreateValue }
   shelfApply: { request: ShelfApplyRequest; value: ShelfApplyValue }
   shelfDrop: { request: ShelfDropRequest; value: ShelfDropValue }
+  remoteList: { request: RpcRequest; value: RemoteListValue }
+  remoteEdit: { request: RemoteEditRequest; value: RemoteEditValue }
+  tagPush: { request: TagPushRequest; value: TagPushValue }
+  tagDelete: { request: TagDeleteRequest; value: TagDeleteValue }
+  remoteBranchDelete: { request: RemoteBranchDeleteRequest; value: RemoteBranchDeleteValue }
+  setUpstream: { request: SetUpstreamRequest; value: SetUpstreamValue }
+  worktreeList: { request: RpcRequest; value: WorktreeListValue }
+  worktreeAdd: { request: WorktreeAddRequest; value: WorktreeAddValue }
+  worktreeRemove: { request: WorktreeRemoveRequest; value: WorktreeRemoveValue }
+  worktreePrune: { request: WriteRequest; value: WorktreePruneValue }
 }
 
 /** 编译期检查：{@link RpcEndpointTypes} 恰好覆盖 {@link RpcEndpoint}，写端点请求都带 requestId。 */

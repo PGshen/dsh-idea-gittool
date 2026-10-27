@@ -593,3 +593,22 @@ describe('rollback store', () => {
     expect(rollbackEscapeAction({ busy: true })).toBe('ignore')
   })
 })
+
+describe('push up to a commit (B3b)', () => {
+  it('previews and pushes the revision instead of HEAD', async () => {
+    const client = fakeClient()
+    const revision = 'c'.repeat(40)
+    const store = createPushStore({ client, sessionId: 's1', repoRoot: '/repo', storage: null, newRequestId: sequentialIds(), revision })
+    await store.load()
+    expect(client.pushPreview).toHaveBeenCalledWith('s1', expect.any(AbortSignal), revision)
+    await store.submit()
+    expect(client.push).toHaveBeenCalledWith(expect.objectContaining({ revision }))
+  })
+
+  it('leaves the revision out when pushing HEAD', async () => {
+    const client = fakeClient()
+    const { store } = await loadedStore({ client })
+    await store.submit()
+    expect(client.push.mock.calls[0]?.[0]).not.toHaveProperty('revision')
+  })
+})

@@ -36,6 +36,8 @@ export interface CommitMenuConfig {
   /** B3a: interactive rebase items (flag on) and the HEAD they rebase. */
   rebase?: boolean
   headSha?: string
+  /** B3b: files checked on the commit page (fixup / squash into). */
+  checkedCount?: number
   /** 选中菜单项；`childSha` 是已加载的子提交（跳到子提交用）。 */
   onAction(id: CommitActionId, commit: CommitSummary, trigger: FocusTarget | null, childSha: string | null): void
 }

@@ -58,7 +58,7 @@ export type WorkbenchOverlay =
   | { kind: 'interactiveRebase'; base: string | null; preset?: RebasePreset }
   /** B3b log menu: new tag on a commit; undo the HEAD commit (soft reset); fixup / squash checked files into a commit. */
   | { kind: 'createTag'; sha: string; shortSha: string }
-  | { kind: 'undoCommit'; sha: string; shortSha: string; subject: string }
+  | { kind: 'undoCommit'; sha: string; parent: string; shortSha: string; subject: string }
   | { kind: 'fixupInto'; sha: string; shortSha: string; subject: string; mode: 'fixup' | 'squash' }
   /** B3b patches: export commits (download / copy); apply a pasted or chosen patch. */
   | { kind: 'patch'; shas: string[] }

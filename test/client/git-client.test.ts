@@ -82,6 +82,16 @@ describe('createGitClient / non-2xx responses (B1 acceptance demo)', () => {
 })
 
 describe('createGitClient / B3b endpoints', () => {
+  it('sends the push-up-to revision with the preview only when given', async () => {
+    const fetch = vi.fn(async () => new Response(JSON.stringify({ ok: true, value: {} })))
+    vi.stubGlobal('fetch', fetch)
+    const client = createGitClient(undefined)
+    await client.pushPreview('s')
+    expect(fetch).toHaveBeenLastCalledWith('dsh-git/pushPreview', expect.objectContaining({ body: JSON.stringify({ sessionId: 's' }) }))
+    await client.pushPreview('s', undefined, 'c'.repeat(40))
+    expect(fetch).toHaveBeenLastCalledWith('dsh-git/pushPreview', expect.objectContaining({ body: JSON.stringify({ sessionId: 's', revision: 'c'.repeat(40) }) }))
+  })
+
   it('posts formatPatch, createTag, fixupCommit and applyPatch to their endpoint paths', async () => {
     const fetch = vi.fn(async () => new Response(JSON.stringify({ ok: true, value: {} })))
     vi.stubGlobal('fetch', fetch)

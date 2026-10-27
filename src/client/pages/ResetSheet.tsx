@@ -137,16 +137,18 @@ export interface ResetSheetProps {
   onOutcome: (outcome: ActionOutcome<unknown>) => void
   onClose: () => void
   storage?: KeyValueStorage | null
+  /** B3b "undo commit": start on this mode instead of the remembered one. */
+  initialMode?: ResetForm['mode']
 }
 
-export function ResetSheet({ sha, loadPreview, actions, onOutcome, onClose, storage }: ResetSheetProps): ReactNode {
+export function ResetSheet({ sha, loadPreview, actions, onOutcome, onClose, storage, initialMode }: ResetSheetProps): ReactNode {
   const t = useT()
   const rootRef = useRef<HTMLDivElement | null>(null)
   useInitialFocus(rootRef)
   const store = useMemo(() => (storage === undefined ? browserStorage() : storage), [storage])
   const loaded = useLoaded(() => loadPreview({ sha }))
   const preview = loaded.state.status === 'ready' ? loaded.state.value : null
-  const [form, setForm] = useState<ResetForm>(() => ({ mode: loadPrefs(store).reset, hardConfirmed: false }))
+  const [form, setForm] = useState<ResetForm>(() => ({ mode: initialMode ?? loadPrefs(store).reset, hardConfirmed: false }))
   const { busy, error, clearError, run } = useFormRunner({ onOutcome, onClose })
 
   const submit = (trigger: FocusTarget | null): void => {

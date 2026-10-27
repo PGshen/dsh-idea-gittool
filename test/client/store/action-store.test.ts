@@ -297,3 +297,10 @@ describe('actionErrorText / B3a interactive rebase reasons', () => {
     }
   })
 })
+
+describe('actionErrorText / B3b', () => {
+  it('names a tag collision as a tag', () => {
+    expect(actionErrorText({ code: 'git/branch-exists', message: 'x', details: { kind: 'tag', branch: 'v1' } })).toEqual({ key: 'tag.exists', params: { name: 'v1' } })
+    expect(actionErrorText({ code: 'git/branch-exists', message: 'x', details: { branch: 'main' } }).key).toBe('action.error.git/branch-exists')
+  })
+})

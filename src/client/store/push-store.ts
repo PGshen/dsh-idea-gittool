@@ -325,6 +325,8 @@ export interface PushStoreOptions {
   newRequestId?: () => string
   /** Open directly on the rejected view (e.g. "commit and push" was rejected). */
   initialRejection?: PushRejectedDetails
+  /** B3b "push up to here": push this commit instead of HEAD. */
+  revision?: string
 }
 
 /**
@@ -375,6 +377,7 @@ export function createPushStore(options: PushStoreOptions): PushStore {
       forceWithLease: force,
       tags: form.tags,
       ...(force && expectedRemoteSha !== undefined ? { expectedRemoteSha } : {}),
+      ...(options.revision === undefined ? {} : { revision: options.revision }),
     }))
   }
 
@@ -421,7 +424,9 @@ export function createPushStore(options: PushStoreOptions): PushStore {
       const controller = new AbortController()
       previewController = controller
       patch({ previewStatus: 'loading', previewError: null })
-      const result = await settle(() => options.client.pushPreview(options.sessionId, controller.signal))
+      const result = await settle(() => options.revision === undefined
+        ? options.client.pushPreview(options.sessionId, controller.signal)
+        : options.client.pushPreview(options.sessionId, controller.signal, options.revision))
       if (disposed || controller.signal.aborted || previewController !== controller) return
       previewController = undefined
       if (!result.ok) {

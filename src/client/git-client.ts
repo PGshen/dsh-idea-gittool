@@ -74,7 +74,8 @@ export interface GitClient {
   amendMessage(request: AmendMessageRequest, signal?: AbortSignal): Promise<RpcResult<CommitResultValue>>
   rollback(request: RollbackRequest, signal?: AbortSignal): Promise<RpcResult<RollbackValue>>
   addToVcs(request: AddToVcsRequest, signal?: AbortSignal): Promise<RpcResult<AddToVcsValue>>
-  pushPreview(sessionId: string, signal?: AbortSignal): Promise<RpcResult<PushPreviewValue>>
+  /** B3b: `revision` previews "push up to this commit". */
+  pushPreview(sessionId: string, signal?: AbortSignal, revision?: string): Promise<RpcResult<PushPreviewValue>>
   push(request: PushRequest, signal?: AbortSignal): Promise<RpcResult<PushValue>>
   pullForPush(request: PullForPushRequest, signal?: AbortSignal): Promise<RpcResult<PullForPushValue>>
   // A3 read endpoints.
@@ -192,7 +193,8 @@ export function createGitClient(_ctx: unknown): GitClient {
     amendMessage: (request, signal) => call<CommitResultValue>('amendMessage', request, signal),
     rollback: (request, signal) => call<RollbackValue>('rollback', request, signal),
     addToVcs: (request, signal) => call<AddToVcsValue>('addToVcs', request, signal),
-    pushPreview: (sessionId, signal) => call<PushPreviewValue>('pushPreview', { sessionId }, signal),
+    pushPreview: (sessionId, signal, revision) =>
+      call<PushPreviewValue>('pushPreview', revision === undefined ? { sessionId } : { sessionId, revision }, signal),
     push: (request, signal) => call<PushValue>('push', request, signal),
     pullForPush: (request, signal) => call<PullForPushValue>('pullForPush', request, signal),
     operationState: (sessionId, signal) => call<OperationStateValue>('operationState', { sessionId }, signal),

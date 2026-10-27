@@ -1,5 +1,7 @@
 # 依赖与构建产物
 node_modules/
+# worktree 里的 node_modules 可能是指向主 checkout 的软链（目录模式匹配不到软链文件）
+/node_modules
 lib/
 dist/
 coverage/

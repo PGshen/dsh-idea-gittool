@@ -44,17 +44,17 @@
 
 ## 验收标准
 
-- [ ] AC1：`ignoreWhitespace: true` 时只有空白差异的文件显示「没有文本差异（忽略空白）」，混合改动只剩非空白行；四种 scope 都生效（Host 真实仓库测试）。
-- [ ] AC2：`context: 'full'` 返回整文件为一个 hunk（行号连续），超过现有截断上限时仍截断并提示（Host 测试）。
-- [ ] AC3：并排视图把每段连续 del/add 成对对齐，多出的一侧用空白行填充；左右行号与统一视图一致；词级高亮只标出行内变化的词，整行替换不做词级（纯函数单测 + 静态渲染）。
-- [ ] AC4：长于 8 行的未改片段折叠为「展开 N 行未改内容」，点击展开；`n`/`p` 在变更块之间移动并滚动到位，首尾不越界（单测 + L4）。
-- [ ] AC5：并排按钮在内容区 < 900px 时禁用并说明；模式选择在刷新后保留（单测 + L4）。
-- [ ] AC6：「撤销提交」只在 HEAD 上可用；执行后 HEAD 回到父提交、改动留在暂存区；已推送时警告（组件测试 + Host 复用测试）。
-- [ ] AC7：「推送直到此提交」推送页显示将推送的提交只到该提交为止；推送后远程分支指向该提交；该提交不在 HEAD 祖先链或已在远程时禁用（Host 真实仓库测试 + 组件测试）。
-- [ ] AC8：「新建标签」创建轻量/附注标签；同名时报「标签已存在」；名称经 `check-ref-format` 校验（Host 测试 + 组件测试）。
-- [ ] AC9：「Fixup/Squash 到此提交」用勾选文件生成 `fixup! <主题>`/`squash! <主题>` 并 autosquash，结果中目标提交包含这些改动、其余未勾选改动仍在工作区；冲突/停下沿用 B3a 横幅（Host 真实仓库测试）。
-- [ ] AC10：「创建补丁」对单个/多个提交得到与 `git format-patch --stdout` 相同的文本，可下载与复制；「应用补丁」先预览将改动的文件，`am` 与 `apply` 两种格式都能应用，失败时不留下半应用状态（`am --abort`）（Host 测试 + L4）。
-- [ ] AC11：L4 走查截图放 `.evidence/b3b/`；`make check` 绿；新增文案中英一致。
+- [x] AC1：`ignoreWhitespace: true` 时只有空白差异的文件显示「没有文本差异（忽略空白）」，混合改动只剩非空白行；四种 scope 都生效（Host 真实仓库测试）。
+- [x] AC2：`context: 'full'` 返回整文件为一个 hunk（行号连续），超过现有截断上限时仍截断并提示（Host 测试）。
+- [x] AC3：并排视图把每段连续 del/add 成对对齐，多出的一侧用空白行填充；左右行号与统一视图一致；词级高亮只标出行内变化的词，整行替换不做词级（纯函数单测 + 静态渲染）。
+- [x] AC4：长于 8 行的未改片段折叠为「展开 N 行未改内容」，点击展开；`n`/`p` 在变更块之间移动并滚动到位，首尾不越界（单测 + L4）。
+- [x] AC5：并排按钮在内容区 < 900px 时禁用并说明；模式选择在刷新后保留（单测 + L4）。
+- [x] AC6：「撤销提交」只在 HEAD 上可用；执行后 HEAD 回到父提交、改动留在暂存区；已推送时警告（组件测试 + Host 复用测试）。
+- [x] AC7：「推送直到此提交」推送页显示将推送的提交只到该提交为止；推送后远程分支指向该提交；该提交不在 HEAD 祖先链或已在远程时禁用（Host 真实仓库测试 + 组件测试）。
+- [x] AC8：「新建标签」创建轻量/附注标签；同名时报「标签已存在」；名称经 `check-ref-format` 校验（Host 测试 + 组件测试）。
+- [x] AC9：「Fixup/Squash 到此提交」用勾选文件生成 `fixup! <主题>`/`squash! <主题>` 并 autosquash，结果中目标提交包含这些改动、其余未勾选改动仍在工作区；冲突/停下沿用 B3a 横幅（Host 真实仓库测试）。
+- [x] AC10：「创建补丁」对单个/多个提交得到与 `git format-patch --stdout` 相同的文本，可下载与复制；「应用补丁」先预览将改动的文件，`am` 与 `apply` 两种格式都能应用，失败时不留下半应用状态（`am --abort`）（Host 测试 + L4）。
+- [x] AC11：L4 走查截图放 `.evidence/b3b/`；`make check` 绿；新增文案中英一致。
 
 ## 契约（T1 冻结）
 
@@ -93,7 +93,7 @@
 - `commit-actions.ts` 六个新项与可用性；`CreateTagSheet`、`UndoCommitSheet`（复用 `ResetSheet` 的确认样式）、`FixupIntoSheet`（显示将带入的勾选文件数）、`PatchPage`（预览 + 下载 + 复制）、`ApplyPatchPage`（文件选择/粘贴 → 预览 → 应用）、推送页 `revision`。
 - 测试：可用性矩阵、组件静态渲染、下载文件名。
 
-### T7：自验证与文档（进行中）
+### T7：自验证与文档（完成）
 - L4 走查（`.evidence/b3b/`）、runbook、ARCHITECTURE、QUALITY、references（`-w` 与 `--unified` 行为、`am --3way` 失败回滚）。
 
 ## 进度
@@ -104,10 +104,11 @@
 - 2026-10-27 — T4 — `src/client/diff/diff-views.ts`：`splitRows`、`wordDiff`（按 Unicode 词/数字/空白/标点切分，Myers，改动字符 > 60% 视为整行替换）、`pairChanges`、`foldContext`、`changeAnchors`
 - 2026-10-27 — T5 — 工具栏三个开关（并排按内容区宽度 ≥ 900 门槛）、`DiffHunks` 并排/折叠/词级（与语法高亮合并）、`n`/`p`、控制器 `setOptions`（切换文件沿用）、`src/client/settings.ts` 记住模式、`locales/diffmenu.ts`
 - 2026-10-27 — T6 — 日志右键六项（撤销提交 / 推送直到此提交 / 新建标签 / Fixup / Squash 到此提交 / 创建补丁）与可用性；`CreateTagSheet`、`FixupIntoSheet`、`PatchPage`（下载 + 复制）、`ApplyPatchPage`（粘贴或选文件 → 预览 → 应用）、撤销提交复用 `ResetSheet`（初始 soft、目标为父提交）、推送页 `revision`、仓库栏 ⋯「应用补丁…」、标签重名文案
+- 2026-10-27 — T7 — L4 走查（`.evidence/b3b/`），修复开关按下态不可见；runbook/ARCHITECTURE/QUALITY/references
 
 ## 下一步
 
-- T7：L4 走查（隔离 DSH 3081，profile 链接改到 b3b worktree 后重启），截图 `.evidence/b3b/`；runbook、ARCHITECTURE、QUALITY、references；然后整分支评审。
+- 整分支评审与修复；之后等负责人统一验收 B3。
 
 ## 决策记录
 
@@ -122,7 +123,7 @@
 
 ## 意外与发现
 
-- 无
+- 2026-10-27 L4：Fixup/Squash 的自动变基在冲突后被中止时，已提交的 `fixup!`/`squash!` 提交仍留在 HEAD（变基只是被撤销，提交在变基之前就有了）；与 IntelliJ 行为一致，暂不处理，登记 TODO 供负责人决定是否在中止时提示「可撤销该提交」。
 
 ## 阻塞
 
@@ -130,4 +131,15 @@
 
 ## 验证记录
 
-- 无
+- L1：每个任务 `make check` 全绿（`.superpowers/sdd/b3b/t*-check.log`）。
+- L2：`test/host/diff.test.ts`（AC1、AC2）、`test/host/commit-menu-writes.test.ts`（AC6 Host 复用 reset、AC7、AC8、AC9、AC10）、`test/host/rpc.test.ts`（diff 选项透传与缓存键）。
+- 组件/纯函数：`test/client/diff/diff-views.test.ts`、`test/client/pages/diff-enhanced.test.tsx`（AC3–AC5）、`commit-actions.test.ts`（菜单可用性与效果）、`commit-menu-sheets.test.tsx`、`push-store.test.ts`、`git-client.test.ts`、`action-store.test.ts`。
+- L4（2026-10-27，隔离 DSH 3081，b3b 构建）：
+  - 并排：内容区 823px 时按钮禁用并显示原因；视口加宽后并排生效、模式写入 `dsh-idea-git.settings.v1`（`01-split.jpg`）。
+  - 忽略空白：只有空白差异的文件显示「没有文本差异（已忽略空白）」（`02-ignore-whitespace.jpg`）。
+  - 菜单：c4 右键六项可用性正确（撤销仅 HEAD；Fixup/Squash 需勾选文件）。
+  - Fixup：勾选文件之外有改动时先问贮藏；目标早于文件创建时 git 停在冲突，横幅与冲突列表接住，「中止」后贮藏恢复（`fixup!` 提交保留在 HEAD，与 IntelliJ 相同，见意外与发现）。
+  - Squash：带附加说明合入目标提交，信息为「原主题 + 空行 + 附加说明」，文件内容正确（`05-squash-sheet.jpg`）。
+  - 新建标签（附注）、创建补丁（预览/文件名 `df9519b-c2-在-edit-停下后修改.patch`，`03-patch.jpg`）、应用补丁（普通 diff → 暂存区，`04-apply-patch.jpg`）、撤销提交（ResetSheet 初始 soft，HEAD 回到父提交、改动在暂存区）。
+  - 走查发现并修复：工具栏开关按下态没有视觉区分。
+  - 未在 L4 验证：推送直到此提交（走查仓库没有远程；Host 真实仓库测试覆盖 AC7）。

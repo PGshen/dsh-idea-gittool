@@ -197,3 +197,9 @@
   display: inline-flex;
   gap: 2px;
 }
+
+/* B3b L4: the active toggle must look on. */
+.tools button[aria-pressed='true'] {
+  background: var(--dsw-alias-interactive-bg-active);
+  color: var(--dsw-alias-label-primary);
+}

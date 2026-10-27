@@ -62,6 +62,8 @@ export const RPC_ENDPOINTS = [
   'unresolveConflict',
   // B2 读端点（T2 blame；T3 fileHistory/compare）
   'blame',
+  'fileHistory',
+  'compare',
 ] as const
 
 export type RpcEndpoint = (typeof RPC_ENDPOINTS)[number]
@@ -1439,6 +1441,8 @@ export interface RpcEndpointTypes {
   mergeApply: { request: MergeApplyRequest; value: ResolveConflictValue }
   unresolveConflict: { request: UnresolveConflictRequest; value: UnresolveConflictValue }
   blame: { request: BlameRequest; value: BlameValue }
+  fileHistory: { request: FileHistoryRequest; value: FileHistoryValue }
+  compare: { request: CompareRequest; value: CompareValue }
 }
 
 /** 编译期检查：{@link RpcEndpointTypes} 恰好覆盖 {@link RpcEndpoint}，写端点请求都带 requestId。 */

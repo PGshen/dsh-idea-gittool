@@ -11,6 +11,8 @@ import type { SandboxMode } from '@deepseek-ai/dsh-sandbox'
 import type {
   BlameValue,
   BootstrapValue,
+  CompareValue,
+  FileHistoryValue,
   BranchesValue,
   CommitDetailValue,
   ConflictCommandValue,
@@ -565,6 +567,29 @@ describe('endpoint registry (A3 T1)', () => {
     expect(value).toMatchObject({ path: 'README.md', rev: null, totalLines: 1, lines: ['# fixture'], version: 0 })
     expect(errorOf(await handler('blame', { sessionId: 'session-1', path: '/etc/passwd' }, SIGNAL)).code).toBe('git/invalid-payload')
     expect(errorOf(await handler('blame', { sessionId: 'session-1', path: 'README.md', rev: '-p' }, SIGNAL)).code).toBe('git/invalid-payload')
+  })
+
+  it('serves fileHistory, compare and diff range (B2 T3)', async () => {
+    const { handler, repo } = makeHandler()
+    repo.git('checkout', '-q', '-b', 'feature')
+    repo.write('README.md', '# changed\n')
+    repo.commit('feature edit')
+    const history = okValue<FileHistoryValue>(await handler('fileHistory', { sessionId: 'session-1', path: 'README.md' }, SIGNAL))
+    expect(history.entries.map(entry => entry.subject)).toEqual(['feature edit', 'initial commit'])
+    expect(history.version).toBe(0)
+    const compare = okValue<CompareValue>(await handler('compare', { sessionId: 'session-1', left: 'feature', right: 'main' }, SIGNAL))
+    expect(compare.commits.map(commit => commit.subject)).toEqual(['feature edit'])
+    expect(compare.files.map(file => file.path)).toEqual(['README.md'])
+    const range = okValue<DiffFileValue>(await handler('diff', {
+      sessionId: 'session-1', path: 'README.md', scope: 'range', from: 'main', to: 'feature', mergeBase: true,
+    }, SIGNAL))
+    expect(range.hunks).toHaveLength(1)
+    // The cache key covers the range fields: the reverse direction is a different diff.
+    const reverse = okValue<DiffFileValue>(await handler('diff', {
+      sessionId: 'session-1', path: 'README.md', scope: 'range', from: 'feature', to: 'main',
+    }, SIGNAL))
+    expect(reverse.hunks[0]?.lines.find(line => line.type === 'add')?.text).toBe('# fixture')
+    expect(errorOf(await handler('compare', { sessionId: 'session-1', left: '-x', right: null }, SIGNAL)).code).toBe('git/invalid-payload')
   })
 
   it('serves stashList and stashFiles (T5) as versioned reads and validates the sha', async () => {

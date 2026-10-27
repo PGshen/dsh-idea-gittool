@@ -28,6 +28,7 @@ import type { GitRunner } from '../git-executor.ts'
 import { GIT_BASE_ARGV, GitCommandFailure, failureFromExit } from '../git-executor.ts'
 import type { RawChange } from './commit.ts'
 import { parseRawNumstat, resolveCommitSha } from './commit.ts'
+import { resolveRevision } from './revision.ts'
 
 const MAX_PATH_LENGTH = 4096
 const NULL_SHA = /^0+$/
@@ -50,6 +51,10 @@ export interface DiffQuery {
   scope: unknown
   sha?: unknown
   parent?: unknown
+  /** scope=range (B2): old side, new side (null = worktree), diff from their merge base. */
+  from?: unknown
+  to?: unknown
+  mergeBase?: unknown
 }
 
 export interface ReadDiffOptions {
@@ -179,6 +184,9 @@ export async function readDiff(
   const scope = parseScope(query.scope)
   if (scope !== 'commit' && (query.sha !== undefined || query.parent !== undefined)) {
     throw invalidPayload('sha/parent are only valid for scope "commit"')
+  }
+  if (scope !== 'range' && (query.from !== undefined || query.to !== undefined || query.mergeBase !== undefined)) {
+    throw invalidPayload('from/to/mergeBase are only valid for scope "range"')
   }
 
   const range = await rangeArgs(run, cwd, scope, query, signal)
@@ -371,6 +379,7 @@ async function rangeArgs(
 ): Promise<string[]> {
   if (scope === 'worktree') return []
   if (scope === 'staged') return ['--cached']
+  if (scope === 'range') return await revisionRangeArgs(run, cwd, query, signal)
 
   if (query.sha === undefined) throw invalidPayload('sha is required for scope "commit"')
   const sha = await resolveCommitSha(run, cwd, query.sha, signal)
@@ -402,9 +411,44 @@ async function rangeArgs(
   return [base, sha]
 }
 
+/**
+ * scope=range (B2): `[from, to]`, `[from]` (to = worktree), or `[mergeBase(from, to), to]`. Unrelated
+ * histories have no merge base; the diff then falls back to the two revisions themselves.
+ */
+async function revisionRangeArgs(
+  run: GitRunner,
+  cwd: string,
+  query: DiffQuery,
+  signal: AbortSignal | undefined,
+): Promise<string[]> {
+  if (query.mergeBase !== undefined && typeof query.mergeBase !== 'boolean') throw invalidPayload('mergeBase must be a boolean')
+  const from = await resolveRevision(run, cwd, query.from, 'from', signal)
+  if (query.to === null || query.to === undefined) {
+    if (query.mergeBase === true) throw invalidPayload('mergeBase needs a revision on both sides')
+    return [from]
+  }
+  const to = await resolveRevision(run, cwd, query.to, 'to', signal)
+  if (query.mergeBase !== true) return [from, to]
+  return [(await mergeBaseOf(run, cwd, from, to, signal)) ?? from, to]
+}
+
+/** The best common ancestor of two commits, or null for unrelated histories. */
+export async function mergeBaseOf(
+  run: GitRunner,
+  cwd: string,
+  left: string,
+  right: string,
+  signal: AbortSignal | undefined,
+): Promise<string | null> {
+  const result = await run([...GIT_BASE_ARGV, 'merge-base', left, right], { cwd, signal })
+  if (result.exitCode === 0) return result.stdout.trim()
+  if (result.exitCode === 1) return null
+  throw failureFromExit(result, 'git merge-base')
+}
+
 function parseScope(scope: unknown): DiffScope {
-  if (scope === 'worktree' || scope === 'staged' || scope === 'commit') return scope
-  throw invalidPayload('scope must be "worktree", "staged" or "commit"')
+  if (scope === 'worktree' || scope === 'staged' || scope === 'commit' || scope === 'range') return scope
+  throw invalidPayload('scope must be "worktree", "staged", "commit" or "range"')
 }
 
 function truncate(result: ParsedPatch, reason: 'bytes' | 'lines'): ParsedPatch {

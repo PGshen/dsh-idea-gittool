@@ -50,9 +50,11 @@ describe('RPC 协议常量', () => {
 })
 
 describe('B2 历史端点', () => {
-  it('blame 是读端点', () => {
-    expect([...RPC_ENDPOINTS]).toContain('blame')
-    expect(isWriteEndpoint('blame')).toBe(false)
+  it('blame、fileHistory、compare 都是读端点', () => {
+    for (const endpoint of ['blame', 'fileHistory', 'compare']) {
+      expect([...RPC_ENDPOINTS], endpoint).toContain(endpoint)
+      expect(isWriteEndpoint(endpoint), endpoint).toBe(false)
+    }
   })
 })
 

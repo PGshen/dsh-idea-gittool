@@ -115,7 +115,7 @@ Host 约束（各任务共用）：
 - **测试**（真实临时仓库，沿用 `test/host/git/` 的仓库夹具）：三个提交改不同行 → 段与提交正确；工作区未提交修改 → 全 0 sha 段 `uncommitted: true`；4500 行文件分三页，拼起来与一次 `git blame` 一致；CRLF 文件、无末尾换行、空文件的行数；二进制、> 8 MiB、未跟踪文件（返回 `git/not-found` 类错误还是空 blame，按现有错误码选一并写决策记录）；`--follow` 无关；浅克隆 `boundary`；路径/修订注入（AC10）。
 - **完成标准**：AC1、AC2（Host 部分）、AC10 的 blame 部分有测试；`make check` 绿。
 
-### T3：Host `fileHistory`、`compare` 与 `diff` range（待开始）
+### T3：Host `fileHistory`、`compare` 与 `diff` range（完成）
 
 - **目标**：实现文件历史、比较与范围 diff。
 - **涉及文件**：新建 `src/host/git/file-history.ts`、`src/host/git/compare.ts` 及对应测试；修改 `src/host/git/diff.ts`（`parseScope` 接受 `range`，`rangeArgs` 生成 `[from]` / `[from, to]` / `--merge-base from to`）、`src/host/rpc.ts`；从 `log.ts` 导出共用的提交格式解析与游标工具（不改其行为）。
@@ -178,10 +178,11 @@ Host 约束（各任务共用）：
 - 2026-10-27 — 预检：T2/T3 产出端点实现、T4 消费 T1 的类型与 `git-client` 方法；T5/T6 消费 T4 的 store；T7 消费 T5/T6 的覆盖层类型（T1 已在 `workbench-overlay.ts` 定义）。未发现冲突。
 - 2026-10-27 — T1 完成（补提交：覆盖层层级清单测试 `336a0c7`）：`protocol.ts` B2 类型与 `DiffScope` `range`、`git-client` 三个方法、`workbench-overlay.ts` 三种覆盖层（含一级 `back`）、references §15 spike 两问（源码查证）
 - 2026-10-27 — T2 完成：`src/host/git/{blame,revision,worktree-read}.ts`，`blame` 进 `RPC_ENDPOINTS` 并路由（按 path/rev/start/limit 缓存）；`merge-file.ts` 的工作区读取改用共用 `readWorktreeFile`
+- 2026-10-27 — T3 完成：`src/host/git/{file-history,compare}.ts`、`diff.ts` 的 `scope: 'range'`（含导出 `mergeBaseOf`）、`log.ts` 导出 `LOG_RECORD_FORMAT`/`parseLogRecord`/`normalizeLogLimit`（行为不变）；`fileHistory`/`compare` 进 `RPC_ENDPOINTS` 并路由；`diff` 的缓存键与参数解析加入 range 字段
 
 ## 下一步
 
-- T3：先写 `test/host/file-history.test.ts`、`test/host/compare.test.ts` 与 `diff.test.ts` 的 `scope: 'range'` 用例，再实现 `src/host/git/{file-history,compare}.ts` 与 `diff.ts` 的 range；修订号用 T2 的 `resolveRevision`（`src/host/git/revision.ts`）。两个端点进 `RPC_ENDPOINTS`/`RpcEndpointTypes` 并在 `rpc.ts` 路由（worktree `.claude/worktrees/b2-history-blame`）。
+- T4：先写 `test/client/store/{blame-store,file-history-store,compare-store}.test.ts` 与 `test/client/workbench-intents.test.ts`，再实现对应 store 与 `src/client/workbench-intents.ts`；参照现有 `src/client/store/diff-store.ts` 的中止与过期丢弃写法（worktree `.claude/worktrees/b2-history-blame`）。
 
 ## 决策记录
 
@@ -195,6 +196,8 @@ Host 约束（各任务共用）：
 - 2026-10-27 T2 — 裁定：`BlameValue` 追加可选字段 `unavailable?: 'untracked' | 'missing'`（未跟踪 = HEAD 中没有该路径，含已暂存的新文件；missing = 工作区/该修订中没有该文件，或不是普通文件） — 实测 `git blame` 对两者都直接报错，没有现成错误码能让 UI 给出「文件还没有提交过」这样的空状态；代价：一个可选字段，T5 的空状态读它。
 - 2026-10-27 T2 — 裁定：加 `--root`，浅克隆边界改从 `rev-parse --git-path shallow` 列出的提交标记 — 不加 `--root` 时根提交也被标成 boundary；加了以后浅克隆的嫁接提交又会被当成根提交（实测）。代价：浅克隆时多一次 `rev-parse` 与一次只读读文件。
 - 2026-10-27 T2 — 裁定：`BlameCommit.shortSha` 取 sha 前 7 位，不按仓库 `core.abbrev` 算 — porcelain 不给缩写；逐个 `rev-parse --short` 太贵。代价：极大仓库里 7 位可能与日志的 `%h` 长度不同（只影响显示）。
+- 2026-10-27 T3 — 裁定：比较与 `diff` range 的合并基用 `git merge-base` 显式求出，没有公共祖先时退回两点比较（`right left`） — `A...B` 在无关历史上直接报错；退回两点至少能看到差异。代价：无关历史时「左边自分叉以来」的语义不成立，列表实际是两端快照之差（极少见）。
+- 2026-10-27 T3 — 裁定：比较的每一页都重新给出差异文件（不只第一页） — 端点无状态，且 `handleCached` 按 version 缓存；代价：翻页多跑一次 `diff --raw`。
 - 2026-10-27 — B2 不加 feature flag — 全部为只读视图，没有写回风险；出问题可直接隐藏入口。
 - 2026-10-27 — 修订号先解析为 sha 再参与后续 git 调用 — 同时解决参数注入与「同一请求内 ref 移动」的竞态。
 

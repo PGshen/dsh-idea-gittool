@@ -18,6 +18,7 @@ import type {
   BootstrapValue,
   CompareRequest,
   CompareValue,
+  FormatPatchValue,
   RebasePlanRequest,
   RebasePlanValue,
   FileHistoryRequest,
@@ -90,7 +91,7 @@ import { readBlame } from './git/blame.ts'
 import { readCompare } from './git/compare.ts'
 import { fixupCommitOperation } from './git/fixup.ts'
 import { interactiveRebaseOperation } from './git/interactive-rebase.ts'
-import { applyPatchOperation, parseFormatPatchShas } from './git/patch.ts'
+import { applyPatchOperation, parseFormatPatchShas, readFormatPatch } from './git/patch.ts'
 import { readRebasePlan } from './git/rebase-plan.ts'
 import { createTagOperation } from './git/tag-write.ts'
 import { readFileHistory } from './git/file-history.ts'
@@ -353,10 +354,18 @@ export function createRpcRuntime(deps: RpcDeps): RpcRuntime {
         }
         case 'console':
           return await handleConsole(deps, payload, signal)
-        case 'pushPreview':
-          return await handleCached<PushPreviewValue>(deps, runtime, payload, signal, PUSH_PREVIEW_CACHE_KEY, (root) =>
-            readPushPreview(deps.runner, root, { signal }),
+        case 'pushPreview': {
+          // B3b: an optional revision ("push up to here") is part of the cache key.
+          const revision = (payload as { revision?: unknown }).revision
+          return await handleCached<PushPreviewValue>(
+            deps,
+            runtime,
+            payload,
+            signal,
+            revision === undefined ? PUSH_PREVIEW_CACHE_KEY : `${PUSH_PREVIEW_CACHE_KEY}:${String(revision)}`,
+            (root) => readPushPreview(deps.runner, root, { signal, ...(revision === undefined ? {} : { revision }) }),
           )
+        }
         case 'operationState':
           return await handleCached<OperationStateValue>(
             deps,
@@ -445,8 +454,15 @@ export function createRpcRuntime(deps: RpcDeps): RpcRuntime {
         }
         case 'formatPatch': {
           parseSessionId(payload)
-          parseFormatPatchShas((payload as { shas?: unknown }).shas)
-          throw new GitCommandFailure('git/exec-failed', 'not implemented', {})
+          const shas = parseFormatPatchShas((payload as { shas?: unknown }).shas)
+          return await handleCached<FormatPatchValue>(
+            deps,
+            runtime,
+            payload,
+            signal,
+            `formatPatch:${shas.join(',')}`,
+            (root) => readFormatPatch(deps.runner, root, shas, { signal }),
+          )
         }
         case 'rebasePlan': {
           parseSessionId(payload)

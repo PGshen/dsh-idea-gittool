@@ -4,7 +4,7 @@
 import type { InteractiveRebaseValue, RebaseAction, RebaseEntry, RebaseStop } from '../../shared/protocol.ts'
 import { REBASE_ACTIONS, REBASE_PLAN_MAX_COMMITS } from '../../shared/protocol.ts'
 import { buildTodo, rebaseTodoProblem } from '../../shared/rebase-todo.ts'
-import type { WriteContext, WriteOperation } from '../git-executor.ts'
+import type { GitRunResult, WriteContext, WriteOperation } from '../git-executor.ts'
 import { GIT_BASE_ARGV, GitCommandFailure } from '../git-executor.ts'
 import { REBASE_HOOKS, parseFullSha } from './integrate.ts'
 import { unmergedCount } from './operation.ts'
@@ -119,32 +119,43 @@ export const interactiveRebaseOperation: WriteOperation<
         ],
         { stdin: todo, todoFromStdin: true, timeoutMs: INTERACTIVE_REBASE_TIMEOUT_MS },
       )
-      // Never trust the exit code alone: an `edit` stop exits 0 (references/git-behavior §4).
-      if ((await detectOperationIn(gitDir)) === 'rebase') {
-        const stop = await readRebaseStop(gitDir, await unmergedCount(ctx))
-        if (stop === undefined && result.exitCode !== 0) {
-          // Stopped for a reason the banner cannot name (e.g. a pick would overwrite untracked
-          // files): keep git's words instead of closing the page silently (review M5).
-          const failure = redactedFailure(result, 'git rebase -i')
-          throw new GitCommandFailure(failure.code, failure.message, { ...failure.details, operation: 'rebase', output: outputSummary(result) })
-        }
-        return { open: true, stop }
-      }
-      if (result.exitCode !== 0) {
-        if (await hasHook(ctx, REBASE_HOOKS)) {
-          throw new GitCommandFailure('git/hook-failed', 'the rebase was blocked by a Git hook', {
-            exitCode: result.exitCode,
-            output: outputSummary(result),
-          })
-        }
-        throw redactedFailure(result, 'git rebase -i')
-      }
-      return { open: false, stop: undefined as RebaseStop | undefined }
+      return await rebaseOutcome(ctx, gitDir, result)
     })
     const response: Omit<InteractiveRebaseValue, 'version'> = { head: (await readHead(ctx)).sha, completed: !value.open, ...outcome }
     if (value.stop !== undefined) response.stop = value.stop
     return response
   },
+}
+
+/**
+ * Where a `rebase -i` run left the repository (B3a; shared with B3b fixup): open with a stop reason,
+ * or finished. Never trusts the exit code alone: an `edit` stop exits 0 (references/git-behavior §4).
+ */
+export async function rebaseOutcome(
+  ctx: WriteContext,
+  gitDir: string,
+  result: GitRunResult,
+): Promise<{ open: boolean; stop: RebaseStop | undefined }> {
+  if ((await detectOperationIn(gitDir)) === 'rebase') {
+    const stop = await readRebaseStop(gitDir, await unmergedCount(ctx))
+    if (stop === undefined && result.exitCode !== 0) {
+      // Stopped for a reason the banner cannot name (e.g. a pick would overwrite untracked
+      // files): keep git's words instead of closing the page silently (review M5).
+      const failure = redactedFailure(result, 'git rebase -i')
+      throw new GitCommandFailure(failure.code, failure.message, { ...failure.details, operation: 'rebase', output: outputSummary(result) })
+    }
+    return { open: true, stop }
+  }
+  if (result.exitCode !== 0) {
+    if (await hasHook(ctx, REBASE_HOOKS)) {
+      throw new GitCommandFailure('git/hook-failed', 'the rebase was blocked by a Git hook', {
+        exitCode: result.exitCode,
+        output: outputSummary(result),
+      })
+    }
+    throw redactedFailure(result, 'git rebase -i')
+  }
+  return { open: false, stop: undefined }
 }
 
 /** Store each entry message as a blob; the todo's exec lines read them back by sha. */

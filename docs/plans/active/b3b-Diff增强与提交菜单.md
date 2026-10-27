@@ -77,11 +77,11 @@
 ### T2：Host diff 选项（完成）
 - `src/host/git/diff.ts`：`-w`、`--unified=<大数>`（整文件）；测试 AC1/AC2。
 
-### T3：Host 新端点（进行中）
+### T3：Host 新端点（完成）
 - `createTag`（`tag [-a -F -] -- <name> <sha>`，`check-ref-format`，已存在 → `git/branch-exists` 同类码 `details.kind: 'tag'`）、`push` 的 `revision`（必须是 HEAD 祖先；预览截断）、`formatPatch`、`applyPatch`（格式识别、`--check` 预览、失败 `am --abort`）、`fixupCommit`（`commit --only --fixup=<sha>`/`--squash=<sha>` + `rebase -i --autosquash <target>^`，复用 B3a 的停下判定与智能贮藏）。
 - 测试：真实临时仓库覆盖 AC6–AC10 的 Host 部分；注入（标签名以 `-` 开头、补丁里的路径越界由 git 自己拒绝）。
 
-### T4：Diff 视图纯函数（待开始）
+### T4：Diff 视图纯函数（进行中）
 - `src/client/diff/{split-rows,word-diff,fold}.ts`：`splitRows(hunks)`、`wordDiff(oldText, newText)`（按词切分后用 `merge/line-diff.ts` 的 `diffSequences`；改动占比 > 60% 视为整行替换）、`foldContext(lines, minRun = 8)`、`changeAnchors(hunks)`。
 - 测试：AC3/AC4 的纯函数部分。
 
@@ -100,14 +100,18 @@
 
 - 2026-10-27 — T1 — 协议（`DiffRequest.ignoreWhitespace/context`、`PushRequest.revision`、`PushPreviewRequest`、四个新端点）、客户端方法、`applyPatch` 32 MiB 请求体、五个新覆盖层、三个写端点的 `parse`
 - 2026-10-27 — T2 — `diff` 的 `-w` 与整文件上下文（`-U1000000`），四种 scope 与未跟踪文件都生效；RPC 透传并纳入缓存键
+- 2026-10-27 — T3 — `createTag`（`check-ref-format`、同名 → `git/branch-exists` + `kind: 'tag'`、附注信息走 stdin）、推送/预览的 `revision`（须为 HEAD 祖先）、`formatPatch`（逐提交 `format-patch -1`，按祖先数排序，拒绝合并提交）、`applyPatch`（mbox → `am --3way`，失败 `am --abort`；diff → 先 `apply --check --index` 再 `apply --index`）、`fixupCommit`（先判断勾选外改动再提交 `fixup!`/`squash!`，`rebase -i --autosquash` 复用 B3a 的 `rebaseOutcome`）
 
 ## 下一步
 
-- T3：实现 `createTag`（`src/host/git/tag-write.ts`）、`push` 的 `revision`（`src/host/git/push.ts`）、`formatPatch`/`applyPatch`（`src/host/git/patch.ts`）、`fixupCommit`（`src/host/git/fixup.ts`），替换 T1 的 `not implemented`。
+- T4：新建 `src/client/diff/{split-rows,word-diff,fold}.ts` 与 `test/client/diff/*.test.ts`。
 
 ## 决策记录
 
 - 2026-10-27 — `plans/active/` 同时有 b3a（待负责人验收）与 b3b 两份计划：b3a 已完成实现与评审，只等验收；b3b 从 b3a 分支切出，验收后按 b3a → b3b 顺序合并。
+- 2026-10-27 — T3：普通 diff 补丁不用 `--3way`：`apply --3way` 失败时会在工作区留下冲突标记却没有任何「操作进行中」状态，横幅与冲突列表都接不住；改为先 `--check` 再 `--index`，不能干净应用就整体拒绝并给出 git 输出。mbox 仍用 `am --3way`（失败即 `am --abort`）。
+- 2026-10-27 — T3：`formatPatch` 按祖先数（`rev-list --count`）排序而非提交时间——同一秒内的提交按时间排序不稳定（测试里实际出现）。
+- 2026-10-27 — T3：B3a 的变基结果判定抽成 `rebaseOutcome`（`interactive-rebase.ts` 导出），fixup 复用，行为不变。
 - 2026-10-27 — 待确认 1–4 按推荐执行（负责人授权 AI 自行推进 B3b–B3d，验收时统一 review）。
 
 ## 意外与发现

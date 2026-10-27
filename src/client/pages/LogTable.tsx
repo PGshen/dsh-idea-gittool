@@ -22,7 +22,7 @@ export const LOG_OVERSCAN = 12
 export const DEFAULT_VIEWPORT_HEIGHT = 600
 
 const TABLE_KEYS = new Set([
-  'ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', 'ArrowLeft', 'ArrowRight', 'Enter', 'Escape',
+  'ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', 'ArrowLeft', 'ArrowRight', 'Enter', 'Escape', 'F2',
 ])
 
 /**

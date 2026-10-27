@@ -146,7 +146,7 @@ Host 约束（各任务共用）：
 - **测试**：组件测试覆盖 AC7 的交互；`blocked` 各原因文案；已推送风险确认未勾选时主按钮禁用；Esc 返回且焦点回到触发控件。
 - **完成标准**：AC7 有测试；`make check` 绿。
 
-### T6：入口、快捷动作与停下横幅（进行中）
+### T6：入口、快捷动作与停下横幅（完成）
 
 - **目标**：接上日志右键、`F2`、浮层确认与操作横幅。
 - **涉及文件**：修改 `src/client/pages/commit-actions.ts`（新动作 `interactiveRebaseFrom`/`reword`/`drop`/`squashSelected` 与可用性矩阵）、`CommitContextMenu.tsx`、`LogTable.tsx`（`F2`）、`OperationBanner.tsx` 与 `operation-actions.ts`（`rebaseStop` 文案）、`CommitPanel`/`commit-store`（`edit` 停下时 Amend 可用）；新建 `src/client/pages/RebaseQuickSheet.tsx`（reword 的单字段多行输入、drop/squash 的确认，squash 带合并后信息编辑）。
@@ -154,7 +154,7 @@ Host 约束（各任务共用）：
 - **测试**：AC8 的可用性矩阵（纯函数单测）；`F2` 打开 reword；快捷动作提交的 `entries` 正确；AC6 横幅三种文案与按钮；AC9 flag 关闭时菜单无新项。
 - **完成标准**：AC6、AC8、AC9 有测试；`make check` 绿。
 
-### T7：自验证与文档（待开始）
+### T7：自验证与文档（进行中）
 
 - **目标**：L4 实机走查与收尾文档。
 - **涉及文件**：`docs/runbooks/verification.md`（B3a 走查步骤）、`docs/references/git-behavior.md`、`docs/ARCHITECTURE.md`、`docs/quality/QUALITY.md`、本计划「验证记录」。
@@ -167,7 +167,7 @@ Host 约束（各任务共用）：
 
 ## 下一步
 
-- T6：`commit-actions.ts` 加 `interactiveRebaseFrom`/`reword`/`drop`/`squashSelected`（flag 关时不出现），`CommitContextMenu`/`GitWorkbench` 接线打开 `interactiveRebase` 覆盖层（快捷动作带 preset，见决策记录 T6）；`LogTable` 的 F2；`OperationBanner` 按 `rebaseStop` 显示文案；`actionErrorText` 映射变基校验原因。
+- T7：按 `docs/runbooks/verification.md` 用 `dev.patch.yml` 挂载，`localStorage['dsh-git.feature.interactiveRebase']='1'`，实机跑 AC10 两条流程并截图到 `.evidence/b3a/`；补 runbook 走查步骤、ARCHITECTURE、QUALITY；然后整分支评审。
 
 ## 决策记录
 
@@ -182,6 +182,10 @@ Host 约束（各任务共用）：
 - 2026-10-27 — T4：`createRebaseStore` 的依赖写成 `{ sessionId, load, actions }`（与 B2 store 同形，便于测试），而不是计划的 `{ client, sessionId }`；行带 `originalIndex` 判断是否移动；`rewritesPushed(rows)` 从「第一条被改写的行（含被 squash/fixup 合入的组首）」起算，之后的提交都会被改写；`validate` 在协议问题之外多两条：`unchanged`（没有改动）与 `confirmPushed`；有整组信息之外的 pick 行编辑信息不算改动。
 - 2026-10-27 — T5：不做虚拟滚动——计划写「>200 行用 `@tanstack/react-virtual`」，但 `rebasePlan` 上限 500 行、每行一个原生 `<select>`，静态渲染足够；错了的代价：长列表首屏稍慢，可后续加。
 - 2026-10-27 — T5：组件先写、测试后补（偏离 TDD）：视图是静态渲染，测试覆盖了 AC7 的可见行为与纯函数（键盘判定、信息编辑目标、预览替换、完成后接线）；记在这里以便评审时重点看。
+- 2026-10-27 — T6：快捷动作（修改提交信息 / 丢弃 / 压缩）不另做 `RebaseQuickSheet`，而是以 preset 打开同一个变基页并选中对应行——信息编辑、已推送确认、预览、阻塞说明都只有一份实现；代价是快捷动作多一步「开始变基」，且界面比浮层重。AC8 的可用性要求不受影响。
+- 2026-10-27 — T6：`StatusValue` 增加 `rebaseStop`（与 `operationState.rebaseStop` 同一读取函数）——横幅与提交页读的是 status，不是 operationState；属于协议的可选字段追加。
+- 2026-10-27 — T6：`edit` 停下时提交页回到普通模式，Host 的 `commitFiles`/`amendMessage` 用 `assertNoOperationUnlessEditStop` 放行（其他停下原因仍是 `git/operation-in-progress`）；这是 A2 写端点行为的有意放宽，只限于 `rebase-merge` 且停在 `edit`。
+- 2026-10-27 — T6：可用性按已加载日志沿 HEAD 的 first-parent 链判断；链走出已加载页时视为「可能」，由 `rebasePlan` 最终裁定（计划原意）。
 - 2026-10-27 — T1：`RebasePreset` 类型提前在 `src/client/rebase/rebase-model.ts` 定义（覆盖层类型要用）；T4 在同一文件补函数。
 - 2026-10-27 — 横幅步数沿用 git 的 `msgnum/end`，包含 `exec`/`update-ref` 行（会比提交数多）；不自行换算，避免和终端里看到的 git 输出不一致。
 - 2026-10-27 — 写回信息的 `exec` 用 `--no-verify`：`git rebase -i` 自身 pick 时不跑 pre-commit，改信息时再跑 pre-commit 会在历史提交上触发与当前工作区无关的检查。

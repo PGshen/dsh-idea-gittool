@@ -187,7 +187,7 @@ describe('LogTable virtualization', () => {
 describe('keyboard translation (§14.1)', () => {
   it('passes table keys with shift and drops the rest', () => {
     expect(toLogKeyInput(key('ArrowDown', { shiftKey: true }))).toEqual({ key: 'ArrowDown', shiftKey: true })
-    for (const name of ['ArrowUp', 'PageUp', 'PageDown', 'Home', 'End', 'ArrowLeft', 'ArrowRight', 'Enter', 'Escape']) {
+    for (const name of ['ArrowUp', 'PageUp', 'PageDown', 'Home', 'End', 'ArrowLeft', 'ArrowRight', 'Enter', 'Escape', 'F2']) {
       expect(toLogKeyInput(key(name))?.key).toBe(name)
     }
     expect(toLogKeyInput(key('x'))).toBeNull()

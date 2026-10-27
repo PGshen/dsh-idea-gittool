@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   InteractiveRebasePageView,
   afterInteractiveRebase,
+  presetIndex,
   displayTodo,
   messageTarget,
   rebaseKeyAction,
@@ -139,6 +140,16 @@ describe('messageTarget and displayTodo', () => {
 
   it('replaces message exec lines with a readable comment', () => {
     expect(displayTodo(`pick x\nexec git cat-file blob ${MESSAGE_PLACEHOLDER} | git commit\n`, zhT)).toBe('pick x\n# 写回上面这组的提交信息\n')
+  })
+})
+
+describe('presetIndex', () => {
+  it('selects the preset commit (the squash target for a squash), else the first row', () => {
+    const rows = fromPlan(plan())
+    expect(presetIndex(rows, undefined)).toBe(0)
+    expect(presetIndex(rows, { kind: 'reword', sha: sha('c') })).toBe(2)
+    expect(presetIndex(rows, { kind: 'squash', shas: [sha('c'), sha('b')] })).toBe(1)
+    expect(presetIndex(rows, { kind: 'drop', sha: sha('z') })).toBe(0)
   })
 })
 

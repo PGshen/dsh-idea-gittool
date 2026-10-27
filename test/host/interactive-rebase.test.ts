@@ -7,7 +7,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { RebaseEntry } from '../../src/shared/protocol.ts'
 import { GitCommandFailure, createGitRunner } from '../../src/host/git-executor.ts'
 import { interactiveRebaseOperation } from '../../src/host/git/interactive-rebase.ts'
+import { commitFilesOperation } from '../../src/host/git/commit-write.ts'
 import { readOperationState } from '../../src/host/git/operation.ts'
+import { readStatus } from '../../src/host/git/status.ts'
 import { createFakeSubprocess } from './fake-subprocess.ts'
 import { createTempRepo } from './fixtures.ts'
 import type { TempRepo } from './fixtures.ts'
@@ -220,6 +222,33 @@ describe('interactiveRebaseOperation.run', () => {
     expect((await readOperationState(runner, repo.root)).rebaseStop).toBe('edit')
     repo.git('-c', 'core.editor=true', 'rebase', '--continue')
     expect(subjects(repo, `${base}..HEAD`)).toEqual(['c1', 'after edit'])
+  })
+
+  it('reports the edit stop in status and lets the commit page amend before continuing', async () => {
+    const repo = makeRepo()
+    const [c1, c2] = linear(repo, 2)
+    const base = repo.git('rev-parse', 'HEAD~2').trim()
+    await rebase(repo, base, [{ sha: c1 ?? '', action: 'edit' }, { sha: c2 ?? '', action: 'pick' }])
+    expect((await readStatus(runner, repo.root)).rebaseStop).toBe('edit')
+    repo.write('f1.txt', 'amended\n')
+    const ctx = contextFor(repo)
+    await commitFilesOperation.run(ctx, commitFilesOperation.parse({ sessionId: 's', requestId: 'r', paths: ['f1.txt'], message: 'c1 amended', amend: true }))
+    repo.git('-c', 'core.editor=true', 'rebase', '--continue')
+    expect(subjects(repo, `${base}..HEAD`)).toEqual(['c1 amended', 'c2'])
+    expect(repo.git('show', 'HEAD~1:f1.txt')).toBe('amended\n')
+  })
+
+  it('still refuses file commits during other rebase stops', async () => {
+    const repo = makeRepo()
+    repo.write('same.txt', 'one\n')
+    const first = repo.commit('one')
+    repo.write('same.txt', 'two\n')
+    const second = repo.commit('two')
+    await rebase(repo, repo.git('rev-parse', 'HEAD~2').trim(), [{ sha: second, action: 'pick' }, { sha: first, action: 'pick' }])
+    repo.write('other.txt', 'x\n')
+    const ctx = contextFor(repo)
+    const input = commitFilesOperation.parse({ sessionId: 's', requestId: 'r', paths: ['other.txt'], message: 'm' })
+    expect(await failureCode(commitFilesOperation.run(ctx, input))).toBe('git/operation-in-progress')
   })
 
   it('stops on a conflict and reports rebaseStop conflict', async () => {

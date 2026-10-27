@@ -21,6 +21,11 @@ export type CommitActionId =
   // B2 compare mode
   | 'compareWorktree'
   | 'compareSelected'
+  // B3a interactive rebase (behind the `interactiveRebase` flag)
+  | 'interactiveRebaseFrom'
+  | 'reword'
+  | 'drop'
+  | 'squashSelected'
 
 export interface CommitActionItem {
   id: CommitActionId
@@ -40,13 +45,55 @@ export interface CommitActionContext {
   childLoaded: boolean
   /** B2: shas selected in the log (the compare item needs exactly two, this one among them). */
   selection?: readonly string[]
+  /** B3a: rebase items, present only when the flag is on. */
+  rebase?: RebaseAvailability
+}
+
+/**
+ * Where a commit stands for an interactive rebase of the current branch, from the loaded log: on the
+ * first-parent chain of HEAD, off it, or unknown (the chain leaves the loaded pages; the Host decides).
+ */
+export interface RebaseAvailability {
+  chain: 'on' | 'off' | 'unknown'
+  /** The selection is two or more adjacent commits of the chain. */
+  squash: boolean
+}
+
+/** First-parent chain of `head` through the loaded commits, and whether it reached the root. */
+function firstParentChain(commits: readonly CommitSummary[], head: string): { shas: string[]; complete: boolean } {
+  const bySha = new Map(commits.map(commit => [commit.sha, commit]))
+  const shas: string[] = []
+  let current: string | undefined = head
+  while (current !== undefined) {
+    const commit = bySha.get(current)
+    if (commit === undefined) return { shas, complete: false }
+    shas.push(current)
+    current = commit.parents[0]
+  }
+  return { shas, complete: true }
+}
+
+/** {@link RebaseAvailability} of `commit` (B3a). */
+export function rebaseAvailability(
+  commits: readonly CommitSummary[],
+  commit: CommitSummary,
+  headSha: string,
+  selection: readonly string[],
+): RebaseAvailability {
+  const chain = firstParentChain(commits, headSha)
+  const position = new Map(chain.shas.map((sha, index) => [sha, index]))
+  const status = position.has(commit.sha) ? 'on' : chain.complete ? 'off' : 'unknown'
+  const indexes = selection.map(sha => position.get(sha)).filter((index): index is number => index !== undefined).sort((a, b) => a - b)
+  const squash = selection.length >= 2 && indexes.length === selection.length &&
+    indexes.every((index, at) => at === 0 || index === (indexes[at - 1] ?? -2) + 1)
+  return { chain: status, squash }
 }
 
 /** Neighbour availability from the loaded log (newest first). */
 export function commitActionContext(
   commits: readonly CommitSummary[],
   commit: CommitSummary,
-  base: { writable: boolean; operation: RepoOperation; selection?: readonly string[] },
+  base: { writable: boolean; operation: RepoOperation; selection?: readonly string[]; rebase?: boolean; headSha?: string },
 ): CommitActionContext {
   const parent = commit.parents[0]
   const context: CommitActionContext = {
@@ -56,6 +103,9 @@ export function commitActionContext(
     childLoaded: childOf(commits, commit.sha) !== null,
   }
   if (base.selection !== undefined) context.selection = base.selection
+  if (base.rebase === true && base.headSha !== undefined) {
+    context.rebase = rebaseAvailability(commits, commit, base.headSha, base.selection ?? [commit.sha])
+  }
   return context
 }
 
@@ -105,6 +155,21 @@ export function commitActions(commit: CommitSummary, context: CommitActionContex
     item('goChild', 'commit.action.goChild', 4, context.childLoaded ? undefined : text('commit.disabled.noChild')),
     item('compareWorktree', 'commit.action.compareWorktree', 5),
     item('compareSelected', 'commit.action.compareSelected', 5, compareSelectedReason(commit.sha, context.selection ?? [])),
+    ...rebaseItems(commit, context, block),
+  ]
+}
+
+function rebaseItems(commit: CommitSummary, context: CommitActionContext, block: LocalizedText | undefined): CommitActionItem[] {
+  const rebase = context.rebase
+  if (rebase === undefined) return []
+  const reason = block
+    ?? (commit.parents.length > 1 ? text('commit.disabled.rebaseMerge') : undefined)
+    ?? (rebase.chain === 'off' ? text('commit.disabled.rebaseOffBranch') : undefined)
+  return [
+    item('interactiveRebaseFrom', 'commit.action.interactiveRebaseFrom', 6, reason),
+    item('reword', 'commit.action.reword', 6, reason),
+    item('drop', 'commit.action.drop', 6, reason, true),
+    item('squashSelected', 'commit.action.squashSelected', 6, block ?? (rebase.squash ? undefined : text('commit.disabled.squashNeedsAdjacent'))),
   ]
 }
 
@@ -140,6 +205,21 @@ export function commitActionEffect(
     case 'goChild': return childSha === null ? null : { kind: 'jump', sha: childSha }
     case 'compareWorktree':
       return { kind: 'overlay', overlay: { kind: 'compare', left: commit.sha, right: null, leftLabel: commit.shortSha, rightLabel: null } }
+    case 'interactiveRebaseFrom':
+      return { kind: 'overlay', overlay: { kind: 'interactiveRebase', base: commit.parents[0] ?? null } }
+    case 'reword':
+    case 'drop':
+      return { kind: 'overlay', overlay: { kind: 'interactiveRebase', base: commit.parents[0] ?? null, preset: { kind: id, sha: commit.sha } } }
+    case 'squashSelected': {
+      // `selected` is in log order (newest first): rebase from the parent of the oldest one.
+      const oldest = selected.at(-1)
+      return oldest === undefined || selected.length < 2
+        ? null
+        : {
+            kind: 'overlay',
+            overlay: { kind: 'interactiveRebase', base: oldest.parents[0] ?? null, preset: { kind: 'squash', shas: selected.map(entry => entry.sha) } },
+          }
+    }
     case 'compareSelected': {
       // "In this commit but not in the other": the clicked commit is the left side.
       const other = selected.find(candidate => candidate.sha !== commit.sha)
@@ -148,6 +228,12 @@ export function commitActionEffect(
         : { kind: 'overlay', overlay: { kind: 'compare', left: commit.sha, right: other.sha, leftLabel: commit.shortSha, rightLabel: other.shortSha } }
     }
   }
+}
+
+/** Whether a keyboard shortcut for `id` may run: the item is in the menu and not disabled. */
+export function enabledAction(items: readonly CommitActionItem[], id: CommitActionId): boolean {
+  const found = items.find(entry => entry.id === id)
+  return found !== undefined && found.disabledReason === undefined
 }
 
 /** ContextMenu key or Shift+F10 (design §14.1). */

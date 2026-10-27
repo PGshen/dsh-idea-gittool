@@ -353,6 +353,13 @@ describe('selection and keyboard', () => {
     expect(store.handleKey({ key: 'c', primary: true }).action).toBe('copy-hash')
   })
 
+  it('maps F2 on the active row to reword (B3a)', async () => {
+    const store = await readyStore()
+    expect(store.handleKey({ key: 'F2' })).toEqual({ handled: false })
+    store.selectIndex(1)
+    expect(store.handleKey({ key: 'F2' })).toEqual({ handled: true, action: 'reword' })
+  })
+
   it('selects every loaded commit with primary+A', async () => {
     const store = await readyStore(4)
     const result = store.handleKey({ key: 'a', primary: true })

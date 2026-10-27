@@ -84,6 +84,8 @@ export async function readStatus(
     // Same reader as `operationState` (A3 T2): two small files, no git call.
     const step = await readRebaseStep(gitDir)
     if (step !== undefined) status.operationStep = step
+    const stop = await readRebaseStop(gitDir, status.conflicts.length)
+    if (stop !== undefined) status.rebaseStop = stop
   }
   const stashCount = await readStashCount(run, cwd, options.signal)
   if (stashCount !== undefined) status.stashCount = stashCount

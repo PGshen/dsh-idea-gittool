@@ -49,6 +49,13 @@ export function messageTarget(rows: readonly RebaseRow[], selected: number): { h
   return null
 }
 
+/** Row to select when the page opens: the preset's commit (a squash: the commit the others fold into). */
+export function presetIndex(rows: readonly RebaseRow[], preset: RebasePreset | undefined): number {
+  if (preset === undefined) return 0
+  const shas = new Set(preset.kind === 'squash' ? preset.shas : [preset.sha])
+  return Math.max(0, rows.findIndex(row => shas.has(row.sha)))
+}
+
 /** The todo as shown: message exec lines become a readable comment. */
 export function displayTodo(todo: string, t: Translate): string {
   return todo
@@ -305,8 +312,8 @@ export function InteractiveRebasePage(props: InteractiveRebasePageProps): ReactN
   const [failure, setFailure] = useState<string | null>(null)
   const { base, preset } = props
   useEffect(() => {
-    void store.open(base, preset)
     setSelected(0)
+    void store.open(base, preset).then(() => { setSelected(presetIndex(store.getState().rows, preset)) })
   }, [store, base, preset])
   useEffect(() => () => { store.close() }, [store])
   const rootRef = useRef<HTMLDivElement | null>(null)

@@ -13,7 +13,7 @@ import { EmptyState } from '../ui/EmptyState.tsx'
 import { FilterBar, hasActiveFilter } from './FilterBar.tsx'
 import type { BranchOption } from './FilterBar.tsx'
 import { CommitContextMenu } from './CommitContextMenu.tsx'
-import { childOf, commitActionContext, commitActions } from './commit-actions.ts'
+import { childOf, commitActionContext, commitActions, enabledAction } from './commit-actions.ts'
 import { finishRowMenu } from './menu-focus.ts'
 import type { MenuAnchor } from './menu-position.ts'
 import type { CommitActionId } from './commit-actions.ts'
@@ -33,6 +33,9 @@ export interface LogSelection {
 export interface CommitMenuConfig {
   writable: boolean
   operation: RepoOperation
+  /** B3a: interactive rebase items (flag on) and the HEAD they rebase. */
+  rebase?: boolean
+  headSha?: string
   /** 选中菜单项；`childSha` 是已加载的子提交（跳到子提交用）。 */
   onAction(id: CommitActionId, commit: CommitSummary, trigger: FocusTarget | null, childSha: string | null): void
 }
@@ -178,8 +181,20 @@ export function LogPage({
     if (refocus) restoreFocus(trigger)
   }
 
+  /** F2 (§14.1, B3a): same as the menu's "edit commit message" when it is available. */
+  function rewordActive(): void {
+    const current = store.getState()
+    const commit = current.commits[current.activeIndex]
+    if (commitMenu === undefined || commit === undefined) return
+    const items = commitActions(commit, commitActionContext(current.commits, commit, { ...commitMenu, selection: current.selection }))
+    if (!enabledAction(items, 'reword')) return
+    const trigger = globalThis.document?.activeElement instanceof HTMLElement ? globalThis.document.activeElement : null
+    commitMenu.onAction('reword', commit, trigger, childOf(current.commits, commit.sha))
+  }
+
   function onAction(action: LogAction): void {
     if (action === 'open-diff') openActive()
+    else if (action === 'reword') rewordActive()
     else if (action === 'copy-hash') {
       const shas = selectionOf(store.getState()).commits.map((commit) => commit.sha)
       if (shas.length > 0) (onCopyHash ?? defaultCopy)(shas)

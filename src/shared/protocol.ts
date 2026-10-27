@@ -264,6 +264,8 @@ export interface StatusValue {
   stashCount?: number
   /** 变基进度（A3 T2，横幅显示 `2/5`）；只在变基进行中且能读到进度时出现。 */
   operationStep?: OperationStep
+  /** B3a: why an interactive rebase stopped (same reader as `operationState.rebaseStop`). */
+  rebaseStop?: RebaseStop
   /** 读取该值时的仓库 version（M0 T5b 追加）；客户端用它丢弃过期响应。 */
   version?: number
 }

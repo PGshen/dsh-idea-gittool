@@ -530,7 +530,7 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
   }, [autoOpen, currentRoute, openOverlay, operationValue])
   const conflictsOpen = overlay?.kind === 'conflicts'
   useEffect(() => { if (conflictsOpen) autoOpen.noteOpened() }, [autoOpen, conflictsOpen])
-  const pageMode = commitPageModeOf(operation)
+  const pageMode = commitPageModeOf(operation, status?.rebaseStop)
   const operationKey = operationValue === null ? null : operationIdentity(operationValue)
   const mergeMsg = mergePrefill(operationValue)
   useEffect(() => {
@@ -648,6 +648,7 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
 
   // B1 three-pane merge window (feature flag `mergeWindow`; off = A3 conflict list unchanged).
   const mergeEnabled = useMemo(() => isFeatureEnabled('mergeWindow'), [])
+  const rebaseEnabled = useMemo(() => isFeatureEnabled('interactiveRebase'), [])
   const mergeBlock = useRef<LocalizedText | null>(null)
   const overlayOpen = overlays.open
   const review = useMemo(() => createMergeReviewWiring({
@@ -829,7 +830,7 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
             onSelect={onSelect}
             onOpenCommit={onOpenCommit}
             renderDetail={renderDetail}
-            commitMenu={{ writable: branchContext.writable, operation: branchContext.operation, onAction: runCommitAction }}
+            commitMenu={{ writable: branchContext.writable, operation: branchContext.operation, onAction: runCommitAction, rebase: rebaseEnabled, ...(status?.head === undefined || status.head === null ? {} : { headSha: status.head }) }}
             {...(wide ? { sidebar: branchPanel } : {})}
           />
         ) : page === 'branches' ? (

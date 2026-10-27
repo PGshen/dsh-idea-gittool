@@ -1,6 +1,15 @@
 // B3a 交互式变基：变基列表页、日志快捷动作、停下横幅。
 
 export const zhRebase = {
+  'banner.rebaseStop.edit': '已在 edit 处停下：可以修改文件并在提交页 Amend，然后点「继续」',
+  'banner.rebaseStop.exec-failed': '写回提交信息失败（详见控制台）：「继续」会保留原提交信息，也可以「中止」',
+  'commit.action.interactiveRebaseFrom': '从此处交互式变基…',
+  'commit.action.reword': '修改提交信息…（F2）',
+  'commit.action.drop': '丢弃提交…',
+  'commit.action.squashSelected': '压缩所选提交…',
+  'commit.disabled.rebaseMerge': '合并提交不能在这里变基',
+  'commit.disabled.rebaseOffBranch': '这个提交不在当前分支上',
+  'commit.disabled.squashNeedsAdjacent': '先选中当前分支上相邻的两个或更多提交',
   'rebase.title': '交互式变基',
   'rebase.dialog': '交互式变基：{branch}',
   'rebase.banner': '把 {branch} 上的 {count} 个提交重新应用到 {base}',
@@ -48,6 +57,15 @@ export const zhRebase = {
 }
 
 export const enRebase = {
+  'banner.rebaseStop.edit': 'Stopped at an edit: change files and amend on the commit page, then Continue',
+  'banner.rebaseStop.exec-failed': 'Writing the commit message back failed (see the console): Continue keeps the original message, or Abort',
+  'commit.action.interactiveRebaseFrom': 'Interactively rebase from here…',
+  'commit.action.reword': 'Edit commit message… (F2)',
+  'commit.action.drop': 'Drop commit…',
+  'commit.action.squashSelected': 'Squash selected commits…',
+  'commit.disabled.rebaseMerge': 'Merge commits cannot be rebased here',
+  'commit.disabled.rebaseOffBranch': 'This commit is not on the current branch',
+  'commit.disabled.squashNeedsAdjacent': 'Select two or more adjacent commits of the current branch first',
   'rebase.title': 'Interactive rebase',
   'rebase.dialog': 'Interactive rebase: {branch}',
   'rebase.banner': 'Reapply {count} commits of {branch} onto {base}',

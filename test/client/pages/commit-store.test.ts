@@ -253,6 +253,11 @@ describe('commitGate', () => {
     expect(gate.disabledReason).toContain('合并')
   })
 
+  it('a rebase stopped at edit does not block committing (B3a)', () => {
+    expect(commitGate({ ...base, status: statusFixture({ operation: 'rebase', rebaseStop: 'edit' }) }, zhT).blocked).toBe(false)
+    expect(commitGate({ ...base, status: statusFixture({ operation: 'rebase', rebaseStop: 'exec-failed' }) }, zhT).blocked).toBe(true)
+  })
+
   it('pending writes show 等待当前操作完成', () => {
     expect(commitGate({ ...base, pendingWrites: 1 }, zhT)).toMatchObject({ blocked: true, disabledReason: '等待当前操作完成' })
   })
@@ -353,6 +358,9 @@ describe('operation state commit (A3 T9)', () => {
     expect(commitPageModeOf('cherry-pick')).toBe('sequencer')
     expect(commitPageModeOf('revert')).toBe('sequencer')
     expect(commitPageModeOf('rebase')).toBe('rebase')
+    // B3a: stopped at an `edit`, the page commits / amends normally; Continue stays in the banner.
+    expect(commitPageModeOf('rebase', 'edit')).toBe('normal')
+    expect(commitPageModeOf('rebase', 'conflict')).toBe('rebase')
   })
 
   it('merge prefills MERGE_MSG; the normal draft is kept apart and comes back afterwards', () => {

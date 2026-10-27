@@ -36,6 +36,13 @@ export type BranchActionId =
   // B2 compare mode
   | 'compareWithCurrent'
   | 'compareWithWorktree'
+  // B3d
+  | 'pushTag'
+  | 'deleteTag'
+  | 'deleteRemoteBranch'
+  | 'setUpstream'
+  | 'unsetUpstream'
+  | 'checkoutInWorktree'
 
 export interface BranchActionItem {
   id: BranchActionId
@@ -57,6 +64,8 @@ export interface BranchActionContext {
   current: string | null
   /** The working tree has uncommitted changes. Informational: smart operations ask by themselves. */
   dirty: boolean
+  /** B3d items (tags, remote branches, upstream, worktrees); absent → none of them. */
+  remotes?: { worktrees: boolean }
 }
 
 /** Availability context from the latest status and the Host's write policy. */
@@ -141,6 +150,24 @@ export function branchActions(entry: BranchEntry, context: BranchActionContext):
     item('compareWithCurrent', 'branch.action.compareWithCurrent', 6, entry.current ? IS_CURRENT : undefined),
     item('compareWithWorktree', 'branch.action.compareWithWorktree', 6, undefined),
   )
+  if (context.remotes !== undefined) items.push(...remoteItems(entry, context.remotes, block))
+  return items
+}
+
+/** B3d: tag push/delete, remote branch delete, upstream, new worktree. */
+function remoteItems(entry: BranchEntry, options: { worktrees: boolean }, block: LocalizedText | undefined): BranchActionItem[] {
+  if (entry.kind === 'tag') {
+    return [
+      item('pushTag', 'branch.action.pushTag', 7, block),
+      item('deleteTag', 'branch.action.deleteTag', 7, block, { danger: true }),
+    ]
+  }
+  if (entry.kind === 'remote') return [item('deleteRemoteBranch', 'branch.action.deleteRemoteBranch', 7, block, { danger: true })]
+  const items = [
+    item('setUpstream', 'branch.action.setUpstream', 7, block),
+    item('unsetUpstream', 'branch.action.unsetUpstream', 7, block ?? (entry.upstream === undefined ? text('branch.disabled.noUpstream') : undefined)),
+  ]
+  if (options.worktrees) items.push(item('checkoutInWorktree', 'branch.action.checkoutInWorktree', 7, block ?? (entry.current ? IS_CURRENT : undefined)))
   return items
 }
 
@@ -404,6 +431,22 @@ export function createBranchActionRunner(deps: BranchActionRunnerDeps): BranchAc
         return
       case 'filterLog':
         deps.filterLog(entry)
+        return
+      case 'pushTag':
+      case 'deleteTag':
+        deps.openOverlay({ kind: 'tagSheet', mode: id === 'pushTag' ? 'push' : 'delete', name: entry.name }, trigger)
+        return
+      case 'deleteRemoteBranch':
+        deps.openOverlay({ kind: 'remoteBranchDelete', ref: entry.name }, trigger)
+        return
+      case 'setUpstream':
+        deps.openOverlay(entry.upstream === undefined ? { kind: 'upstreamSheet', branch: entry.name } : { kind: 'upstreamSheet', branch: entry.name, upstream: entry.upstream }, trigger)
+        return
+      case 'unsetUpstream':
+        deps.onOutcome(await deps.actions.run('setUpstream', { branch: entry.name, upstream: null }, { trigger }))
+        return
+      case 'checkoutInWorktree':
+        deps.openOverlay({ kind: 'worktreeAdd', branch: entry.name }, trigger)
         return
     }
   }

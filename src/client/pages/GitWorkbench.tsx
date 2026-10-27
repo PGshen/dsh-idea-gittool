@@ -78,6 +78,8 @@ import { InteractiveRebasePage, afterInteractiveRebase } from './InteractiveReba
 import { ApplyPatchPage, CreateTagSheet, FixupIntoSheet, PatchPage } from './CommitMenuSheets.tsx'
 import { ShelfPanel, ShelveSheet, shelvePaths, useShelfStore } from './ShelfPanel.tsx'
 import { ChangelistPanel } from './ChangelistView.tsx'
+import { RemoteBranchDeleteSheet, TagSheet, UpstreamSheet, WorktreeAddSheet } from './RemoteSheets.tsx'
+import { RemotesPage, WorktreesPage } from './RemotesPages.tsx'
 import { addList, moveTo, removeList, renameList, setActive } from '../changelists/changelist-model.ts'
 import { useChangelists } from '../changelists/use-changelists.ts'
 import { readChangelistGrouping, writeChangelistGrouping } from '../settings.ts'
@@ -598,7 +600,9 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
 
   // Branch actions (A3 T7): the runner is created once per action store and reads the latest
   // callbacks through a ref, so menus and sheets never act on a stale log store or page setter.
-  const branchContext = branchActionContext(status, value.writePolicy)
+  // B3d: tag / remote-branch / upstream items, and worktrees behind their flag.
+  const worktreesEnabled = useMemo(() => isFeatureEnabled('worktrees'), [])
+  const branchContext = { ...branchActionContext(status, value.writePolicy), remotes: { worktrees: worktreesEnabled } }
   const runnerDeps = useRef<BranchActionRunnerDeps | null>(null)
   runnerDeps.current = {
     actions,
@@ -807,6 +811,8 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
         onRefresh={() => { void refreshAll() }}
         onOpenConsole={() => { setConsoleOpen(true) }}
         onApplyPatch={(trigger) => { overlays.open({ kind: 'applyPatch' }, trigger) }}
+        onRemotes={(trigger) => { overlays.open({ kind: 'remotes' }, trigger) }}
+        {...(worktreesEnabled ? { onWorktrees: (trigger: HTMLElement | null) => { overlays.open({ kind: 'worktrees' }, trigger) } } : {})}
         onToggleBranches={() => { branchesStore.setOpen(!branches.open) }}
         onPush={() => { openPush({}) }}
         ahead={status?.ahead ?? 0}
@@ -1062,6 +1068,60 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
               })
             }}
             onClose={() => { overlays.closeIf('fixupInto') }}
+          />
+        ) : null}
+        {overlay?.kind === 'tagSheet' ? (
+          <TagSheet
+            key={`${overlay.mode}:${overlay.name}`}
+            mode={overlay.mode}
+            name={overlay.name}
+            loadRemotes={() => client.remoteList({ sessionId })}
+            actions={actions}
+            onOutcome={(outcome) => { reportOutcome(outcome); void refreshAll() }}
+            onClose={() => { overlays.closeIf('tagSheet') }}
+          />
+        ) : null}
+        {overlay?.kind === 'remoteBranchDelete' ? (
+          <RemoteBranchDeleteSheet
+            ref_={overlay.ref}
+            actions={actions}
+            onOutcome={(outcome) => { reportOutcome(outcome); void refreshAll() }}
+            onClose={() => { overlays.closeIf('remoteBranchDelete') }}
+          />
+        ) : null}
+        {overlay?.kind === 'upstreamSheet' ? (
+          <UpstreamSheet
+            branch={overlay.branch}
+            upstream={overlay.upstream}
+            remoteBranches={(branches.value?.remote ?? []).map(entry => entry.name)}
+            actions={actions}
+            onOutcome={(outcome) => { reportOutcome(outcome); void refreshAll() }}
+            onClose={() => { overlays.closeIf('upstreamSheet') }}
+          />
+        ) : null}
+        {overlay?.kind === 'worktreeAdd' ? (
+          <WorktreeAddSheet
+            branch={overlay.branch}
+            actions={actions}
+            onAdded={() => { void refreshAll() }}
+            onClose={() => { overlays.closeIf('worktreeAdd') }}
+          />
+        ) : null}
+        {overlay?.kind === 'remotes' ? (
+          <RemotesPage
+            load={() => client.remoteList({ sessionId })}
+            actions={actions}
+            onBack={() => { overlays.close() }}
+            onChanged={() => { void refreshAll() }}
+          />
+        ) : null}
+        {overlay?.kind === 'worktrees' ? (
+          <WorktreesPage
+            load={() => client.worktreeList({ sessionId })}
+            actions={actions}
+            version={value.version}
+            onAdd={(trigger) => { overlays.open({ kind: 'worktreeAdd' }, trigger) }}
+            onBack={() => { overlays.close() }}
           />
         ) : null}
         {overlay?.kind === 'shelve' ? (

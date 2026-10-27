@@ -143,8 +143,8 @@ describe('WorkbenchOverlay kinds', () => {
   it('every kind has a navigation level (1 = overlay page, 2 = sheet)', () => {
     expect(Object.keys(OVERLAY_LEVEL).sort()).toEqual([
       'applyPatch', 'blame', 'branchSheet', 'commitOp', 'compare', 'conflicts', 'createTag', 'diff', 'dirtyWorktree', 'fetch', 'fileHistory', 'fixupInto',
-      'interactiveRebase', 'merge', 'mergeWindow', 'patch', 'pull', 'push', 'pushRejected', 'rebase', 'reset', 'rollback', 'shelve',
-      'smartCheckout', 'stashCreate', 'undoCommit', 'updateProject',
+      'interactiveRebase', 'merge', 'mergeWindow', 'patch', 'pull', 'push', 'pushRejected', 'rebase', 'remoteBranchDelete', 'remotes', 'reset',
+      'rollback', 'shelve', 'smartCheckout', 'stashCreate', 'tagSheet', 'undoCommit', 'updateProject', 'upstreamSheet', 'worktreeAdd', 'worktrees',
     ])
     // B2 T1: blame, file history and compare are overlay pages with "← back".
     expect([OVERLAY_LEVEL.blame, OVERLAY_LEVEL.fileHistory, OVERLAY_LEVEL.compare]).toEqual([1, 1, 1])

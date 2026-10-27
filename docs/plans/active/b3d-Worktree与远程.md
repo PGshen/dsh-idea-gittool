@@ -76,21 +76,23 @@ worktreePrune: WriteRequest → { pruned: number }
 - `src/host/git/remote-write.ts`（`remoteList`、`remoteEdit`、`remoteBranchDelete`、`setUpstream`）、`src/host/git/tag-write.ts` 扩展（`tagPush`、`tagDelete`）；网络命令走 `mode: 'network'` 与现有凭据失败分类。
 ### T3：Host worktree（完成）
 - `src/host/git/worktree.ts`。
-### T4：分支页菜单与浮层（待开始）
+### T4：分支页菜单与浮层（完成）
 - `branch-actions.ts` 新项与可用性；`TagSheets`（推送/删除）、`RemoteBranchDeleteSheet`、`UpstreamSheet`。
-### T5：Remotes 页与 Worktree 页（待开始）
-### T6：自验证与文档（待开始）
+### T5：Remotes 页与 Worktree 页（完成）
+### T6：自验证与文档（进行中）
 
 ## 进度
 
 - 2026-10-28 — T1–T3 — 协议与客户端方法；Host `remote-write`（列表脱敏、增改删重命名、删除远程分支、upstream）、`tag-write`（推送、删除本地/远程）、`worktree`（列表、新增、删除、清理）与路由
+- 2026-10-28 — T4+T5 — 分支页新菜单项（标签推送/删除、远程分支删除、设置/取消 upstream、在新 Worktree 中签出）与四个浮层；远程页、Worktree 页（flag `worktrees`）；仓库栏 ⋯「管理远程…」「Worktree…」
 
 ## 下一步
 
-- T4：`branch-actions.ts` 新菜单项与浮层（推送/删除标签、删除远程分支、设置/取消 upstream、在新 Worktree 中签出）。
+- T6：L4 走查（重启 3081 DSH 指向 b3d worktree，走查仓库加一个本地 bare 远程），截图 `.evidence/b3d/`；runbook、ARCHITECTURE、QUALITY；然后整分支评审。
 
 ## 决策记录
 
+- 2026-10-28 — T4/T5 合并为一次提交，视图组件先写、静态渲染测试后补（同 B3b/B3c 的做法）。新菜单项只在上下文带 `remotes` 时出现（保持旧的可用性矩阵测试不变）。
 - 2026-10-28 — T1–T3 合并为一次提交：`remoteList`/`worktreeList` 只需会话参数，占位实现会让路由登记测试失败（与 B3c 同理）。
 - 2026-10-28 — 待确认 1–4 按推荐执行（负责人授权 AI 自行推进 B3b–B3d，验收时统一 review）。
 

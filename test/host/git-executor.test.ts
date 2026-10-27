@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 // 真实 git 仓库 + 进程 spawn 在并发 worker 下偶尔超过默认 5s，这里按文件放宽。
 vi.setConfig({ testTimeout: 30_000 })
 
-import { GitCommandFailure, createGitRunner, instrumentGitRunner } from '../../src/host/git-executor.ts'
+import { GitCommandFailure, bindWriteContext, createGitRunner, instrumentGitRunner } from '../../src/host/git-executor.ts'
 import { createGitConsole } from '../../src/host/console.ts'
 import {
   canonicalPath,
@@ -151,6 +151,31 @@ describe('createGitRunner', () => {
     await delay(60)
     controller.abort()
     await assertion
+  })
+})
+
+describe('createGitRunner todoFromStdin (B3a T3)', () => {
+  it('makes stdin the sequence editor for that call only; other writes keep the no-op editor', async () => {
+    const repo = makeRepo()
+    const fake = createFakeSubprocess()
+    const ctx = bindWriteContext(createGitRunner(fake), repo.root, { kind: 'unconfined' }, new AbortController().signal)
+
+    const editor = await ctx.git(['var', 'GIT_SEQUENCE_EDITOR'], { stdin: 'pick x\n', todoFromStdin: true })
+    expect(editor.stdout.trim()).toBe('cat >')
+    expect(lastSpawn(fake).env?.GIT_SEQUENCE_EDITOR).toBe('cat >')
+    expect(lastSpawn(fake).env?.GIT_EDITOR).toBe('true')
+
+    const plain = await ctx.git(['var', 'GIT_SEQUENCE_EDITOR'])
+    expect(plain.stdout.trim()).toBe('true')
+  })
+
+  it('refuses todoFromStdin without stdin or outside write mode', async () => {
+    const repo = makeRepo()
+    const run = createGitRunner(createFakeSubprocess())
+    await expect(run(['var', 'GIT_SEQUENCE_EDITOR'], { cwd: repo.root, mode: 'write', confine: { kind: 'unconfined' }, todoFromStdin: true }))
+      .rejects.toMatchObject({ code: 'git/invalid-payload' })
+    await expect(run(['var', 'GIT_SEQUENCE_EDITOR'], { cwd: repo.root, stdin: 'x', todoFromStdin: true }))
+      .rejects.toMatchObject({ code: 'git/invalid-payload' })
   })
 })
 

@@ -81,6 +81,16 @@ export const GIT_WRITE_ENV: Readonly<NodeJS.ProcessEnv> = Object.freeze({
   GIT_SEQUENCE_EDITOR: 'true',
 })
 
+/**
+ * {@link GIT_WRITE_ENV} for `git rebase -i` driven by a todo on stdin (plan b3a): git runs the
+ * sequence editor as `sh -c 'cat > "$@"'`, so the todo the Host wrote to stdin replaces git's own.
+ * The environment variable is needed because it outranks `-c sequence.editor` (b3a T3).
+ */
+export const GIT_TODO_STDIN_ENV: Readonly<NodeJS.ProcessEnv> = Object.freeze({
+  ...GIT_WRITE_ENV,
+  GIT_SEQUENCE_EDITOR: 'cat >',
+})
+
 /** Execution class of one command: decides timeout, environment and confinement. */
 export type GitRunMode = 'read' | 'write' | 'network'
 
@@ -133,6 +143,8 @@ export interface GitRunOptions {
    * absent → `'ignore'` (fd 0 on /dev/null), so git can never wait on input.
    */
   stdin?: string | Uint8Array | undefined
+  /** B3a: stdin is a rebase todo ({@link GIT_TODO_STDIN_ENV}); write/network mode with stdin only. */
+  todoFromStdin?: boolean | undefined
 }
 
 /** Byte length of a stdin payload (console records only the size, never the content). */
@@ -203,6 +215,9 @@ export function createGitRunner(
 
   return async function runGit(argv, options) {
     const mode = options.mode ?? 'read'
+    if (options.todoFromStdin === true && (mode === 'read' || options.stdin === undefined)) {
+      throw new GitCommandFailure('git/invalid-payload', 'todoFromStdin needs stdin and a write mode', { argv: [...argv] })
+    }
     const timeoutMs = options.timeoutMs ?? (mode === 'read' ? defaultTimeoutMs : timeoutForMode(mode))
     const stdoutMaxBytes = options.stdoutMaxBytes ?? defaultStdoutMaxBytes
     const stderrMaxBytes = options.stderrMaxBytes ?? defaultStderrMaxBytes
@@ -267,7 +282,7 @@ export function createGitRunner(
       child = subprocess.spawn({
         argv: [...command],
         cwd: options.cwd,
-        env: mode === 'read' ? GIT_READ_ENV : GIT_WRITE_ENV,
+        env: mode === 'read' ? GIT_READ_ENV : options.todoFromStdin === true ? GIT_TODO_STDIN_ENV : GIT_WRITE_ENV,
         signal: lifetime,
         graceMs: GIT_GRACE_MS,
         stdio: {
@@ -340,7 +355,13 @@ export interface WriteContext {
   /** Run git in the repository; `mode` defaults to `write` (confined). */
   git: (
     argv: readonly string[],
-    options?: { mode?: GitRunMode; timeoutMs?: number; stdoutMaxBytes?: number; stdin?: string | Uint8Array },
+    options?: {
+      mode?: GitRunMode
+      timeoutMs?: number
+      stdoutMaxBytes?: number
+      stdin?: string | Uint8Array
+      todoFromStdin?: boolean
+    },
   ) => Promise<GitRunResult>
 }
 
@@ -374,6 +395,7 @@ export function bindWriteContext(
         timeoutMs: options.timeoutMs,
         stdoutMaxBytes: options.stdoutMaxBytes,
         stdin: options.stdin,
+        todoFromStdin: options.todoFromStdin,
       }),
   }
 }

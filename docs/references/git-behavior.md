@@ -59,4 +59,5 @@
 | **`--update-refs` 依赖 todo 中的 `update-ref refs/heads/<b>` 行**：`cat >` 覆盖了 git 生成的 todo，自带的 `update-ref` 行一并被覆盖；todo 不写这一行时，指向被改写提交的其他分支留在旧提交上 | ✅ 2026-10-27 | spike.mjs 两次对照 |
 | todo 只含 `drop` 行（全部丢弃）可以执行；todo 为空（无任何命令）时报 `error: nothing to do`、退出 1 | ✅ 2026-10-27 | spike.sh 末两段 |
 | `exec`/`update-ref` 行计入 `msgnum`/`end` 步数（「Rebasing (2/5)」），横幅显示的步数比提交数多 | ✅ 2026-10-27 | spike.mjs stderr |
+| **环境变量 `GIT_SEQUENCE_EDITOR` 优先于 `-c sequence.editor`**：插件写环境 `GIT_WRITE_ENV` 设了 `GIT_SEQUENCE_EDITOR=true`，此时 `-c sequence.editor='cat >'` 不生效（`git var GIT_SEQUENCE_EDITOR` 输出 `true`），git 用自己生成的 todo。执行层因此用单独的 `GIT_TODO_STDIN_ENV`（只改这一个变量）承载 `rebase -i` | ✅ 2026-10-27 | b3a T3 `test/host/git-executor.test.ts` todoFromStdin |
 | Windows（Git for Windows 自带 sh）未实测 | ⚠️ 未实测 | 留给 B4 跨平台验证 |

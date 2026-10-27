@@ -1,12 +1,31 @@
 // Interactive rebase write endpoint (plan b3a): the client sends the whole todo as entries, the Host
 // drives `git rebase -i` with `GIT_SEQUENCE_EDITOR='cat >'` and the todo on stdin; rewritten messages
 // travel as blobs and are written back by `exec` lines (references/git-behavior §4).
-import type { InteractiveRebaseValue, RebaseAction, RebaseEntry } from '../../shared/protocol.ts'
+import type { InteractiveRebaseValue, RebaseAction, RebaseEntry, RebaseStop } from '../../shared/protocol.ts'
 import { REBASE_ACTIONS, REBASE_PLAN_MAX_COMMITS } from '../../shared/protocol.ts'
-import type { WriteOperation } from '../git-executor.ts'
-import { GitCommandFailure } from '../git-executor.ts'
-import { parseFullSha } from './integrate.ts'
-import { invalidPayload, optionalBoolean, parseCommitMessage, payloadRecord } from './write-support.ts'
+import { buildTodo, rebaseTodoProblem } from '../../shared/rebase-todo.ts'
+import type { WriteContext, WriteOperation } from '../git-executor.ts'
+import { GIT_BASE_ARGV, GitCommandFailure } from '../git-executor.ts'
+import { REBASE_HOOKS, parseFullSha } from './integrate.ts'
+import { unmergedCount } from './operation.ts'
+import { readRebasePlan } from './rebase-plan.ts'
+import { withSmartStash, writeGitDir } from './smart-stash.ts'
+import { detectOperationIn, readRebaseStop } from './status.ts'
+import {
+  assertNoOperation,
+  hasHook,
+  invalidPayload,
+  optionalBoolean,
+  outputSummary,
+  parseCommitMessage,
+  payloadRecord,
+  readHead,
+  readRunner,
+  redactedFailure,
+} from './write-support.ts'
+
+/** A long range with an exec per reworded commit can take a while; same budget as network commands. */
+const INTERACTIVE_REBASE_TIMEOUT_MS = 180_000
 
 export interface InteractiveRebaseInput {
   /** Full sha of the base, or null to rebase from the root. */
@@ -66,7 +85,74 @@ export const interactiveRebaseOperation: WriteOperation<
     }
   },
 
-  run() {
-    return Promise.reject(new GitCommandFailure('git/exec-failed', 'not implemented', {}))
+  async run(ctx, input) {
+    await assertNoOperation(ctx)
+    const plan = await readRebasePlan(readRunner(ctx), ctx.repoRoot, { sessionId: '', base: input.base })
+    if (plan.head !== input.head) {
+      throw new GitCommandFailure('git/stale-target', 'HEAD moved since the rebase list was opened', {
+        target: 'head',
+        expected: input.head,
+        actual: plan.head,
+      })
+    }
+    if (plan.blocked !== undefined) throw invalidPayload(`this range cannot be rebased: ${plan.blocked}`, { reason: plan.blocked })
+    const problem = rebaseTodoProblem(plan.commits.map(commit => commit.sha), input.entries)
+    if (problem !== null) throw invalidPayload(`the rebase entries are invalid: ${problem}`, { reason: problem })
+    const branches = new Map(plan.commits.map(commit => [commit.sha, commit.branches]))
+    const gitDir = await writeGitDir(ctx)
+
+    const { value, outcome } = await withSmartStash(ctx, { stash: input.stash, operation: 'rebase' }, async () => {
+      const blobs = await storeMessages(ctx, input.entries)
+      const todo = buildTodo(input.entries, {
+        messageBlob: index => blobs.get(index) ?? '',
+        branches: input.updateRefs ? sha => branches.get(sha) ?? [] : undefined,
+      })
+      const result = await ctx.git(
+        [
+          ...GIT_BASE_ARGV,
+          'rebase',
+          '-i',
+          ...(input.updateRefs ? ['--update-refs'] : []),
+          ...(input.base === null ? ['--root'] : ['--end-of-options', input.base]),
+        ],
+        { stdin: todo, todoFromStdin: true, timeoutMs: INTERACTIVE_REBASE_TIMEOUT_MS },
+      )
+      // Never trust the exit code alone: an `edit` stop exits 0 (references/git-behavior §4).
+      if ((await detectOperationIn(gitDir)) === 'rebase') {
+        return { open: true, stop: await readRebaseStop(gitDir, await unmergedCount(ctx)) }
+      }
+      if (result.exitCode !== 0) {
+        if (await hasHook(ctx, REBASE_HOOKS)) {
+          throw new GitCommandFailure('git/hook-failed', 'the rebase was blocked by a Git hook', {
+            exitCode: result.exitCode,
+            output: outputSummary(result),
+          })
+        }
+        throw redactedFailure(result, 'git rebase -i')
+      }
+      return { open: false, stop: undefined as RebaseStop | undefined }
+    })
+    const response: Omit<InteractiveRebaseValue, 'version'> = { head: (await readHead(ctx)).sha, completed: !value.open, ...outcome }
+    if (value.stop !== undefined) response.stop = value.stop
+    return response
   },
+}
+
+/** Store each entry message as a blob; the todo's exec lines read them back by sha. */
+async function storeMessages(ctx: WriteContext, entries: readonly RebaseEntry[]): Promise<Map<number, string>> {
+  const blobs = new Map<number, string>()
+  for (const [index, entry] of entries.entries()) {
+    if (entry.message === undefined) continue
+    const sha = (
+      await queryOkWithStdin(ctx, ['hash-object', '-w', '--stdin'], entry.message)
+    ).trim()
+    blobs.set(index, sha)
+  }
+  return blobs
+}
+
+async function queryOkWithStdin(ctx: WriteContext, args: readonly string[], stdin: string): Promise<string> {
+  const result = await ctx.git([...GIT_BASE_ARGV, ...args], { stdin })
+  if (result.exitCode !== 0) throw redactedFailure(result, `git ${args[0] ?? ''}`)
+  return result.stdout
 }

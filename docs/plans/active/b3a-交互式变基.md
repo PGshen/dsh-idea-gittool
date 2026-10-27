@@ -116,7 +116,7 @@ Host 约束（各任务共用）：
 - **测试**（真实临时仓库）：线性分支 5 个提交 → 顺序与信息正确；`base: null` 包含根提交；部分提交已推送到本地 bare 远程 → `pushed` 正确；范围内有合并提交、`base` 在另一分支、detached HEAD、501 个提交 → 对应 `blocked`；`base` 以 `-` 开头 → `git/invalid-payload`。
 - **完成标准**：AC1 有测试；`make check` 绿。
 
-### T3：Host `interactiveRebase` 与停下状态（进行中）
+### T3：Host `interactiveRebase` 与停下状态（完成）
 
 - **目标**：实现写端点与 `operationState.rebaseStop`。
 - **涉及文件**：新建 `src/host/git/rebase-todo.ts`（纯函数）、`src/host/git/interactive-rebase.ts` 与对应测试；修改 `src/host/git/operation.ts`（`rebaseStop`）、`src/host/rpc.ts`。
@@ -127,7 +127,7 @@ Host 约束（各任务共用）：
 - **测试**：`buildTodo` 各动作与组合的快照（含 squash 组带信息时 `exec` 行位置）；`validateEntries` 的 AC4 各情形；真实仓库跑 AC2 列出的组合并与手工 `rebase -i` 的结果逐项比较（树 sha、信息、作者、作者时间）；AC3 字符集；冲突停下 / `edit` 停下 / `exec` 失败三种 `stop` 与 `operationState.rebaseStop`；AC5 的智能贮藏路径；HEAD 变化与进行中操作的拒绝。
 - **完成标准**：AC2–AC5、AC6 的 Host 部分有测试；`make check` 绿。
 
-### T4：Client 变基列表模型与 store（待开始）
+### T4：Client 变基列表模型与 store（进行中）
 
 - **目标**：React 无关的列表模型（纯函数）与加载/提交 store。
 - **涉及文件**：新建 `src/client/rebase/rebase-model.ts`、`src/client/store/rebase-store.ts` 与测试；`.dependency-cruiser.cjs` 若需允许 `store → rebase`，同步改 ARCHITECTURE。
@@ -167,7 +167,7 @@ Host 约束（各任务共用）：
 
 ## 下一步
 
-- T3：新建 `src/host/git/rebase-todo.ts`（`buildTodo`/`validateEntries`）与 `test/host/rebase-todo.test.ts`；把 `src/host/git/interactive-rebase.ts` 的 `run`（目前 `not implemented`）实现为真实变基；`src/host/git/operation.ts` 加 `rebaseStop`。
+- T4：在 `src/client/rebase/rebase-model.ts` 补模型函数（`previewTodo` 直接调用 `src/shared/rebase-todo.ts` 的 `buildTodo`，信息 blob 用占位符），新建 `src/client/store/rebase-store.ts` 与测试。
 
 ## 决策记录
 
@@ -175,6 +175,10 @@ Host 约束（各任务共用）：
 - 2026-10-27 — T1：`RebasePlanCommit` 增加 `branches`（指向该提交的其他本地分支）——spike 发现 `--update-refs` 只认 todo 里的 `update-ref` 行，而 `cat >` 会覆盖 git 生成的那几行，Host 必须自己写；错了的代价：多一个字段。
 - 2026-10-27 — T1：`rebasePlan` 在 T1 先校验 `base` 形状再返回 `not implemented`、`interactiveRebase` 在 T1 就实现 `parse`——现有路由测试要求「已登记端点对最小载荷不得回答 not implemented」，形状校验本来也是这两个端点的一部分，不另开例外。
 - 2026-10-27 — T2：`readRebasePlan` 签名改为与 B2 读端点一致的 `(run, cwd, request, { signal, gitVersion })`（计划写的是 `(ctx, request, signal)`）；git 版本取 runtime 已有的一次性探测。
+- 2026-10-27 — T3：todo 规则（`rebaseTodoProblem`、`buildTodo`）放在 `src/shared/rebase-todo.ts`，而不是计划写的 `src/host/git/rebase-todo.ts`——Host 执行与客户端预览共用同一份纯函数，AC7「预览与 Host 生成的一致」由构造保证，不再靠共享夹具；它只依赖协议类型，符合 R3；错了的代价：挪一个文件。
+- 2026-10-27 — T3：校验规则比计划多一条 `misplaced-message`：`message` 只允许出现在 pick/reword 上（edit 停下后用户自己改信息，若再 exec 会覆盖；squash/fixup/drop 上的信息没有意义）。
+- 2026-10-27 — T3：有整组信息的 squash 组里，squash 行写成 `fixup`（信息最终由 exec 写回，避免 git 拼接一遍再被覆盖）；没有整组信息时保留 `squash`，由 `GIT_EDITOR=true` 接受 git 拼接的默认信息。
+- 2026-10-27 — T3：执行层新增 `todoFromStdin` 选项与 `GIT_TODO_STDIN_ENV`（只把 `GIT_SEQUENCE_EDITOR` 改成 `cat >`）——现有 `GIT_WRITE_ENV` 的 `GIT_SEQUENCE_EDITOR=true` 优先于 `-c sequence.editor`；只对带 stdin 的写调用生效，其余写命令仍是 no-op 编辑器。这是对计划外公共接口（执行层选项）的最小扩展，属于实现细节。
 - 2026-10-27 — T1：`RebasePreset` 类型提前在 `src/client/rebase/rebase-model.ts` 定义（覆盖层类型要用）；T4 在同一文件补函数。
 - 2026-10-27 — 横幅步数沿用 git 的 `msgnum/end`，包含 `exec`/`update-ref` 行（会比提交数多）；不自行换算，避免和终端里看到的 git 输出不一致。
 - 2026-10-27 — 写回信息的 `exec` 用 `--no-verify`：`git rebase -i` 自身 pick 时不跑 pre-commit，改信息时再跑 pre-commit 会在历史提交上触发与当前工作区无关的检查。

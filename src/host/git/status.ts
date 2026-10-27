@@ -9,6 +9,7 @@ import type {
   FileEntry,
   FileStatusCode,
   OperationStep,
+  RebaseStop,
   RepoOperation,
   StatusValue,
 } from '../../shared/protocol.ts'
@@ -352,6 +353,23 @@ export async function rebaseStateDir(gitDir: string): Promise<string | undefined
     const dir = join(gitDir, name)
     if (await pathExists(dir)) return dir
   }
+  return undefined
+}
+
+/**
+ * Why an interactive rebase stopped (plan b3a, references/git-behavior §4): unmerged index entries →
+ * `conflict`; last `done` command `edit` with an `amend` marker → `edit`; last `done` command `exec` →
+ * `exec-failed`. Undefined outside `rebase-merge` or for any other stop.
+ */
+export async function readRebaseStop(gitDir: string, conflicts: number): Promise<RebaseStop | undefined> {
+  const dir = join(gitDir, 'rebase-merge')
+  if (!(await pathExists(dir))) return undefined
+  if (conflicts > 0) return 'conflict'
+  const done = (await readStateFile(join(dir, 'done'))) ?? ''
+  const last = done.split('\n').filter(line => line !== '' && !line.startsWith('#')).at(-1) ?? ''
+  const command = last.split(' ', 1)[0] ?? ''
+  if ((command === 'edit' || command === 'e') && (await pathExists(join(dir, 'amend')))) return 'edit'
+  if (command === 'exec' || command === 'x') return 'exec-failed'
   return undefined
 }
 

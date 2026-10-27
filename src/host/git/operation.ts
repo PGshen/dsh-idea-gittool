@@ -39,6 +39,7 @@ import {
 import {
   detectOperationIn,
   readRebaseStep,
+  readRebaseStop,
   readStateFile,
   readStatus,
   rebaseStateDir,
@@ -188,6 +189,8 @@ export async function readOperationState(
     }
     const step = await readRebaseStep(gitDir)
     if (step !== undefined) value.step = step
+    const stop = await readRebaseStop(gitDir, status.conflicts.length)
+    if (stop !== undefined) value.rebaseStop = stop
   } else if (operation === 'cherry-pick') {
     value.theirs = await commitSide(query, await readSha(join(gitDir, 'CHERRY_PICK_HEAD')))
   } else if (operation === 'revert') {

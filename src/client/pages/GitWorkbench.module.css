@@ -23,3 +23,34 @@
   flex: 1 1 auto;
   min-width: 0;
 }
+
+/* B3c：贮藏页顶部「贮藏 | 搁架」分段。 */
+.stashSegments {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.segmentBar {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 4px;
+  padding: 4px 8px;
+  border-bottom: 0.5px solid var(--dsw-alias-border-l2);
+}
+
+.segmentBar button {
+  padding: 2px 8px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font: inherit;
+  cursor: pointer;
+}
+
+.segmentBar button[aria-selected='true'] {
+  background: var(--dsw-alias-interactive-bg-active);
+  color: var(--dsw-alias-label-primary);
+}

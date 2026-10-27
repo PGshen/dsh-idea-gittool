@@ -63,6 +63,8 @@ export interface CommitPanelProps {
   pendingWrites?: number
   onOpenDiff: (path: string, scope: DiffOpenScope) => void
   onRollback?: (paths: string[]) => void
+  /** B3c: shelve the row (or the checked files when the row is checked). */
+  onShelve?: (path: string, trigger: HTMLElement | null) => void
   onAddToVcs?: (paths: string[]) => void
   onCopyPath?: (path: string) => void
   /** B2: file history / worktree blame from a change row's menu. */
@@ -258,6 +260,7 @@ function NormalCommitPanel(props: CommitPanelProps): ReactNode {
           onOpenDiff={props.onOpenDiff}
           onCommitFile={() => { textareaRef.current?.focus() }}
           {...(props.onRollback === undefined ? {} : { onRollback: props.onRollback })}
+          {...(props.onShelve === undefined ? {} : { onShelve: props.onShelve })}
           {...(props.onAddToVcs === undefined ? {} : { onAddToVcs: props.onAddToVcs })}
           {...(props.onCopyPath === undefined ? {} : { onCopyPath: props.onCopyPath })}
           {...(props.onFileHistory === undefined ? {} : { onFileHistory: props.onFileHistory })}

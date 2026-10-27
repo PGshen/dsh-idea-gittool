@@ -76,11 +76,11 @@ interface ShelfEntry { id: string /* 时间戳 + 随机，[0-9a-z-]{1,64} */; na
 - `src/host/git/shelf.ts`：生成补丁（已跟踪：`diff --binary HEAD -- <paths>`；未跟踪：`diff --binary --no-index /dev/null <path>` 拼接）、`hash-object`/`mktree`/`commit-tree` 存对象、`update-ref`、回滚路径（复用 `rollback.ts` 的逻辑）、列表（`for-each-ref` + `cat-file`）、应用（`apply --check` / `--3way`）、删除。
 - 测试：AC1–AC3。
 
-### T3：搁架 UI（待开始）
+### T3：搁架 UI（完成）
 - `src/client/store/shelf-store.ts`、贮藏页分段、`ShelfPanel`、`ShelveSheet`、提交页入口。
 - 测试：store 单测、静态渲染、可用性。
 
-### T4：Changelist 模型（待开始）
+### T4：Changelist 模型（进行中）
 - `src/client/changelists/changelist-model.ts`（纯函数）+ 持久化（读写都 try/catch）。
 - 测试：AC5。
 
@@ -94,13 +94,15 @@ interface ShelfEntry { id: string /* 时间戳 + 随机，[0-9a-z-]{1,64} */; na
 ## 进度
 
 - 2026-10-28 — T1+T2 — 协议与客户端方法、覆盖层 `shelve`、ADR 0011；Host `shelf.ts`（补丁含二进制与未跟踪、受限 ref 下的提交对象、先存后回滚、干净应用/三方合并、删除）与路由
+- 2026-10-28 — T3 — `shelf-store`、`ShelfPanel`（列表、预览、取回/取回并保留/删除、不能干净应用时的三方合并）、`ShelveSheet`、贮藏页「贮藏 | 搁架」分段、提交页文件右键「搁置…」（勾选中的行带上全部勾选文件）
 
 ## 下一步
 
-- T3：`src/client/store/shelf-store.ts`、贮藏页「贮藏 | 搁架」分段、`ShelfPanel`、`ShelveSheet`，提交页「搁置…」入口。
+- T4：`src/client/changelists/changelist-model.ts`（纯函数 + 持久化），测试 `test/client/changelists/changelist-model.test.ts`。
 
 ## 决策记录
 
+- 2026-10-28 — T3：搁置入口只放在提交页文件右键（不另加工具栏按钮）：右键的行已勾选时搁置全部勾选文件，否则只搁置这一行；组件与测试同一步写（视图先于测试，静态渲染覆盖）。
 - 2026-10-28 — T1 与 T2 合并为一次提交：`shelfList` 只需会话参数，占位实现会让「已登记端点不得回答 not implemented」的路由测试失败。
 - 2026-10-28 — 搁架载体提交用固定身份 `dsh-git <dsh-git@localhost>`（仓库可能没配置 user.name）；它不会被签出或推送。
 - 2026-10-27 — 待确认 1–3 按推荐执行（负责人授权 AI 自行推进 B3b–B3d，验收时统一 review）。

@@ -1,0 +1,102 @@
+/* B3c 搁架分段：上列表，下选中条目的动作与补丁预览。 */
+.root {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  color: var(--dsw-alias-label-primary);
+  font-size: 12px;
+}
+
+.state {
+  padding: 16px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.list {
+  flex: 0 1 40%;
+  min-height: 60px;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+  border-bottom: 0.5px solid var(--dsw-alias-border-l2);
+}
+
+.row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 8px;
+  cursor: default;
+}
+
+.row:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.selected,
+.selected:hover {
+  background: var(--dsw-alias-interactive-bg-active);
+}
+
+.name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.meta,
+.files {
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.detail {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.actions,
+.confirm {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 4px 8px;
+}
+
+.files {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.confirm {
+  color: var(--dsw-alias-state-warn-primary);
+}
+
+.message {
+  margin: 0;
+  padding: 0 8px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.error {
+  margin: 0;
+  padding: 0 8px;
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.preview {
+  flex: 1 1 auto;
+  min-height: 0;
+  margin: 0;
+  padding: 6px 8px;
+  overflow: auto;
+  background: var(--dsw-alias-bg-layer-1);
+  font-family: var(--dsw-font-markdown-code-block-font-family);
+  white-space: pre;
+}

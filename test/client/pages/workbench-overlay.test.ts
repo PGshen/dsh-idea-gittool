@@ -142,13 +142,16 @@ describe('handleOverlayEscape', () => {
 describe('WorkbenchOverlay kinds', () => {
   it('every kind has a navigation level (1 = overlay page, 2 = sheet)', () => {
     expect(Object.keys(OVERLAY_LEVEL).sort()).toEqual([
-      'blame', 'branchSheet', 'commitOp', 'compare', 'conflicts', 'diff', 'dirtyWorktree', 'fetch', 'fileHistory', 'interactiveRebase', 'merge', 'mergeWindow',
-      'pull', 'push', 'pushRejected', 'rebase', 'reset', 'rollback', 'smartCheckout', 'stashCreate', 'updateProject',
+      'applyPatch', 'blame', 'branchSheet', 'commitOp', 'compare', 'conflicts', 'createTag', 'diff', 'dirtyWorktree', 'fetch', 'fileHistory', 'fixupInto',
+      'interactiveRebase', 'merge', 'mergeWindow', 'patch', 'pull', 'push', 'pushRejected', 'rebase', 'reset', 'rollback', 'smartCheckout',
+      'stashCreate', 'undoCommit', 'updateProject',
     ])
     // B2 T1: blame, file history and compare are overlay pages with "← back".
     expect([OVERLAY_LEVEL.blame, OVERLAY_LEVEL.fileHistory, OVERLAY_LEVEL.compare]).toEqual([1, 1, 1])
     // B3a T1: interactive rebase is a full-height overlay page (design §11).
     expect(OVERLAY_LEVEL.interactiveRebase).toBe(1)
+    // B3b: sheets for tag / undo / fixup, pages for patches.
+    expect([OVERLAY_LEVEL.createTag, OVERLAY_LEVEL.undoCommit, OVERLAY_LEVEL.fixupInto, OVERLAY_LEVEL.patch, OVERLAY_LEVEL.applyPatch]).toEqual([2, 2, 2, 1, 1])
     // B1 T6: the three-pane merge window is an overlay page (it also enters host fullscreen).
     expect(OVERLAY_LEVEL.mergeWindow).toBe(1)
     expect(OVERLAY_LEVEL.diff).toBe(1)

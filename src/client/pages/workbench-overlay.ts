@@ -26,7 +26,7 @@ export type BranchSheetMode = 'new' | 'rename' | 'delete' | 'checkoutRevision'
 export type WorkbenchOverlay =
   | { kind: 'diff'; request: DiffRequest; files: CommitFileEntry[]; source: DiffSourcePart[] }
   /** Push page; it shows the A2 rejected view itself, so `pushRejected` is only for a direct entry. */
-  | { kind: 'push'; autoSubmit?: boolean }
+  | { kind: 'push'; autoSubmit?: boolean; revision?: string }
   | { kind: 'pushRejected'; remote: string; branch: string; details: PushRejectedDetails }
   | { kind: 'rollback'; targets: RollbackTarget[] }
   | { kind: 'conflicts' }
@@ -56,6 +56,13 @@ export type WorkbenchOverlay =
   | { kind: 'compare'; left: string; right: string | null; leftLabel: string; rightLabel: string | null; back?: BackOverlay }
   /** B3a interactive rebase of `base..HEAD` (`base` null = from the root); `preset` = a log quick action. */
   | { kind: 'interactiveRebase'; base: string | null; preset?: RebasePreset }
+  /** B3b log menu: new tag on a commit; undo the HEAD commit (soft reset); fixup / squash checked files into a commit. */
+  | { kind: 'createTag'; sha: string; shortSha: string }
+  | { kind: 'undoCommit'; sha: string; shortSha: string; subject: string }
+  | { kind: 'fixupInto'; sha: string; shortSha: string; subject: string; mode: 'fixup' | 'squash' }
+  /** B3b patches: export commits (download / copy); apply a pasted or chosen patch. */
+  | { kind: 'patch'; shas: string[] }
+  | { kind: 'applyPatch' }
 
 /** An overlay "← back" can return to; one level only, so it never carries its own `back`. */
 export type BackOverlay = DistributiveOmit<WorkbenchOverlay, 'back'>
@@ -101,6 +108,11 @@ export const OVERLAY_LEVEL: Record<WorkbenchOverlayKind, 1 | 2> = {
   fileHistory: 1,
   compare: 1,
   interactiveRebase: 1,
+  createTag: 2,
+  undoCommit: 2,
+  fixupInto: 2,
+  patch: 1,
+  applyPatch: 1,
 }
 
 export interface OverlayRoute {

@@ -70,11 +70,11 @@
 
 ## 任务
 
-### T1：契约冻结（待开始）
+### T1：契约冻结（完成）
 - 协议、`git-client` 方法、路由占位校验、`bodyLimitFor('applyPatch')` = 8 MiB、覆盖层 `{ kind: 'createTag'; sha }`、`{ kind: 'undoCommit'; sha }`、`{ kind: 'fixupInto'; sha; mode }`、`{ kind: 'patch'; shas }`、`{ kind: 'applyPatch' }`、`push` 覆盖层增加 `revision?`。
 - 测试：协议登记、读写分类、客户端请求体、http 限额。
 
-### T2：Host diff 选项（待开始）
+### T2：Host diff 选项（进行中）
 - `src/host/git/diff.ts`：`-w`、`--unified=<大数>`（整文件）；测试 AC1/AC2。
 
 ### T3：Host 新端点（待开始）
@@ -98,11 +98,11 @@
 
 ## 进度
 
-- 无
+- 2026-10-27 — T1 — 协议（`DiffRequest.ignoreWhitespace/context`、`PushRequest.revision`、`PushPreviewRequest`、四个新端点）、客户端方法、`applyPatch` 32 MiB 请求体、五个新覆盖层、三个写端点的 `parse`
 
 ## 下一步
 
-- 从 T1 开始。
+- T2：`src/host/git/diff.ts` 支持 `ignoreWhitespace`（`-w`）与 `context: 'full'`，测试写在 `test/host/diff.test.ts`。
 
 ## 决策记录
 

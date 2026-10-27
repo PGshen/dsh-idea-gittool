@@ -67,6 +67,11 @@ export const RPC_ENDPOINTS = [
   // B3a 交互式变基（T1 登记；T2 读、T3 写）
   'rebasePlan',
   'interactiveRebase',
+  // B3b Diff 增强与提交菜单（T1 登记；T3 实现）
+  'formatPatch',
+  'createTag',
+  'fixupCommit',
+  'applyPatch',
 ] as const
 
 export type RpcEndpoint = (typeof RPC_ENDPOINTS)[number]
@@ -105,6 +110,9 @@ export const WRITE_ENDPOINTS = [
   'mergeApply',
   'unresolveConflict',
   'interactiveRebase',
+  'createTag',
+  'fixupCommit',
+  'applyPatch',
 ] as const satisfies readonly RpcEndpoint[]
 
 export type WriteEndpoint = (typeof WRITE_ENDPOINTS)[number]
@@ -427,6 +435,10 @@ export interface DiffRequest extends RpcRequest {
   mergeBase?: boolean
   /** scope=range：文件在旧侧的路径（重命名时）；Host 只扫描这两个路径（B2 终审 I3）。 */
   origPath?: string
+  /** B3b：忽略空白差异（`git diff -w`）。 */
+  ignoreWhitespace?: boolean
+  /** B3b：`full` = 整文件作为上下文（仍受截断规则约束）；缺省 3 行。 */
+  context?: 'default' | 'full'
 }
 
 export type DiffLineKind = 'context' | 'add' | 'del'
@@ -588,6 +600,68 @@ export interface CompareValue {
   /** `right...left`（以合并基为起点）；`right` 为 null 时为 `left` 对工作区。 */
   files: FileEntry[]
   filesTruncated: boolean
+  version?: number
+}
+
+// --- B3b 提交菜单与补丁（T1 冻结） ---------------------------------------------
+
+/** `formatPatch` 一次最多导出的提交数。 */
+export const FORMAT_PATCH_MAX_COMMITS = 100
+/** `applyPatch` 的补丁文本上限（UTF-8 字节）。 */
+export const APPLY_PATCH_MAX_BYTES = 8 * 1024 * 1024
+
+/** `createTag`：`message` 非空时创建附注标签，否则轻量标签。同名 → `git/branch-exists`（`details.kind: 'tag'`）。 */
+export interface CreateTagRequest extends WriteRequest {
+  name: string
+  /** 完整 sha。 */
+  target: string
+  message?: string
+}
+
+export interface CreateTagValue {
+  name: string
+  target: string
+  version?: number
+}
+
+/**
+ * `fixupCommit`：把勾选的路径提交为 `fixup! <主题>` / `squash! <主题>`，再从 `target^` autosquash 变基。
+ * 停下与贮藏处理同 `interactiveRebase`。
+ */
+export interface FixupCommitRequest extends SmartWriteRequest {
+  /** 完整 sha，须在当前分支 first-parent 链上、非合并。 */
+  target: string
+  paths: string[]
+  kind: 'fixup' | 'squash'
+  /** squash 时附加到 `squash!` 提交正文的信息。 */
+  message?: string
+}
+
+/** `formatPatch`：`git format-patch --stdout`，提交按祖先在前排序。 */
+export interface FormatPatchRequest extends RpcRequest {
+  shas: string[]
+}
+
+export interface FormatPatchValue {
+  patch: string
+  /** 建议的下载文件名。 */
+  fileName: string
+  version?: number
+}
+
+/** `applyPatch`：`check` 为 true 时只预览（`apply --check` / `am` 前的格式识别）。 */
+export interface ApplyPatchRequest extends WriteRequest {
+  patch: string
+  check?: boolean
+}
+
+export interface ApplyPatchValue {
+  /** `mbox`：format-patch 邮件格式，用 `git am --3way`；`diff`：普通 diff，用 `git apply --3way --index`。 */
+  format: 'mbox' | 'diff'
+  files: string[]
+  applied: boolean
+  /** mbox 时的提交数。 */
+  commits?: number
   version?: number
 }
 
@@ -789,6 +863,13 @@ export interface PushRequest extends WriteRequest {
    * 与 `forceWithLease` 同时给出时用 `--force-with-lease=refs/heads/<branch>:<sha>`。
    */
   expectedRemoteSha?: string
+  /** B3b「推送直到此提交」：推送这个提交（完整 sha，须是 HEAD 的祖先）而不是 HEAD。 */
+  revision?: string
+}
+
+/** `pushPreview`：B3b 起可带 `revision`，预览的提交列表截到该提交。 */
+export interface PushPreviewRequest extends RpcRequest {
+  revision?: string
 }
 
 export interface PushValue {
@@ -1490,7 +1571,7 @@ export interface RpcEndpointTypes {
   amendMessage: { request: AmendMessageRequest; value: CommitResultValue }
   rollback: { request: RollbackRequest; value: RollbackValue }
   addToVcs: { request: AddToVcsRequest; value: AddToVcsValue }
-  pushPreview: { request: RpcRequest; value: PushPreviewValue }
+  pushPreview: { request: PushPreviewRequest; value: PushPreviewValue }
   push: { request: PushRequest; value: PushValue }
   pullForPush: { request: PullForPushRequest; value: PullForPushValue }
   operationState: { request: RpcRequest; value: OperationStateValue }
@@ -1526,6 +1607,10 @@ export interface RpcEndpointTypes {
   compare: { request: CompareRequest; value: CompareValue }
   rebasePlan: { request: RebasePlanRequest; value: RebasePlanValue }
   interactiveRebase: { request: InteractiveRebaseRequest; value: InteractiveRebaseValue }
+  formatPatch: { request: FormatPatchRequest; value: FormatPatchValue }
+  createTag: { request: CreateTagRequest; value: CreateTagValue }
+  fixupCommit: { request: FixupCommitRequest; value: InteractiveRebaseValue }
+  applyPatch: { request: ApplyPatchRequest; value: ApplyPatchValue }
 }
 
 /** 编译期检查：{@link RpcEndpointTypes} 恰好覆盖 {@link RpcEndpoint}，写端点请求都带 requestId。 */

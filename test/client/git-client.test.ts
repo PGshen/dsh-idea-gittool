@@ -81,6 +81,25 @@ describe('createGitClient / non-2xx responses (B1 acceptance demo)', () => {
   })
 })
 
+describe('createGitClient / B3b endpoints', () => {
+  it('posts formatPatch, createTag, fixupCommit and applyPatch to their endpoint paths', async () => {
+    const fetch = vi.fn(async () => new Response(JSON.stringify({ ok: true, value: {} })))
+    vi.stubGlobal('fetch', fetch)
+    const client = createGitClient(undefined)
+    const sha = 'a'.repeat(40)
+    const cases: Array<[string, () => Promise<unknown>, unknown]> = [
+      ['formatPatch', () => client.formatPatch({ sessionId: 's', shas: [sha] }), { sessionId: 's', shas: [sha] }],
+      ['createTag', () => client.createTag({ sessionId: 's', requestId: 'r', name: 'v1', target: sha, message: 'm' }), { sessionId: 's', requestId: 'r', name: 'v1', target: sha, message: 'm' }],
+      ['fixupCommit', () => client.fixupCommit({ sessionId: 's', requestId: 'r', target: sha, paths: ['a'], kind: 'fixup' }), { sessionId: 's', requestId: 'r', target: sha, paths: ['a'], kind: 'fixup' }],
+      ['applyPatch', () => client.applyPatch({ sessionId: 's', requestId: 'r', patch: 'diff', check: true }), { sessionId: 's', requestId: 'r', patch: 'diff', check: true }],
+    ]
+    for (const [endpoint, send, body] of cases) {
+      await send()
+      expect(fetch).toHaveBeenLastCalledWith(`dsh-git/${endpoint}`, expect.objectContaining({ body: JSON.stringify(body) }))
+    }
+  })
+})
+
 describe('createGitClient / B3a interactive rebase endpoints', () => {
   it('posts rebasePlan and interactiveRebase to their endpoint paths', async () => {
     const fetch = vi.fn(async () => new Response(JSON.stringify({ ok: true, value: {} })))

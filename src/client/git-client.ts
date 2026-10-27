@@ -3,6 +3,8 @@
 // 形状错误都收敛成结构化的 GitError，调用方不需要 try/catch。
 import { RPC_CHANNEL, isRpcResult } from '../shared/protocol.ts'
 import type {
+  FormatPatchRequest,
+  FormatPatchValue,
   RebasePlanRequest,
   RebasePlanValue,
   BlameRequest,
@@ -113,6 +115,11 @@ export interface GitClient {
   // B3a interactive rebase: the plan feeds the rebase page; the rebase itself goes through the action store.
   rebasePlan(request: RebasePlanRequest, signal?: AbortSignal): Promise<RpcResult<RebasePlanValue>>
   interactiveRebase: WriteMethod<'interactiveRebase'>
+  // B3b
+  formatPatch(request: FormatPatchRequest, signal?: AbortSignal): Promise<RpcResult<FormatPatchValue>>
+  createTag: WriteMethod<'createTag'>
+  fixupCommit: WriteMethod<'fixupCommit'>
+  applyPatch: WriteMethod<'applyPatch'>
 }
 
 /** Compile-time check: GitClient covers every write endpoint with the protocol's types. */
@@ -221,5 +228,9 @@ export function createGitClient(_ctx: unknown): GitClient {
     unresolveConflict: write('unresolveConflict'),
     rebasePlan: (request, signal) => call<RebasePlanValue>('rebasePlan', request, signal),
     interactiveRebase: write('interactiveRebase'),
+    formatPatch: (request, signal) => call<FormatPatchValue>('formatPatch', request, signal),
+    createTag: write('createTag'),
+    fixupCommit: write('fixupCommit'),
+    applyPatch: write('applyPatch'),
   }
 }

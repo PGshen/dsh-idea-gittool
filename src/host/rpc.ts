@@ -88,8 +88,11 @@ import { readCommit } from './git/commit.ts'
 import type { DiffQuery } from './git/diff.ts'
 import { readBlame } from './git/blame.ts'
 import { readCompare } from './git/compare.ts'
+import { fixupCommitOperation } from './git/fixup.ts'
 import { interactiveRebaseOperation } from './git/interactive-rebase.ts'
+import { applyPatchOperation, parseFormatPatchShas } from './git/patch.ts'
 import { readRebasePlan } from './git/rebase-plan.ts'
+import { createTagOperation } from './git/tag-write.ts'
 import { readFileHistory } from './git/file-history.ts'
 import { readDiff, validateRepoPath } from './git/diff.ts'
 import type { LogQuery } from './git/log.ts'
@@ -158,6 +161,9 @@ const DEFAULT_WRITE_OPERATIONS: WriteOperations = {
   mergeApply: mergeApplyOperation,
   unresolveConflict: unresolveConflictOperation,
   interactiveRebase: interactiveRebaseOperation,
+  createTag: createTagOperation,
+  fixupCommit: fixupCommitOperation,
+  applyPatch: applyPatchOperation,
 }
 
 /** Everything the handler needs; all session services are lazy and optional. */
@@ -436,6 +442,11 @@ export function createRpcRuntime(deps: RpcDeps): RpcRuntime {
             `${COMPARE_CACHE_PREFIX}:${JSON.stringify([request.left, request.right, request.cursor ?? null, request.limit ?? null])}`,
             (root) => readCompare(deps.runner, root, request, { signal }),
           )
+        }
+        case 'formatPatch': {
+          parseSessionId(payload)
+          parseFormatPatchShas((payload as { shas?: unknown }).shas)
+          throw new GitCommandFailure('git/exec-failed', 'not implemented', {})
         }
         case 'rebasePlan': {
           parseSessionId(payload)

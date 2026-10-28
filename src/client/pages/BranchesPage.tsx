@@ -12,14 +12,15 @@ import type { Translate } from '../i18n.tsx'
 import { OPERATION_KEY } from '../locales.ts'
 import { Button } from '../ui/Button.tsx'
 import { EmptyState } from '../ui/EmptyState.tsx'
-import { BranchContextMenu, directoryRowKey } from './BranchPanel.tsx'
+import { BranchContextMenu, directoryRowKey, groupTreeId, selectedRowKey } from './BranchPanel.tsx'
 import { branchActions, doubleClickAction, matchesQuery, quickActions } from './branch-actions.ts'
 import type { BranchActionContext, BranchActionId, QuickActionId, QuickActionItem } from './branch-actions.ts'
 import { formatAheadBehind, groupBranches } from './branch-store.ts'
 import type { BranchGroup, BranchGroupKind, BranchRow, CollapsedGroups } from './branch-store.ts'
 import css from './BranchesPage.module.css'
-import { finishRowMenu, moveTreeFocus, rowMenuAnchor, rowOf, treeRowKeyAction } from './menu-focus.ts'
+import { finishRowMenu, rowMenuAnchor, rowOf, treeRowKeyAction } from './menu-focus.ts'
 import type { MenuAnchor } from './menu-position.ts'
+import { useTreeRoving } from './use-tree-roving.ts'
 
 export interface BranchesPageProps {
   value: BranchesValue | null
@@ -106,6 +107,11 @@ export function BranchesPage(props: BranchesPageProps): ReactNode {
   const searching = search.trim() !== ''
   const noBranchMatch = groups.every(group => group.total === 0)
   const noMatch = searching && quick.length === 0 && noBranchMatch && value !== null
+  const visibleGroups = groups.filter(group => !(searching && group.total === 0))
+  const roving = useTreeRoving(
+    visibleGroups.flatMap(group => [groupTreeId(group.kind), ...group.rows.map(row => row.key)]),
+    selectedRowKey(visibleGroups, selected),
+  )
 
   const runQuick = (item: QuickActionItem, trigger: FocusTarget | null): void => {
     if (item.disabledReason !== undefined) return
@@ -134,13 +140,16 @@ export function BranchesPage(props: BranchesPageProps): ReactNode {
     tree = <EmptyState title={t('branch.page.noMatch')} hint={t('branch.noMatch.hint', { query: search.trim() })} />
   } else {
     tree = (
-      <div role="tree" aria-label={t('branch.page.branches')} className={css.tree}>
-        {groups.map((group) => {
-          if (searching && group.total === 0) return null
+      <div role="tree" aria-label={t('branch.page.branches')} className={css.tree} onFocus={roving.onFocus} onKeyDown={roving.onKeyDown}>
+        {visibleGroups.map((group) => {
           return (
             <div key={group.kind} role="group" aria-label={group.label} data-group={group.kind} className={css.group}>
               <button
                 type="button"
+                role="treeitem"
+                aria-level={1}
+                data-tree-id={groupTreeId(group.kind)}
+                tabIndex={roving.tabIndexOf(groupTreeId(group.kind))}
                 className={css.groupHeader}
                 data-group-toggle={group.kind}
                 aria-expanded={!group.collapsed}
@@ -154,6 +163,7 @@ export function BranchesPage(props: BranchesPageProps): ReactNode {
                 <PageRow
                   key={row.key}
                   row={row}
+                  tabIndex={roving.tabIndexOf(row.key)}
                   selected={row.entry !== undefined && row.entry.ref === selected}
                   onSelect={entry => setSelected(entry.ref)}
                   onToggleDirectory={props.onToggleDirectory}
@@ -267,6 +277,7 @@ export function BranchesPage(props: BranchesPageProps): ReactNode {
 
 interface PageRowProps {
   row: BranchRow
+  tabIndex: 0 | -1
   selected: boolean
   onSelect: (entry: BranchEntry) => void
   onToggleDirectory: (path: string) => void
@@ -275,7 +286,7 @@ interface PageRowProps {
   onOpenMenu: (entry: BranchEntry, anchor: MenuAnchor, row: FocusTarget | null) => void
 }
 
-function PageRow({ row, selected, onSelect, onToggleDirectory, onCheckout, onOpenMenu }: PageRowProps): ReactNode {
+function PageRow({ row, tabIndex, selected, onSelect, onToggleDirectory, onCheckout, onOpenMenu }: PageRowProps): ReactNode {
   const t = useT()
   const indent = { '--git-tree-depth': row.depth } as CSSProperties
   if (row.kind === 'directory') {
@@ -284,7 +295,8 @@ function PageRow({ row, selected, onSelect, onToggleDirectory, onCheckout, onOpe
     return (
       <div
         role="treeitem"
-        tabIndex={-1}
+        tabIndex={tabIndex}
+        data-tree-id={row.key}
         aria-level={row.depth + 2}
         aria-expanded={expanded}
         data-kind="directory"
@@ -292,7 +304,7 @@ function PageRow({ row, selected, onSelect, onToggleDirectory, onCheckout, onOpe
         className={css.row}
         style={indent}
         onClick={toggle}
-        onKeyDown={event => directoryRowKey(event, expanded, toggle)}
+        onKeyDown={event => directoryRowKey(event, toggle)}
       >
         <span className={css.chevron} aria-hidden="true">{expanded ? '▾' : '▸'}</span>
         <span className={css.name}>{row.label}</span>
@@ -306,7 +318,8 @@ function PageRow({ row, selected, onSelect, onToggleDirectory, onCheckout, onOpe
   return (
     <div
       role="treeitem"
-      tabIndex={0}
+      tabIndex={tabIndex}
+      data-tree-id={row.key}
       aria-level={row.depth + 2}
       aria-selected={selected}
       data-kind="branch"
@@ -326,11 +339,10 @@ function PageRow({ row, selected, onSelect, onToggleDirectory, onCheckout, onOpe
       onKeyDown={(event) => {
         if (event.target !== event.currentTarget) return
         if (entry !== undefined && event.key === 'Enter') { event.preventDefault(); onSelect(entry); return }
-        const action = treeRowKeyAction({ kind: 'branch', hasMenu: entry !== undefined }, event)
-        if (action === null) return
+        // ↑↓ ← Home End are the tree's (useTreeRoving); a branch row only claims its menu keys.
+        if (entry === undefined || treeRowKeyAction({ kind: 'branch', hasMenu: true }, event) !== 'open-menu') return
         event.preventDefault()
-        if (action === 'open-menu' && entry !== undefined) onOpenMenu(entry, rowMenuAnchor(event.currentTarget), event.currentTarget)
-        else if (action === 'next-row' || action === 'previous-row') moveTreeFocus(event.currentTarget, action === 'next-row' ? 1 : -1)
+        onOpenMenu(entry, rowMenuAnchor(event.currentTarget), event.currentTarget)
       }}
     >
       <span className={css.name}>{row.label}</span>

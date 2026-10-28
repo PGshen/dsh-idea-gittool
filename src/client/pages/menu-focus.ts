@@ -90,12 +90,6 @@ export function treeRowKeyAction(row: TreeRowKeyContext, input: MenuKeyInput): T
   return null
 }
 
-/** Row index after ArrowDown / ArrowUp: one step, stopping at the ends; -1 for an empty tree. */
-export function treeStepIndex(length: number, current: number, step: 1 | -1): number {
-  if (length === 0) return -1
-  return Math.max(0, Math.min(length - 1, current + step))
-}
-
 export interface Box {
   left: number
   right: number
@@ -138,13 +132,6 @@ export function menuItemsOf(root: HTMLElement): { items: HTMLElement[]; disabled
 export function rowOf(element: Element | null): HTMLElement | null {
   const row = element?.closest(TREE_ITEM) ?? null
   return typeof HTMLElement !== 'undefined' && row instanceof HTMLElement ? row : null
-}
-
-/** Move focus from `row` to the next / previous row of its tree. */
-export function moveTreeFocus(row: HTMLElement, step: 1 | -1): void {
-  const rows = [...(row.closest('[role="tree"]')?.querySelectorAll<HTMLElement>(TREE_ITEM) ?? [])]
-  const next = rows[treeStepIndex(rows.length, rows.indexOf(row), step)]
-  if (next !== undefined && next !== row) next.focus()
 }
 
 /** The keyboard menu anchor of a row element (its `[data-row-menu]` button when present). */

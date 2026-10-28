@@ -194,7 +194,8 @@ export function moveFocus(rows: readonly TreeRow[], currentId: string, key: 'Arr
 - 2026-10-28 — 基线 `make check` 绿：124 文件 / 2162 测试，耗时 480.6s（AC9 时长增幅以此为基准）
 - 2026-10-28 — T1 完成：4 个错误变量全量替换，样式检查改为按 DSH 快照（403 个名字）扫描全部 CSS Modules（3f12ad4）
 - 2026-10-28 — T2 完成：happy-dom + `test/client/dom.tsx`；日志 ↑↓、仓库栏 ⋯ Esc 还焦两条 DOM 测试；修复 ⋯ 菜单 Esc 后焦点丢失（ee66462）
-- 2026-10-28 — T3 完成：`outline: none` 一律须登记 `FOCUS_EXEMPT`（17 条：11 个 tabIndex=-1 容器根、6 个有替代指示的输入/列表）；11 处菜单项/行/拖拽条改用 DSH 全局焦点环（内缩 `--dsw-focus-ring-width`）
+- 2026-10-28 — T3 完成：`outline: none` 一律须登记 `FOCUS_EXEMPT`（17 条：11 个 tabIndex=-1 容器根、6 个有替代指示的输入/列表）；11 处菜单项/行/拖拽条改用 DSH 全局焦点环（内缩 `--dsw-focus-ring-width`）（2add967）
+- 2026-10-28 — T4 完成：`tree-focus.ts` 纯模型 + `use-tree-roving.ts`；分支面板与分支页的树都是单一 Tab 停靠点，分组头改为 level-1 treeitem 参与导航；删除不再使用的 `moveTreeFocus`/`treeStepIndex`
 
 ## 下一步
 
@@ -207,6 +208,9 @@ export function moveFocus(rows: readonly TreeRow[], currentId: string, key: 'Arr
 - 2026-10-28 T1 — L4 两套主题截图挪到 T10 统一走查 — 一次构建安装覆盖全部 AC。
 - 2026-10-28 T3 — 不新建 `ui/focus.module.css`：DSH ui-theme `focus.css` 已给全局 `:focus-visible` 设颜色与 `--dsw-focus-ring-width`，并在指针输入时隐藏；插件只需不再 `outline: none`，行/菜单项用负 `outline-offset` 画在内侧防止被滚动容器裁掉。焦点检查改为「`outline: none` 必须登记例外」，比「同文件有 :focus-visible」更严也更好判定。
 - 2026-10-28 T3 — 不做 happy-dom 里的 `:focus-visible` 匹配测试：测试环境不加载 CSS Modules 的样式，匹配结果说明不了渲染；由静态规则 + T10 L4 键盘走查覆盖。
+- 2026-10-28 T4 — 停靠点优先级改为「最近获得焦点的行 → 选中行 → 首行」（契约原写选中行优先）：选中行优先时，方向键移走焦点后一次重渲染就把停靠点拉回选中行，Tab 出去再回来会落在别处。
+- 2026-10-28 T4 — 分组头（HEAD/Local/Remote/Tags）从独立按钮改为 `role="treeitem" aria-level=1` 的按钮，参与漫游；叶子行 → 仍打开菜单（A3 I-1 的既定行为，APG 对叶子 → 未定义行为，不冲突）。改动同时作用于分支面板与分支页（两者共用分组模型）；提交页文件树（ChangesTree）早已是漫游实现，不动。
+- 2026-10-28 T4 — 改为焦点移动用 `element.focus()`，展开/折叠用 `element.click()` 复用行自身的切换逻辑，不用 `aria-activedescendant`（与 ChangesTree 一致）。
 
 ## 意外与发现
 

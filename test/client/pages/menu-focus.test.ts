@@ -11,7 +11,6 @@ import {
   shouldFocusMenu,
   stepMenuIndex,
   treeRowKeyAction,
-  treeStepIndex,
 } from '../../../src/client/pages/menu-focus.ts'
 
 function target(log: string[], name: string, isConnected = true): FocusTarget {
@@ -100,15 +99,6 @@ describe('treeRowKeyAction', () => {
   })
   it('Enter keeps its existing per-tree meaning (handled by the row, not here)', () => {
     expect(treeRowKeyAction(leaf, { key: 'Enter' })).toBeNull()
-  })
-})
-
-describe('treeStepIndex', () => {
-  it('moves one row and stops at the ends (no wrap)', () => {
-    expect(treeStepIndex(3, 0, 1)).toBe(1)
-    expect(treeStepIndex(3, 2, 1)).toBe(2)
-    expect(treeStepIndex(3, 0, -1)).toBe(0)
-    expect(treeStepIndex(0, 0, 1)).toBe(-1)
   })
 })
 

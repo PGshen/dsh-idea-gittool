@@ -141,3 +141,20 @@ git checkout -q feature && git rebase main   # stops at topic1; after continue, 
 | 7 | 分支右键「与当前分支比较」→ 点文件 →「交换」；「与工作区比较」 | 与 `git log right..left`、`git diff --name-status right...left`、`git diff --name-status <rev>`（同一 HOME）一致 |
 | 8 | 日志 Cmd+点击选两个提交 → 右键 | 「比较所选的两个提交」可用；只选一个时禁用并说明 |
 | 9 | 文件页打开文件预览 → 头部 Blame / 历史 / Diff / 状态徽标；换一个文件再点 Blame | 同一个 Blame 标签换内容；历史、Diff 切到 Git tab；徽标切到提交页选中该文件；干净文件 Diff 禁用；宽头部不收进 ⋯ |
+
+## 交互式变基实机验证（B3a，L4）
+
+准备同 B2（隔离 HOME、3081）。补充：
+
+- 工作区记录要带 `createdAt`/`updatedAt`（ISO 字符串），否则 `workspaceRegistry` 报 `does not match its schema`，整个工作区服务挂起（2026-10-27 实测）。
+- flag 默认关：在 3081 页面的控制台执行 `localStorage.setItem('dsh-git.feature.interactiveRebase', '1')` 后刷新。
+- 走查仓库：`git init -b main` 后连做 5 个提交（每个改一个文件），`git branch mid HEAD~2`。
+
+| # | 操作 | 期望 |
+|---|---|---|
+| 1 | 日志右键任一提交 | 末组出现「从此处交互式变基…」「修改提交信息…（F2）」「丢弃提交…」（危险色）「压缩所选提交…」（只选一个时禁用并说明） |
+| 2 | 「从此处交互式变基…」 | 覆盖页按旧→新列出该提交及之后的提交，`mid` 标在对应行；没改动时「开始变基」禁用并显示「没有任何改动」 |
+| 3 | 列表上按 `d`、`Alt+↑`、`s`、`r`，在信息框改 reword 的信息（含 `"` 与 `$(…)`）；「预览 todo」 | 动作与顺序随按键变化；squash 组的默认信息是两条信息拼接；预览里写回信息的 exec 行显示为「# 写回上面这组的提交信息」，squash 行变成 fixup |
+| 4 | 勾选 `--update-refs` →「开始变基」 | 覆盖页关闭、日志刷新；`git log` 与列表一致、信息原样、`mid` 移到合并后的提交 |
+| 5 | 日志选中提交按 `F2`，把动作改成 edit →「开始变基」 | 横幅「正在变基 1/2」+「已在 edit 处停下…」；提交页回到普通模式，可勾选文件 + Amend |
+| 6 | 改文件 → 提交页 Amend → 横幅「继续」 | 被 edit 的提交包含改动；变基结束、横幅消失 |

@@ -161,6 +161,14 @@ const INVALID_REASON_KEY: Record<string, GitWorkbenchKey> = {
   'nothing-to-stash': 'action.error.nothing-to-stash',
   'no-upstream': 'action.error.no-upstream',
   'body-too-large': 'action.error.body-too-large',
+  // B3a interactive rebase: list validation and ranges the Host refuses.
+  'not-permutation': 'rebase.invalid.not-permutation',
+  'leading-squash': 'rebase.invalid.leading-squash',
+  'missing-message': 'rebase.invalid.missing-message',
+  'misplaced-message': 'rebase.invalid.misplaced-message',
+  'not-ancestor': 'rebase.blocked.not-ancestor',
+  detached: 'rebase.blocked.detached',
+  empty: 'rebase.blocked.empty',
 }
 
 /** Error code (+ details) → localized, actionable text. */

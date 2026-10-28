@@ -5,6 +5,7 @@ import {
   commitActionContext,
   commitActionEffect,
   commitActions,
+  enabledAction,
   isContextMenuKey,
 } from '../../../src/client/pages/commit-actions.ts'
 import type { CommitActionContext } from '../../../src/client/pages/commit-actions.ts'
@@ -141,5 +142,85 @@ describe('B2 compare items', () => {
       kind: 'overlay', overlay: { kind: 'compare', left: one.sha, right: two.sha, leftLabel: 'aaaaaaa', rightLabel: 'bbbbbbb' },
     })
     expect(commitActionEffect('compareSelected', one, null, [one])).toBeNull()
+  })
+})
+
+describe('B3a interactive rebase items', () => {
+  // Log newest first: head → c3 → c2 → c1 → root.
+  const sha = (letter: string): string => letter.repeat(40)
+  const log: CommitSummary[] = [
+    commit({ sha: sha('4'), shortSha: '4444444', parents: [sha('3')], subject: 'c4' }),
+    commit({ sha: sha('3'), shortSha: '3333333', parents: [sha('2')], subject: 'c3' }),
+    commit({ sha: sha('2'), shortSha: '2222222', parents: [sha('1')], subject: 'c2' }),
+    commit({ sha: sha('1'), shortSha: '1111111', parents: [], subject: 'root' }),
+  ]
+  const at = (letter: string): CommitSummary => log.find(entry => entry.sha === sha(letter))!
+  const contextFor = (letter: string, patch: { selection?: string[]; headSha?: string; rebase?: boolean; writable?: boolean } = {}) =>
+    commitActionContext(log, at(letter), {
+      writable: patch.writable ?? true,
+      operation: null,
+      selection: patch.selection ?? [sha(letter)],
+      rebase: patch.rebase ?? true,
+      headSha: patch.headSha ?? sha('4'),
+    })
+  const reasonOf = (items: ReturnType<typeof commitActions>, id: string): string | undefined => {
+    const reason = find(items, id)?.disabledReason
+    return reason === undefined ? undefined : render(zhT, reason)
+  }
+
+  it('adds the four rebase items after the P0 items when the flag is on, none when off', () => {
+    const items = commitActions(at('3'), contextFor('3'))
+    expect(items.map(item => item.id).slice(-4)).toEqual(['interactiveRebaseFrom', 'reword', 'drop', 'squashSelected'])
+    expect(find(items, 'drop')?.danger).toBe(true)
+    expect(commitActions(at('3'), contextFor('3', { rebase: false })).map(item => item.id)).not.toContain('reword')
+  })
+
+  it('enables the rebase items on the first-parent chain of HEAD, including the root', () => {
+    for (const letter of ['4', '3', '1']) {
+      const items = commitActions(at(letter), contextFor(letter))
+      expect(reasonOf(items, 'interactiveRebaseFrom'), letter).toBeUndefined()
+      expect(reasonOf(items, 'reword'), letter).toBeUndefined()
+      expect(reasonOf(items, 'drop'), letter).toBeUndefined()
+    }
+  })
+
+  it('disables them off the chain, on merge commits, read-only, and explains squash needs', () => {
+    const other = commitActions(at('3'), contextFor('3', { headSha: sha('2') }))
+    expect(reasonOf(other, 'reword')).toBe('这个提交不在当前分支上')
+    const merge = commitActions(commit({ sha: sha('3'), parents: [sha('2'), sha('9')] }), { ...contextFor('3') })
+    expect(reasonOf(merge, 'reword')).toBe('合并提交不能在这里变基')
+    expect(reasonOf(commitActions(at('3'), contextFor('3', { writable: false })), 'reword')).toBeDefined()
+    expect(reasonOf(commitActions(at('3'), contextFor('3')), 'squashSelected')).toBe('先选中当前分支上相邻的两个或更多提交')
+  })
+
+  it('treats a chain it cannot follow in the loaded log as possible (the Host decides)', () => {
+    const items = commitActions(at('3'), contextFor('3', { headSha: sha('f') }))
+    expect(reasonOf(items, 'reword')).toBeUndefined()
+  })
+
+  it('enables squash for adjacent selected commits on the chain only', () => {
+    expect(reasonOf(commitActions(at('3'), contextFor('3', { selection: [sha('3'), sha('2')] })), 'squashSelected')).toBeUndefined()
+    expect(reasonOf(commitActions(at('4'), contextFor('4', { selection: [sha('4'), sha('2')] })), 'squashSelected')).toBe('先选中当前分支上相邻的两个或更多提交')
+  })
+
+  it('runs a shortcut only when its item is present and enabled', () => {
+    expect(enabledAction(commitActions(at('3'), contextFor('3')), 'reword')).toBe(true)
+    expect(enabledAction(commitActions(at('3'), contextFor('3', { writable: false })), 'reword')).toBe(false)
+    expect(enabledAction(commitActions(at('3'), contextFor('3', { rebase: false })), 'reword')).toBe(false)
+  })
+
+  it('opens the rebase page from the parent, with a preset for the quick actions', () => {
+    expect(commitActionEffect('interactiveRebaseFrom', at('3'), null)).toEqual({ kind: 'overlay', overlay: { kind: 'interactiveRebase', base: sha('2') } })
+    expect(commitActionEffect('interactiveRebaseFrom', at('1'), null)).toEqual({ kind: 'overlay', overlay: { kind: 'interactiveRebase', base: null } })
+    expect(commitActionEffect('reword', at('3'), null)).toEqual({
+      kind: 'overlay', overlay: { kind: 'interactiveRebase', base: sha('2'), preset: { kind: 'reword', sha: sha('3') } },
+    })
+    expect(commitActionEffect('drop', at('3'), null)).toEqual({
+      kind: 'overlay', overlay: { kind: 'interactiveRebase', base: sha('2'), preset: { kind: 'drop', sha: sha('3') } },
+    })
+    // Selected newest first in the log: the base is the parent of the oldest selected commit.
+    expect(commitActionEffect('squashSelected', at('3'), null, [at('3'), at('2')])).toEqual({
+      kind: 'overlay', overlay: { kind: 'interactiveRebase', base: sha('1'), preset: { kind: 'squash', shas: [sha('3'), sha('2')] } },
+    })
   })
 })

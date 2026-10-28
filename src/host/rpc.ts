@@ -18,6 +18,8 @@ import type {
   BootstrapValue,
   CompareRequest,
   CompareValue,
+  RebasePlanRequest,
+  RebasePlanValue,
   FileHistoryRequest,
   FileHistoryValue,
   BranchesValue,
@@ -86,6 +88,8 @@ import { readCommit } from './git/commit.ts'
 import type { DiffQuery } from './git/diff.ts'
 import { readBlame } from './git/blame.ts'
 import { readCompare } from './git/compare.ts'
+import { interactiveRebaseOperation } from './git/interactive-rebase.ts'
+import { readRebasePlan } from './git/rebase-plan.ts'
 import { readFileHistory } from './git/file-history.ts'
 import { readDiff, validateRepoPath } from './git/diff.ts'
 import type { LogQuery } from './git/log.ts'
@@ -114,6 +118,7 @@ const STASH_FILES_CACHE_PREFIX = 'stashFiles'
 const BLAME_CACHE_PREFIX = 'blame'
 const FILE_HISTORY_CACHE_PREFIX = 'fileHistory'
 const COMPARE_CACHE_PREFIX = 'compare'
+const REBASE_PLAN_CACHE_PREFIX = 'rebasePlan'
 /** Longest accepted requestId (client-generated UUIDs are 36). */
 const MAX_REQUEST_ID_LENGTH = 100
 
@@ -152,6 +157,7 @@ const DEFAULT_WRITE_OPERATIONS: WriteOperations = {
   mergeDraftSave: mergeDraftSaveOperation,
   mergeApply: mergeApplyOperation,
   unresolveConflict: unresolveConflictOperation,
+  interactiveRebase: interactiveRebaseOperation,
 }
 
 /** Everything the handler needs; all session services are lazy and optional. */
@@ -429,6 +435,22 @@ export function createRpcRuntime(deps: RpcDeps): RpcRuntime {
             signal,
             `${COMPARE_CACHE_PREFIX}:${JSON.stringify([request.left, request.right, request.cursor ?? null, request.limit ?? null])}`,
             (root) => readCompare(deps.runner, root, request, { signal }),
+          )
+        }
+        case 'rebasePlan': {
+          parseSessionId(payload)
+          const base = (payload as { base?: unknown }).base
+          if (base !== null && (typeof base !== 'string' || base === '' || base.startsWith('-'))) {
+            throw invalidPayload('base must be null or a revision that does not look like an option', {})
+          }
+          const request = payload as RebasePlanRequest
+          return await handleCached<RebasePlanValue>(
+            deps,
+            runtime,
+            payload,
+            signal,
+            `${REBASE_PLAN_CACHE_PREFIX}:${JSON.stringify([request.base])}`,
+            async (root) => readRebasePlan(deps.runner, root, request, { signal, gitVersion: await runtime.gitVersion(root, signal) }),
           )
         }
         default:

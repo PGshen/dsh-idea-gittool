@@ -3,7 +3,7 @@
 // 没有传动作回调时（只读视图）仍只显示「查看控制台」与终端提示。
 import { useState } from 'react'
 import type { MouseEvent, ReactNode } from 'react'
-import type { OperationStep, RepoOperation, StatusValue } from '../../shared/protocol.ts'
+import type { OperationStep, RebaseStop, RepoOperation, StatusValue } from '../../shared/protocol.ts'
 import type { FocusTarget } from '../focus.ts'
 import { useT } from '../i18n.tsx'
 import { SKIPPABLE } from '../operations.ts'
@@ -38,6 +38,8 @@ export interface OperationBannerProps extends OperationBannerActions {
   branch?: string | null
   /** Rebase progress (`2/5`). */
   step?: OperationStep | null
+  /** B3a: why an interactive rebase stopped (edit / failed message write-back). */
+  rebaseStop?: RebaseStop | null
   /** A smart stash waits for the end of the operation. */
   pendingStash?: boolean
   /** An operation control is running: write buttons wait. */
@@ -48,9 +50,17 @@ export interface OperationBannerProps extends OperationBannerActions {
 }
 
 /** 从 StatusValue 推导横幅 props。 */
-export function bannerFromStatus(status: StatusValue | null): Pick<OperationBannerProps, 'operation' | 'conflicts'> & { branch: string | null; step: OperationStep | null } {
-  if (status === null) return { operation: null, conflicts: 0, branch: null, step: null }
-  return { operation: status.operation, conflicts: status.conflicts.length, branch: status.branch, step: status.operationStep ?? null }
+export function bannerFromStatus(
+  status: StatusValue | null,
+): Pick<OperationBannerProps, 'operation' | 'conflicts'> & { branch: string | null; step: OperationStep | null; rebaseStop: RebaseStop | null } {
+  if (status === null) return { operation: null, conflicts: 0, branch: null, step: null, rebaseStop: null }
+  return {
+    operation: status.operation,
+    conflicts: status.conflicts.length,
+    branch: status.branch,
+    step: status.operationStep ?? null,
+    rebaseStop: status.rebaseStop ?? null,
+  }
 }
 
 export interface OperationBannerViewProps extends OperationBannerProps {
@@ -131,6 +141,9 @@ export function OperationBannerView(props: OperationBannerViewProps): ReactNode 
           : null}
         {props.onOpenConsole === undefined ? null : <Button onClick={props.onOpenConsole}>{t('banner.openConsole')}</Button>}
       </div>
+      {operation === 'rebase' && (props.rebaseStop === 'edit' || props.rebaseStop === 'exec-failed')
+        ? <div className={css.note} data-rebase-stop={props.rebaseStop}>{t(`banner.rebaseStop.${props.rebaseStop}`)}</div>
+        : null}
       {props.pendingStash === true ? <div className={css.note} data-pending-stash>{t('banner.pendingStash')}</div> : null}
       {writable && props.confirmingAbort
         ? (

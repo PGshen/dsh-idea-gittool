@@ -286,3 +286,14 @@ describe('actionErrorText', () => {
     for (const code of codes) expect(zh).toHaveProperty([actionErrorText(error(code)).key])
   })
 })
+
+describe('actionErrorText / B3a interactive rebase reasons', () => {
+  it('maps the rebase validation reasons to their copy', () => {
+    for (const reason of ['not-permutation', 'leading-squash', 'missing-message', 'misplaced-message'] as const) {
+      expect(actionErrorText({ code: 'git/invalid-payload', message: 'x', details: { reason } }).key).toBe(`rebase.invalid.${reason}`)
+    }
+    for (const reason of ['not-ancestor', 'detached', 'empty'] as const) {
+      expect(actionErrorText({ code: 'git/invalid-payload', message: 'x', details: { reason } }).key).toBe(`rebase.blocked.${reason}`)
+    }
+  })
+})

@@ -15,7 +15,11 @@
 
 | 优先级 | 事项 | 来源 | 备注 |
 |---|---|---|---|
-| P1 | 按 B1 → B2 → B3 → B4 依次拆分计划（下一个：B3） | [设计决策 v0.2](../design/2026-10-25-产品设计决策-v0.2.md) §4 | 每个里程碑一份计划，执行前批准 |
+| P1 | B3a 交互式变基（从此处交互式变基、修改提交信息、丢弃/压缩提交） | [设计决策 v0.2](../design/2026-10-25-产品设计决策-v0.2.md) §4；B3 拆分由负责人 2026-10-27 选定 | 计划：[b3a-交互式变基](active/b3a-交互式变基.md)（执行中） |
+| P1 | B3b Diff 增强（并排、词级、忽略空白、折叠未改片段）+ 完整提交菜单（Fixup/Squash into、撤销提交、推送直到此提交、新建标签）+ 创建/应用补丁 | 同上 | B3a 之后 |
+| P1 | B3c Shelf（搁架）+ Changelist | 同上 | |
+| P1 | B3d Worktree + Remotes + 标签推送/删除、远程分支删除、设/取消 upstream（A3 推迟项） | 同上；[A3 计划](completed/a3-分支贮藏冲突.md)「不包含」 | Worktree 用 feature flag |
+| P1 | B4 打磨（a11y、性能、i18n、跨平台、安装/升级验证、文档；Git Blame 渲染器与设置页） | [设计决策 v0.2](../design/2026-10-25-产品设计决策-v0.2.md) §4 | B3 全部完成后 |
 | P2 | 筛选/仓库栏/分支右键菜单改用 ui-primitives `MenuSurface`/`Menu` | A1 走查，2026-10-25 | 当前按 [ADR 0006](../decisions/0006-浮层菜单材质例外.md) 手写菜单材质，迁移后废弃该 ADR |
 | P2 | 向 DSH 反馈：`workspace-write` 的 Seatbelt profile 放行 `DARWIN_USER_CACHE_DIR`，否则 osxkeychain 凭据助手在 confine 下不可用 | A2 T1 spike，2026-10-26 | 见 [references §13](../references/dsh-integration-feasibility.md)「写执行与沙箱」；只反馈不改 DSH 仓库，由负责人决定是否提 |
 | P2 | 分支树改为单一 Tab 停靠点（roving tabindex：选中行或首行为 0，其余 -1）；菜单 ↑↓ 是否停在不可用项上以便读屏听到原因，与负责人确认 | A3 I-1 评审，2026-10-26 | 当前每个叶子行各占一个 Tab 停靠点；↑↓ 跳过不可用项 |
@@ -37,6 +41,8 @@
 | P2 | `answerLeave('save')` 保存失败、或 `closeIf` 关窗时，被拦住的「未提交改动」询问（`dirtyWorktree`）一直挂起 | B1 终审，2026-10-27 | 保存失败时保留询问可再答；`closeIf` 时按取消回应 |
 | P2 | 补测试：continue 失败后的草稿、忙碌时 dispatch 被忽略、conflict/cancelled 结果文案、`dirtyWorktree` → `cancelStash` 接线、`git-client` 新端点的请求体断言 | B1 终审，2026-10-27 | B1 终审列出的缺口 |
 | P2 | A1–A3 样式引用了 DSH 中不存在的变量（--dsw-alias-state-success/warn、--dsw-font-mono、--dsw-alias-interactive-bg-selected），状态色/等宽字体实际未生效；需负责人确认后全局替换并把静态检查扩到全部样式 | B1 验收演示，2026-10-27 | B1 的 `MergeWindow*.module.css`、`ConflictsPage.module.css` 已替换，静态检查 `test/client/pages/css-tokens.test.ts` 目前只覆盖这两类文件（`GUARDED`） |
+| P2 | B3a 终审 Minor（5 条）：`--root` 下首条 drop 的提交上若有分支，`--update-refs` 会把它指到 git 的空根提交；squash 组信息清空时客户端不拦、Host 报通用错误；preset 的提交不在计划里（链未加载完）时静默打开无关列表；行动作变化后仍保留之前输入的信息；「压缩所选提交」未检查合并提交 | B3a 终审，2026-10-27 | 细节见 [b3a 计划](active/b3a-交互式变基.md)「决策记录」终审条目 |
+| P2 | 交互式变基等改写历史的操作之后，日志详情区仍显示改写前选中的旧提交（选中项已不在日志里）；变基列表里的分支名标签与背景对比弱 | B3a L4，2026-10-27 | 前者是 A1 的既有行为：选中 sha 不在新日志里时应清空或跟随 HEAD |
 | P2 | B2 终审 Minor（10 条）：Blame 未提交行双击应显示 HEAD→工作区（含已暂存）；修订版 Blame「文件不存在」文案区分修订并给「文件历史」按钮；文件历史第 2 页起合并条目路径退回新名（游标带当前路径）；文档头部 bootstrap 未到时误报「不在仓库」；`openTab` 失败后意图残留在队列；分支比较传 `entry.ref` 而非 `entry.name`（同名标签）；被该提交删除的文件禁用「与工作区比较」；窄头部 `⋯` 点动作/外部/Esc 收起；`git.blame` 页无返回时不吞 Esc；GitWorkbench 卸载时 `historyStore.close()`；（L4）干净文件的状态位「·」提示仍是 M0 的「Git 状态待接入」，应改为「没有未提交的改动」 | B2 终审，2026-10-27 | 细节见 [b2 计划](completed/b2-历史与Blame.md)「决策记录」终审条目 |
 
 ## 已完成

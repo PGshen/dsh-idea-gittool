@@ -5,6 +5,7 @@ import { useSyncExternalStore } from 'react'
 import type {
   CommitResultValue,
   GitError,
+  RebaseStop,
   RepoOperation,
   RpcResult,
   StatusValue,
@@ -188,7 +189,7 @@ export function commitGate(input: CommitGateInput, t: Translate): CommitGate {
   const mode: CommitMode = amend && input.checkedCount === 0 ? 'amend-message' : 'files'
   const submitLabel = !amend ? t('commit.submit') : mode === 'amend-message' ? t('commit.submitAmendMessage') : t('commit.submitAmend')
   let blockReason = writeBlockReason(input, t)
-  if (blockReason === null && status !== null && status.operation !== null) {
+  if (blockReason === null && status !== null && status.operation !== null && !(status.operation === 'rebase' && status.rebaseStop === 'edit')) {
     blockReason = t('commit.reasonOperation', { operation: t(OPERATION_KEY[status.operation]) })
   }
   const blocked = blockReason !== null
@@ -225,7 +226,9 @@ export function commitGate(input: CommitGateInput, t: Translate): CommitGate {
  */
 export type CommitPageMode = 'normal' | 'merge' | 'sequencer' | 'rebase'
 
-export function commitPageModeOf(operation: RepoOperation): CommitPageMode {
+export function commitPageModeOf(operation: RepoOperation, rebaseStop?: RebaseStop): CommitPageMode {
+  // B3a: stopped at an `edit`, the user commits / amends as usual; Continue stays in the banner.
+  if (operation === 'rebase' && rebaseStop === 'edit') return 'normal'
   switch (operation) {
     case 'merge':
       return 'merge'

@@ -74,6 +74,7 @@ import { CommitDetail } from './CommitDetail.tsx'
 import { ActionMenu } from './ActionMenu.tsx'
 import { BlameOverlay } from './BlameView.tsx'
 import { ComparePage } from './ComparePage.tsx'
+import { InteractiveRebasePage, afterInteractiveRebase } from './InteractiveRebasePage.tsx'
 import { DiffViewer } from './DiffViewer.tsx'
 import { FileHistoryPage } from './FileHistoryPage.tsx'
 import { fileActions } from './file-actions.ts'
@@ -529,7 +530,7 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
   }, [autoOpen, currentRoute, openOverlay, operationValue])
   const conflictsOpen = overlay?.kind === 'conflicts'
   useEffect(() => { if (conflictsOpen) autoOpen.noteOpened() }, [autoOpen, conflictsOpen])
-  const pageMode = commitPageModeOf(operation)
+  const pageMode = commitPageModeOf(operation, status?.rebaseStop)
   const operationKey = operationValue === null ? null : operationIdentity(operationValue)
   const mergeMsg = mergePrefill(operationValue)
   useEffect(() => {
@@ -647,6 +648,7 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
 
   // B1 three-pane merge window (feature flag `mergeWindow`; off = A3 conflict list unchanged).
   const mergeEnabled = useMemo(() => isFeatureEnabled('mergeWindow'), [])
+  const rebaseEnabled = useMemo(() => isFeatureEnabled('interactiveRebase'), [])
   const mergeBlock = useRef<LocalizedText | null>(null)
   const overlayOpen = overlays.open
   const review = useMemo(() => createMergeReviewWiring({
@@ -828,7 +830,7 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
             onSelect={onSelect}
             onOpenCommit={onOpenCommit}
             renderDetail={renderDetail}
-            commitMenu={{ writable: branchContext.writable, operation: branchContext.operation, onAction: runCommitAction }}
+            commitMenu={{ writable: branchContext.writable, operation: branchContext.operation, onAction: runCommitAction, rebase: rebaseEnabled, ...(status?.head === undefined || status.head === null ? {} : { headSha: status.head }) }}
             {...(wide ? { sidebar: branchPanel } : {})}
           />
         ) : page === 'branches' ? (
@@ -968,6 +970,23 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
             loadDiff={(request, signal) => client.diff(request, signal)}
             onBack={() => { overlays.close() }}
             onShowInLog={showCommitInLog}
+          />
+        ) : null}
+        {overlay?.kind === 'interactiveRebase' ? (
+          <InteractiveRebasePage
+            sessionId={sessionId}
+            base={overlay.base}
+            preset={overlay.preset}
+            load={(request, signal) => client.rebasePlan(request, signal)}
+            actions={actions}
+            onBack={() => { overlays.close() }}
+            onDone={(result, trigger) => {
+              afterInteractiveRebase(result, {
+                openConflicts: () => { overlays.open({ kind: 'conflicts' }, trigger) },
+                close: () => { overlays.closeIf('interactiveRebase') },
+                refresh: () => { void onRefresh() },
+              })
+            }}
           />
         ) : null}
         {push === null || value.repoRoot === null ? null : (

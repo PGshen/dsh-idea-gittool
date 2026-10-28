@@ -1,0 +1,219 @@
+/* 交互式变基覆盖页（设计 §11）：铺满 Git tab 内容区；上列表，下信息编辑、预览与操作。 */
+.root {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: var(--dsw-alias-bg-base);
+  color: var(--dsw-alias-label-primary);
+  font-size: 12px;
+  outline: none;
+}
+
+.header,
+.banner {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+  padding: 4px 8px;
+  border-bottom: 0.5px solid var(--dsw-alias-border-l2);
+}
+
+.banner {
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-secondary);
+}
+
+.title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.state {
+  padding: 16px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.hint {
+  margin: 0;
+  padding: 4px 8px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.command {
+  display: block;
+  margin: 4px 0;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: var(--dsw-alias-bg-layer-1);
+  user-select: all;
+}
+
+.list {
+  flex: 1 1 auto;
+  min-height: 80px;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+  outline: none;
+}
+
+.row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  min-width: 0;
+  height: 28px;
+  padding: 0 8px;
+  cursor: default;
+}
+
+.row:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.selected,
+.selected:hover {
+  background: var(--dsw-alias-interactive-bg-active);
+}
+
+.list:focus-visible .selected {
+  box-shadow: inset 2px 0 0 var(--dsw-alias-brand-primary);
+}
+
+.dropped .subject,
+.dropped .sha {
+  color: var(--dsw-alias-label-tertiary);
+  text-decoration: line-through;
+}
+
+.folded {
+  padding-left: 20px;
+}
+
+.handle {
+  flex: 0 0 auto;
+  color: var(--dsw-alias-label-tertiary);
+  cursor: grab;
+}
+
+.action {
+  flex: 0 0 auto;
+  max-width: 160px;
+  font-size: 12px;
+}
+
+.sha {
+  flex: 0 0 auto;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.subject {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chip,
+.pushed {
+  flex: 0 0 auto;
+  padding: 0 6px;
+  border-radius: 4px;
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-secondary);
+  white-space: nowrap;
+}
+
+.pushed {
+  color: var(--dsw-alias-state-warn-primary);
+}
+
+.meta {
+  flex: 0 0 auto;
+  color: var(--dsw-alias-label-tertiary);
+  white-space: nowrap;
+}
+
+.message {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 8px;
+  border-top: 0.5px solid var(--dsw-alias-border-l2);
+}
+
+.messageLabel {
+  color: var(--dsw-alias-label-secondary);
+}
+
+.textarea {
+  resize: vertical;
+  font: inherit;
+}
+
+.preview {
+  flex: 0 1 auto;
+  max-height: 30%;
+  margin: 0;
+  padding: 6px 8px;
+  overflow: auto;
+  border-top: 0.5px solid var(--dsw-alias-border-l2);
+  background: var(--dsw-alias-bg-layer-1);
+  white-space: pre;
+}
+
+.footer {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px 8px;
+  border-top: 0.5px solid var(--dsw-alias-border-l2);
+}
+
+.warning {
+  color: var(--dsw-alias-state-warn-primary);
+}
+
+.warning p {
+  margin: 0 0 4px;
+}
+
+.check {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  color: var(--dsw-alias-label-primary);
+}
+
+.error {
+  margin: 0;
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.reason {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--dsw-alias-label-tertiary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

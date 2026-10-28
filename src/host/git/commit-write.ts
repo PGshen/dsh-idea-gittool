@@ -10,7 +10,7 @@ import type { AddToVcsValue, CommitResultValue } from '../../shared/protocol.ts'
 import type { GitRunResult, WriteContext, WriteOperation } from '../git-executor.ts'
 import { GIT_BASE_ARGV, GitCommandFailure } from '../git-executor.ts'
 import {
-  assertNoOperation,
+  assertNoOperationUnlessEditStop,
   hasHook,
   optionalBoolean,
   outputSummary,
@@ -125,7 +125,7 @@ export const commitFilesOperation: WriteOperation<CommitFilesInput, Omit<CommitR
   },
 
   async run(ctx, input) {
-    await assertNoOperation(ctx)
+    await assertNoOperationUnlessEditStop(ctx)
     const paths = await withRenamePartners(ctx, input.paths)
     const states = await readPathStates(ctx, paths)
     const missing = paths.filter((path) => !states.has(path))
@@ -165,7 +165,7 @@ export const amendMessageOperation: WriteOperation<AmendMessageInput, Omit<Commi
   },
 
   async run(ctx, input) {
-    await assertNoOperation(ctx)
+    await assertNoOperationUnlessEditStop(ctx)
     const staged = await ctx.git([...GIT_BASE_ARGV, 'diff', '--cached', '--quiet', '--no-ext-diff'], { mode: 'read' })
     if (staged.exitCode === 1) {
       throw new GitCommandFailure(

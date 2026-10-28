@@ -57,9 +57,9 @@ describe('OperationBanner', () => {
 
 describe('bannerFromStatus', () => {
   it('从 StatusValue 取操作、冲突数与分支', () => {
-    expect(bannerFromStatus(null)).toEqual({ operation: null, conflicts: 0, branch: null, step: null })
+    expect(bannerFromStatus(null)).toEqual({ operation: null, conflicts: 0, branch: null, step: null, rebaseStop: null })
     expect(bannerFromStatus(statusFixture({ operation: 'merge', conflicts: [{ path: 'a', status: 'U' }] })))
-      .toEqual({ operation: 'merge', conflicts: 1, branch: 'main', step: null })
+      .toEqual({ operation: 'merge', conflicts: 1, branch: 'main', step: null, rebaseStop: null })
   })
 })
 
@@ -82,6 +82,16 @@ describe('OperationBanner actions (A3 T9)', () => {
     expect(html).toContain('data-banner-action="abort"')
     expect(html.includes('data-banner-action="skip"')).toBe(skip)
     expect(html).not.toContain('请在终端完成或放弃该操作')
+  })
+
+  it('explains why an interactive rebase stopped (B3a)', () => {
+    const edit = view({ operation: 'rebase', rebaseStop: 'edit' })
+    expect(edit).toContain('data-rebase-stop="edit"')
+    expect(edit).toContain('已在 edit 处停下')
+    const exec = view({ operation: 'rebase', rebaseStop: 'exec-failed', onOpenConsole: noop })
+    expect(exec).toContain('写回提交信息失败')
+    expect(view({ operation: 'rebase' })).not.toContain('data-rebase-stop')
+    expect(bannerFromStatus(statusFixture({ operation: 'rebase', rebaseStop: 'edit' })).rebaseStop).toBe('edit')
   })
 
   it('bisect has no write actions (only the console)', () => {

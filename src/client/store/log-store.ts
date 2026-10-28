@@ -63,7 +63,7 @@ export const DEFAULT_LOG_FILTER: LogFilterState = {
 }
 
 /** 键盘需要交给页面处理的动作（表格不自己开 diff / 复制）。 */
-export type LogAction = 'open-diff' | 'clear-search' | 'copy-hash' | 'select-all'
+export type LogAction = 'open-diff' | 'clear-search' | 'copy-hash' | 'select-all' | 'reword'
 
 export interface LogKeyInput {
   /** `KeyboardEvent.key`（`a` / `ArrowDown` …）。 */
@@ -571,6 +571,9 @@ export function createLogStore(options: LogStoreOptions): LogStore {
           return navigate('parent')
         case 'Enter':
           return state.activeIndex < 0 ? { handled: false } : { handled: true, action: 'open-diff' }
+        case 'F2':
+          // B3a: edit the active commit's message (the page checks the menu item is available).
+          return state.activeIndex < 0 ? { handled: false } : { handled: true, action: 'reword' }
         case 'Escape':
           if (state.query.length > 0 || state.filter.query.length > 0) {
             clearSearchNow()

@@ -11,7 +11,7 @@ import { redactCredentials, truncateConsoleOutput } from '../console.ts'
 import type { GitRunResult, GitRunner, WriteContext } from '../git-executor.ts'
 import { GIT_BASE_ARGV, GitCommandFailure, failureFromExit } from '../git-executor.ts'
 import { validateRepoPath } from './diff.ts'
-import { detectOperation } from './status.ts'
+import { detectOperation, detectOperationIn, readRebaseStop, resolveGitDir } from './status.ts'
 
 /** A full object id (SHA-1 or SHA-256 hex). */
 export const OBJECT_ID_PATTERN = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/
@@ -177,6 +177,20 @@ export async function assertNoOperation(ctx: WriteContext): Promise<void> {
   if (operation !== null && operation !== 'bisect') {
     throw new GitCommandFailure('git/operation-in-progress', `a ${operation} is in progress`, { operation })
   }
+}
+
+/**
+ * {@link assertNoOperation}, except an interactive rebase stopped at an `edit` (B3a): there the user is
+ * meant to commit or amend before continuing, exactly like on a normal branch tip (HEAD is detached).
+ */
+export async function assertNoOperationUnlessEditStop(ctx: WriteContext): Promise<void> {
+  const gitDir = await resolveGitDir(readRunner(ctx), ctx.repoRoot, ctx.signal)
+  if (gitDir !== undefined && (await detectOperationIn(gitDir)) === 'rebase') {
+    const unmerged = await ctx.git([...GIT_BASE_ARGV, 'ls-files', '-u', '-z'], { mode: 'read' })
+    const conflicts = unmerged.exitCode === 0 && unmerged.stdout !== '' ? 1 : 0
+    if ((await readRebaseStop(gitDir, conflicts)) === 'edit') return
+  }
+  await assertNoOperation(ctx)
 }
 
 /** Whether any of the named hooks exists and is executable (honors `core.hooksPath`). */

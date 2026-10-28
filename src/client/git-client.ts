@@ -3,6 +3,8 @@
 // 形状错误都收敛成结构化的 GitError，调用方不需要 try/catch。
 import { RPC_CHANNEL, isRpcResult } from '../shared/protocol.ts'
 import type {
+  RebasePlanRequest,
+  RebasePlanValue,
   BlameRequest,
   BlameValue,
   CompareRequest,
@@ -108,6 +110,9 @@ export interface GitClient {
   mergeDraftSave: WriteMethod<'mergeDraftSave'>
   mergeApply: WriteMethod<'mergeApply'>
   unresolveConflict: WriteMethod<'unresolveConflict'>
+  // B3a interactive rebase: the plan feeds the rebase page; the rebase itself goes through the action store.
+  rebasePlan(request: RebasePlanRequest, signal?: AbortSignal): Promise<RpcResult<RebasePlanValue>>
+  interactiveRebase: WriteMethod<'interactiveRebase'>
 }
 
 /** Compile-time check: GitClient covers every write endpoint with the protocol's types. */
@@ -214,5 +219,7 @@ export function createGitClient(_ctx: unknown): GitClient {
     mergeDraftSave: write('mergeDraftSave'),
     mergeApply: write('mergeApply'),
     unresolveConflict: write('unresolveConflict'),
+    rebasePlan: (request, signal) => call<RebasePlanValue>('rebasePlan', request, signal),
+    interactiveRebase: write('interactiveRebase'),
   }
 }

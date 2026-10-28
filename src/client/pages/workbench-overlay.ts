@@ -11,6 +11,7 @@ import type {
   PushRejectedDetails,
 } from '../../shared/protocol.ts'
 import { activeFocusTarget, restoreFocus } from '../focus.ts'
+import type { RebasePreset } from '../rebase/rebase-model.ts'
 import type { FocusTarget } from '../focus.ts'
 import type { ActionStore, ActionStoreDeps } from '../store/action-store.ts'
 import type { RollbackTarget } from '../store/push-store.ts'
@@ -53,6 +54,8 @@ export type WorkbenchOverlay =
   | { kind: 'fileHistory'; path: string; rev?: string; back?: BackOverlay }
   /** B2 compare: commits in `left` but not in `right`, plus changed files; `right` null = worktree. */
   | { kind: 'compare'; left: string; right: string | null; leftLabel: string; rightLabel: string | null; back?: BackOverlay }
+  /** B3a interactive rebase of `base..HEAD` (`base` null = from the root); `preset` = a log quick action. */
+  | { kind: 'interactiveRebase'; base: string | null; preset?: RebasePreset }
 
 /** An overlay "← back" can return to; one level only, so it never carries its own `back`. */
 export type BackOverlay = DistributiveOmit<WorkbenchOverlay, 'back'>
@@ -97,6 +100,7 @@ export const OVERLAY_LEVEL: Record<WorkbenchOverlayKind, 1 | 2> = {
   blame: 1,
   fileHistory: 1,
   compare: 1,
+  interactiveRebase: 1,
 }
 
 export interface OverlayRoute {

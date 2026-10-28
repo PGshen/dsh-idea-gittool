@@ -9,6 +9,9 @@ import {
   LOG_PAGE_MAX_LIMIT,
   MERGE_CHUNK_STATES,
   MERGE_DRAFT_VERSION,
+  REBASE_ACTIONS,
+  REBASE_PLAN_MAX_COMMITS,
+  REBASE_STOPS,
   RPC_CHANNEL,
   RPC_ENDPOINTS,
   WRITE_ENDPOINTS,
@@ -55,6 +58,20 @@ describe('B2 历史端点', () => {
       expect([...RPC_ENDPOINTS], endpoint).toContain(endpoint)
       expect(isWriteEndpoint(endpoint), endpoint).toBe(false)
     }
+  })
+})
+
+describe('B3a 交互式变基端点（T1 契约冻结）', () => {
+  it('rebasePlan 是读端点，interactiveRebase 是写端点', () => {
+    expect([...RPC_ENDPOINTS]).toEqual(expect.arrayContaining(['rebasePlan', 'interactiveRebase']))
+    expect(isWriteEndpoint('rebasePlan')).toBe(false)
+    expect(isWriteEndpoint('interactiveRebase')).toBe(true)
+  })
+
+  it('变基动作与停下原因的取值固定', () => {
+    expect([...REBASE_ACTIONS]).toEqual(['pick', 'reword', 'edit', 'squash', 'fixup', 'drop'])
+    expect([...REBASE_STOPS]).toEqual(['conflict', 'edit', 'exec-failed'])
+    expect(REBASE_PLAN_MAX_COMMITS).toBe(500)
   })
 })
 

@@ -64,6 +64,9 @@ export const RPC_ENDPOINTS = [
   'blame',
   'fileHistory',
   'compare',
+  // B3a 交互式变基（T1 登记；T2 读、T3 写）
+  'rebasePlan',
+  'interactiveRebase',
 ] as const
 
 export type RpcEndpoint = (typeof RPC_ENDPOINTS)[number]
@@ -101,6 +104,7 @@ export const WRITE_ENDPOINTS = [
   'mergeDraftSave',
   'mergeApply',
   'unresolveConflict',
+  'interactiveRebase',
 ] as const satisfies readonly RpcEndpoint[]
 
 export type WriteEndpoint = (typeof WRITE_ENDPOINTS)[number]
@@ -260,6 +264,8 @@ export interface StatusValue {
   stashCount?: number
   /** 变基进度（A3 T2，横幅显示 `2/5`）；只在变基进行中且能读到进度时出现。 */
   operationStep?: OperationStep
+  /** B3a: why an interactive rebase stopped (same reader as `operationState.rebaseStop`). */
+  rebaseStop?: RebaseStop
   /** 读取该值时的仓库 version（M0 T5b 追加）；客户端用它丢弃过期响应。 */
   version?: number
 }
@@ -585,6 +591,77 @@ export interface CompareValue {
   version?: number
 }
 
+// --- B3a 交互式变基（T1 冻结） -------------------------------------------------
+
+/** 交互式变基的动作（不暴露 exec/break/label 等 todo 命令）。 */
+export const REBASE_ACTIONS = ['pick', 'reword', 'edit', 'squash', 'fixup', 'drop'] as const
+export type RebaseAction = (typeof REBASE_ACTIONS)[number]
+
+/**
+ * 变基中途停下的原因（`operationState.rebaseStop`，b3a T1 spike，references/git-behavior §4）：
+ * `conflict` 索引有未解决冲突；`edit` 停在 `edit` 行（git 退出 0）；`exec-failed` 写回提交信息的 exec 行失败。
+ */
+export const REBASE_STOPS = ['conflict', 'edit', 'exec-failed'] as const
+export type RebaseStop = (typeof REBASE_STOPS)[number]
+
+/** `rebasePlan` 最多列出的提交数；超过返回 `blocked: 'too-many'`。 */
+export const REBASE_PLAN_MAX_COMMITS = 500
+
+/** 计划中的一条提交：完整信息、是否已推送到任一远程、指向它的其他本地分支（`--update-refs` 用）。 */
+export interface RebasePlanCommit extends CommitSummary {
+  message: string
+  pushed: boolean
+  /** 指向该提交的本地分支短名（不含当前分支）。 */
+  branches: string[]
+}
+
+/**
+ * 不能交互式变基的原因：范围内有合并提交、起点不是 HEAD 的祖先、detached HEAD、
+ * 超过 {@link REBASE_PLAN_MAX_COMMITS}、范围为空（起点就是 HEAD）。
+ */
+export type RebaseBlockedReason = 'merge-commit' | 'not-ancestor' | 'detached' | 'too-many' | 'empty'
+
+/** `rebasePlan`：`base` 为 null 时从根开始（`--root`）。 */
+export interface RebasePlanRequest extends RpcRequest {
+  base: string | null
+}
+
+export interface RebasePlanValue {
+  /** 解析后的起点 sha；从根开始时为 null。 */
+  base: string | null
+  head: string
+  branch: string
+  /** 旧 → 新（first-parent）；`blocked` 时为空。 */
+  commits: RebasePlanCommit[]
+  blocked?: RebaseBlockedReason
+  /** git ≥ 2.38，`--update-refs` 可用。 */
+  supportsUpdateRefs: boolean
+  version?: number
+}
+
+/** 一条 todo 条目；`message` 对 reword 必填，对 squash 组的首条表示整组的最终信息。 */
+export interface RebaseEntry {
+  sha: string
+  action: RebaseAction
+  message?: string
+}
+
+/** `interactiveRebase`：条目必须恰好是计划提交的一个排列；HEAD 不等于 `head` 时返回 `git/stale-target`。 */
+export interface InteractiveRebaseRequest extends SmartWriteRequest {
+  base: string | null
+  head: string
+  entries: RebaseEntry[]
+  updateRefs?: boolean
+}
+
+export interface InteractiveRebaseValue extends SmartStashOutcome {
+  head: string
+  /** true：变基已结束；false：停在 `stop`，由操作横幅继续/跳过/中止。 */
+  completed: boolean
+  stop?: RebaseStop
+  version?: number
+}
+
 /** 一次 git 调用的控制台记录（Host 侧埋点，设计 §12）。 */
 export interface ConsoleRecord {
   /** ISO 8601。 */
@@ -898,6 +975,8 @@ export interface OperationStateValue {
   resolved: string[]
   /** 有一份待操作结束后恢复的智能贮藏（`<gitDir>/dsh-git/pending-stash.json`）。 */
   pendingStash: boolean
+  /** B3a：变基停下的原因（仅 `operation === 'rebase'` 且能判定时）。 */
+  rebaseStop?: RebaseStop
   version?: number
 }
 
@@ -1445,6 +1524,8 @@ export interface RpcEndpointTypes {
   blame: { request: BlameRequest; value: BlameValue }
   fileHistory: { request: FileHistoryRequest; value: FileHistoryValue }
   compare: { request: CompareRequest; value: CompareValue }
+  rebasePlan: { request: RebasePlanRequest; value: RebasePlanValue }
+  interactiveRebase: { request: InteractiveRebaseRequest; value: InteractiveRebaseValue }
 }
 
 /** 编译期检查：{@link RpcEndpointTypes} 恰好覆盖 {@link RpcEndpoint}，写端点请求都带 requestId。 */

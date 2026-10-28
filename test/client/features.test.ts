@@ -56,11 +56,11 @@ describe('isFeatureEnabled', () => {
 })
 
 describe('interactiveRebase flag (B3a)', () => {
-  it('defaults to off until owner acceptance and uses the documented storage key', () => {
-    expect(INTERACTIVE_REBASE_DEFAULT).toBe(false)
+  it('defaults to on since owner acceptance (2026-10-28) and uses the documented storage key', () => {
+    expect(INTERACTIVE_REBASE_DEFAULT).toBe(true)
     expect(INTERACTIVE_REBASE_STORAGE_KEY).toBe('dsh-git.feature.interactiveRebase')
     vi.stubGlobal('localStorage', storage({}))
-    expect(isFeatureEnabled('interactiveRebase')).toBe(false)
+    expect(isFeatureEnabled('interactiveRebase')).toBe(true)
   })
 
   it("'1' turns it on and '0' turns it off, independent of mergeWindow", () => {

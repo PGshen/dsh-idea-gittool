@@ -62,10 +62,12 @@ describe('B3d pages', () => {
 })
 
 describe('worktrees flag', () => {
-  it('defaults to off and uses its own key', () => {
-    expect(WORKTREES_DEFAULT).toBe(false)
+  it('defaults to on since owner acceptance (2026-10-28), and its own key can turn it off', () => {
+    expect(WORKTREES_DEFAULT).toBe(true)
     expect(WORKTREES_STORAGE_KEY).toBe('dsh-git.feature.worktrees')
-    vi.stubGlobal('localStorage', { getItem: (key: string) => (key === WORKTREES_STORAGE_KEY ? '1' : null) })
+    vi.stubGlobal('localStorage', { getItem: () => null })
     expect(isFeatureEnabled('worktrees')).toBe(true)
+    vi.stubGlobal('localStorage', { getItem: (key: string) => (key === WORKTREES_STORAGE_KEY ? '0' : null) })
+    expect(isFeatureEnabled('worktrees')).toBe(false)
   })
 })

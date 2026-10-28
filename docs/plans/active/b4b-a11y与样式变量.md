@@ -205,7 +205,7 @@ export function moveFocus(rows: readonly TreeRow[], currentId: string, key: 'Arr
 
 ## 下一步
 
-- 等负责人验收：演示 L4（隔离 DSH，见 runbook「对比度测量」与本计划验证记录），补走贮藏恢复与合并窗口的纯键盘流程；确认终审 Minor ②（停靠点优先级）。验收后按 SOP §7 收尾：计划移入 completed、TODO 移到「已完成」并登记终审 Minor、rebase 到 main 后 `make check`、`--no-ff` 合并。
+- 等负责人验收（验收走查的 3 处键盘问题已修并复验）；确认终审 Minor ②（停靠点优先级）。验收后按 SOP §7 收尾：计划移入 completed、TODO 移到「已完成」并登记终审 Minor、rebase 到 main 后 `make check`、`--no-ff` 合并。
 
 ## 决策记录
 
@@ -259,7 +259,7 @@ export function moveFocus(rows: readonly TreeRow[], currentId: string, key: 'Arr
 - 验收演示补走（2026-10-28，纯键盘）：
   - **贮藏恢复**：页签 ← → 切到「贮藏」并回车 → Tab 进入列表 → 「创建贮藏…」弹层 Esc 关闭后焦点回到按钮 → 贮藏行 Enter 预览、Esc 返回（顺带选中）→ Shift+Tab 到「应用」回车，`git status` 确认 f2.txt 已恢复（`.evidence/b4b/stash-apply-focus.png`、`stash-applied.jpg`）。
   - **合并窗口**：终端 `git merge conflict-a` 制造冲突 → 冲突列表自动打开且焦点在内 → Tab 到 f3.txt 回车打开合并窗口 → F7 → 左栏「»」采用 main、右栏「×」忽略 conflict-a → 「已解决 1/1」→ Tab 到「应用更改」回车 → 回到冲突列表且焦点在内，f3.txt 为 main side、无 UU（`merge-window-open.jpg`、`merge-accept-left.jpg`、`merge-applied.jpg`）。
-  - **走查发现（A3/B1 既有行为，B4b 未改动，待负责人决定是否在本计划修）**：① 贮藏行获得焦点不会选中，空格无效，↑↓ 只选相邻项——只有一个贮藏时只能靠「Enter 预览再 Esc」才能选中，「应用/弹出/删除」未选中时禁用而被 Tab 跳过；② 贮藏「应用」成功后焦点落到 `body`；③ 合并窗口 gutter 的「» « ×」执行后按钮重渲染，焦点落到 `body`，此时 F7/Ctrl+Z 无效，需再按一次 Tab 才回到编辑器。
+  - **走查发现（A3/B1 既有行为；2026-10-28 负责人决定在 B4b 修，已修，见下）**：① 贮藏行获得焦点不会选中，空格无效，↑↓ 只选相邻项——只有一个贮藏时只能靠「Enter 预览再 Esc」才能选中，「应用/弹出/删除」未选中时禁用而被 Tab 跳过；② 贮藏「应用」成功后焦点落到 `body`；③ 合并窗口 gutter 的「» « ×」执行后按钮重渲染，焦点落到 `body`，此时 F7/Ctrl+Z 无效，需再按一次 Tab 才回到编辑器。
 
 ### AC3–AC6 DOM 测试
 
@@ -267,6 +267,13 @@ export function moveFocus(rows: readonly TreeRow[], currentId: string, key: 'Arr
 - AC4：`action-menu.dom.test.tsx`（↓↑ 环绕经过不可用项、Home/End、名称/描述分离、不可用项点击无效、Esc；仓库栏 ⋯ 打开即聚焦、Tab 关闭还焦；合并窗口菜单聚焦、外部点击关闭、点开关不重开、Esc 还焦）；L4 读到 `aria-describedby` 文本「这个分支没有 upstream」。
 - AC5：`overlay-focus.dom.test.tsx`（设置弹层、未提交改动询问：进入焦点 + Esc + Tab 圈定；覆盖层控制器还焦，含覆盖层替换）、`log-keyboard.dom.test.tsx`（提交右键菜单 Shift+F10 打开、Esc 后焦点回到日志表）、`repo-bar-menu.dom.test.tsx`。Blame/合并窗口沿用已有控制器单测（见决策记录 T6）。
 - AC6：`accessible-names.dom.test.tsx`（9 个界面 × 中英 + 反例），违例清单为空；`document-actions.test.tsx` 新增干净文件/仓库外两条。
+
+### 验收走查发现的修复（2026-10-28，负责人要求在 B4b 内修）
+
+- ① 贮藏行：焦点进入即选中（单选 listbox，选中项再获得焦点不重复加载），空格选中。② 贮藏写操作结束时若焦点在 `body`，还给原按钮，按钮不可用则给选中行/首行（`useRefocusAfterBusy`）。DOM 测试 `stash-keyboard.dom.test.tsx` 5 条，先红后绿（a0390e7）。
+- ③ 合并窗口 gutter：键盘按下 » « × 后，下一帧若焦点丢失，移到同一窗格下一块的同类按钮（环绕），没有则移到 Result 编辑器；鼠标点击不受影响（mousedown 本就保留编辑器焦点）。`refocusAfterGutter` 的 DOM 测试 `merge-gutter-focus.dom.test.tsx` 3 条，先红后绿；接线在 `MergeWindow` 的模型下发 effect 里，effect 重跑（跳到下一块）时请求保留到帧回调执行。
+- L4 复验（隔离 DSH 3082）：Tab 进入贮藏列表即选中 → 「应用」回车后焦点仍在「应用」；两块冲突的 two.txt：采用第 1 块后焦点到第 2 块的「»」，第 2 块后焦点到 Result，Cmd+Z 立即生效（`.evidence/b4b/merge-gutter-refocus.png`）。
+- 全量 `make check`：134 文件 / 2230 测试全部通过。
 
 ### AC9 关口与时长
 

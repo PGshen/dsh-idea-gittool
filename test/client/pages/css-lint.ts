@@ -10,12 +10,44 @@ export const TOKEN_HINTS: Readonly<Record<string, string>> = {
   '--dsw-alias-interactive-bg-selected': '--dsw-alias-interactive-bg-active',
 }
 
+export interface FocusExemption { file: string; selector: string; reason: string }
+
+/**
+ * Selectors allowed to remove the outline: each has another focus indicator, or is a container
+ * that only receives programmatic focus (`tabIndex={-1}`). Everything else keeps DSH's global
+ * `:focus-visible` ring (ui-theme `focus.css`: colour + 2px width, hidden for pointer input).
+ */
+export const FOCUS_EXEMPT: readonly FocusExemption[] = [
+  { file: 'pages/BlameView.module.css', selector: '.root', reason: 'tabIndex=-1 overlay root' },
+  { file: 'pages/BranchSheets.module.css', selector: '.sheet', reason: 'tabIndex=-1 dialog root' },
+  { file: 'pages/CommitMenuSheets.module.css', selector: '.root', reason: 'tabIndex=-1 dialog root' },
+  { file: 'pages/DiffViewer.module.css', selector: '.root', reason: 'tabIndex=-1 viewer root' },
+  { file: 'pages/DirtyWorktreeSheet.module.css', selector: '.sheet', reason: 'tabIndex=-1 dialog root' },
+  { file: 'pages/HistoryPages.module.css', selector: '.root', reason: 'tabIndex=-1 overlay root' },
+  { file: 'pages/InteractiveRebasePage.module.css', selector: '.root', reason: 'tabIndex=-1 dialog root' },
+  { file: 'pages/MergeWindow.module.css', selector: '.window', reason: 'tabIndex=-1 window root' },
+  { file: 'pages/PushRejectedPage.module.css', selector: '.root', reason: 'tabIndex=-1 overlay root' },
+  { file: 'pages/RemotesPages.module.css', selector: '.root', reason: 'tabIndex=-1 overlay root' },
+  { file: 'pages/RollbackSheet.module.css', selector: '.sheet', reason: 'tabIndex=-1 dialog root' },
+  { file: 'pages/InteractiveRebasePage.module.css', selector: '.list', reason: '.list:focus-visible .selected marks the focused row' },
+  { file: 'pages/LogTable.module.css', selector: '.scroller', reason: '.scroller:focus-visible draws an inset brand ring' },
+  { file: 'pages/MergeWindow.module.css', selector: '.editor:global(.cm-focused)', reason: 'text editor: the caret shows focus' },
+  { file: 'pages/CommitMessage.module.css', selector: '.input:focus', reason: 'text input: brand border on focus' },
+  { file: 'pages/FilterBar.module.css', selector: '.searchInput', reason: 'text input: .search:focus-within draws the ring' },
+  { file: 'pages/FilterBar.module.css', selector: '.jump', reason: 'text input: brand border on .jump:focus' },
+]
+
 export function stripComments(css: string): string {
   return css.replace(/\/\*[\s\S]*?\*\//g, '')
 }
 
 /** Every rule violation in one CSS module, as `file: message` lines. */
-export function lintCss(file: string, source: string, tokens: ReadonlySet<string> = DSH_TOKENS): string[] {
+export function lintCss(
+  file: string,
+  source: string,
+  tokens: ReadonlySet<string> = DSH_TOKENS,
+  focusExempt: readonly FocusExemption[] = FOCUS_EXEMPT,
+): string[] {
   const css = stripComments(source)
   const problems: string[] = []
   for (const match of css.matchAll(/var\(\s*(--dsw-[\w-]+)\s*(,)?/g)) {
@@ -30,6 +62,12 @@ export function lintCss(file: string, source: string, tokens: ReadonlySet<string
   }
   if (/\b(animation|transition)\s*:/.test(css) && !/prefers-reduced-motion\s*:\s*(reduce|no-preference)/.test(css)) {
     problems.push(`${file}: animates without a prefers-reduced-motion rule`)
+  }
+  for (const match of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    const selector = (match[1] ?? '').trim().replace(/\s+/g, ' ')
+    if (!/(^|;|\s)outline\s*:\s*(none|0)\b/.test(match[2] ?? '')) continue
+    if (focusExempt.some(entry => entry.file === file && entry.selector === selector)) continue
+    problems.push(`${file}: ${selector} removes the focus outline (keep DSH's :focus-visible ring or add it to FOCUS_EXEMPT with the replacement)`)
   }
   return problems
 }

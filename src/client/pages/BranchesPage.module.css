@@ -73,7 +73,7 @@
 .quickItem:hover,
 .quickItem:focus-visible {
   background: var(--dsw-alias-interactive-bg-hover);
-  outline: none;
+  outline-offset: calc(-1 * var(--dsw-focus-ring-width));
 }
 
 .quickItem[data-danger] {
@@ -161,7 +161,7 @@
 .row:hover,
 .row:focus-visible {
   background: var(--dsw-alias-interactive-bg-hover);
-  outline: none;
+  outline-offset: calc(-1 * var(--dsw-focus-ring-width));
 }
 
 .selected,
@@ -220,7 +220,7 @@
 .rowMenu:hover,
 .rowMenu:focus-visible {
   background: var(--dsw-alias-interactive-bg-hover);
-  outline: none;
+  outline-offset: calc(-1 * var(--dsw-focus-ring-width));
 }
 
 .footnote {

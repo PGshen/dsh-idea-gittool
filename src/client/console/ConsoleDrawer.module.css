@@ -32,7 +32,7 @@
 .resizer:hover,
 .resizer:focus-visible {
   background: var(--dsw-alias-border-l2);
-  outline: none;
+  outline-offset: calc(-1 * var(--dsw-focus-ring-width));
 }
 
 .toolbar {

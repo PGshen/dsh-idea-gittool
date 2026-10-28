@@ -193,7 +193,8 @@ export function moveFocus(rows: readonly TreeRow[], currentId: string, key: 'Arr
 
 - 2026-10-28 — 基线 `make check` 绿：124 文件 / 2162 测试，耗时 480.6s（AC9 时长增幅以此为基准）
 - 2026-10-28 — T1 完成：4 个错误变量全量替换，样式检查改为按 DSH 快照（403 个名字）扫描全部 CSS Modules（3f12ad4）
-- 2026-10-28 — T2 完成：happy-dom + `test/client/dom.tsx`；日志 ↑↓、仓库栏 ⋯ Esc 还焦两条 DOM 测试；修复 ⋯ 菜单 Esc 后焦点丢失
+- 2026-10-28 — T2 完成：happy-dom + `test/client/dom.tsx`；日志 ↑↓、仓库栏 ⋯ Esc 还焦两条 DOM 测试；修复 ⋯ 菜单 Esc 后焦点丢失（ee66462）
+- 2026-10-28 — T3 完成：`outline: none` 一律须登记 `FOCUS_EXEMPT`（17 条：11 个 tabIndex=-1 容器根、6 个有替代指示的输入/列表）；11 处菜单项/行/拖拽条改用 DSH 全局焦点环（内缩 `--dsw-focus-ring-width`）
 
 ## 下一步
 
@@ -203,7 +204,9 @@ export function moveFocus(rows: readonly TreeRow[], currentId: string, key: 'Arr
 
 <!-- 执行中自行做出的决定：日期 — 决定 — 理由。影响范围超出本计划的，另写 ADR 并在这里链接。 -->
 
-- 无
+- 2026-10-28 T1 — L4 两套主题截图挪到 T10 统一走查 — 一次构建安装覆盖全部 AC。
+- 2026-10-28 T3 — 不新建 `ui/focus.module.css`：DSH ui-theme `focus.css` 已给全局 `:focus-visible` 设颜色与 `--dsw-focus-ring-width`，并在指针输入时隐藏；插件只需不再 `outline: none`，行/菜单项用负 `outline-offset` 画在内侧防止被滚动容器裁掉。焦点检查改为「`outline: none` 必须登记例外」，比「同文件有 :focus-visible」更严也更好判定。
+- 2026-10-28 T3 — 不做 happy-dom 里的 `:focus-visible` 匹配测试：测试环境不加载 CSS Modules 的样式，匹配结果说明不了渲染；由静态规则 + T10 L4 键盘走查覆盖。
 
 ## 意外与发现
 

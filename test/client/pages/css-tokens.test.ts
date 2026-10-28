@@ -5,7 +5,7 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { DSH_TOKENS } from '../dsh-tokens'
-import { lintCss } from './css-lint'
+import { FOCUS_EXEMPT, lintCss } from './css-lint'
 
 const CLIENT_ROOT = join(import.meta.dirname, '../../../src/client')
 
@@ -43,6 +43,23 @@ describe('CSS lint rules', () => {
     expect(lintCss('y.module.css', css, new Set())).toEqual([])
     const opted = '@media (prefers-reduced-motion: no-preference) { .a { animation: pulse 1s; } }'
     expect(lintCss('z.module.css', opted, new Set())).toEqual([])
+  })
+})
+
+describe('focus outline rule', () => {
+  it('flags outline: none unless the selector is exempt', () => {
+    const css = '.row:hover, .row:focus-visible { outline: none; }\n.root { outline: 0; }\n.ok:focus-visible { outline-offset: -2px; }'
+    expect(lintCss('f.module.css', css, new Set(), [{ file: 'f.module.css', selector: '.root', reason: 'tabIndex=-1' }])).toEqual([
+      "f.module.css: .row:hover, .row:focus-visible removes the focus outline (keep DSH's :focus-visible ring or add it to FOCUS_EXEMPT with the replacement)",
+    ])
+  })
+
+  it('every exemption still matches a rule (no stale entries)', () => {
+    const stale = FOCUS_EXEMPT.filter(entry => {
+      const css = files.find(item => item.file === entry.file)?.css ?? ''
+      return !lintCss(entry.file, css, DSH_TOKENS, []).some(problem => problem.startsWith(`${entry.file}: ${entry.selector} removes`))
+    })
+    expect(stale).toEqual([])
   })
 })
 

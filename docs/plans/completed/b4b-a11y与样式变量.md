@@ -9,11 +9,11 @@
 
 | 项 | 值 |
 |---|---|
-| 状态 | 待验收 |
+| 状态 | 已完成（2026-10-28 负责人验收通过） |
 | 里程碑 | B4 打磨（第 2 份，共 4 份：B4a 设置页 + Blame 渲染器、**B4b a11y 与样式变量**、B4c 性能、B4d 跨平台/安装升级/文档；拆分 2026-10-28 负责人同意） |
 | 设计依据 | [产品设计 v0.2](../../design/2026-10-25-产品设计-v0.2.md) §15.2（Token 使用）、§15.3（提交图配色与对比度）、§15.5（动效与可访问性）；[设计决策 v0.2](../../design/2026-10-25-产品设计决策-v0.2.md) §4（B4 打磨）；[TODO](../TODO.md) 中的样式变量、分支树 roving tabindex、合并窗口 label-in-name 三条 P2；[tech-debt](../../quality/tech-debt.md) TD-18；[B4a 计划](../completed/b4a-设置页与Blame渲染器.md)「不包含」（TD-18 移到 B4b） |
 | 分支 | `b4b-a11y-tokens`（从 main 切出） |
-| 批准记录 | 2026-10-28 负责人批准计划，待确认 1–4 按推荐；执行方式：当前会话内联执行，最后做一次整分支评审 |
+| 批准记录 | 2026-10-28 负责人批准计划，待确认 1–4 按推荐；执行方式：当前会话内联执行，最后做一次整分支评审；2026-10-28 负责人要求在 B4b 内修验收走查发现的 3 处键盘问题，修复后验收通过，分支树停靠点保持「最近焦点优先」，`--no-ff` 合并到 main |
 
 ## 目标
 
@@ -205,11 +205,13 @@ export function moveFocus(rows: readonly TreeRow[], currentId: string, key: 'Arr
 
 ## 下一步
 
-- 等负责人验收（验收走查的 3 处键盘问题已修并复验）；确认终审 Minor ②（停靠点优先级）。验收后按 SOP §7 收尾：计划移入 completed、TODO 移到「已完成」并登记终审 Minor、rebase 到 main 后 `make check`、`--no-ff` 合并。
+- 无（已完成）。后续见 [TODO](../TODO.md) 中的 B4b 终审 Minor 与 B4c。
 
 ## 决策记录
 
 <!-- 执行中自行做出的决定：日期 — 决定 — 理由。影响范围超出本计划的，另写 ADR 并在这里链接。 -->
+
+- 2026-10-28 收尾 — 样式变量白名单与状态色文字混色写成 [ADR 0012](../../decisions/0012-样式变量快照与状态色文字混色.md)。
 
 - 2026-10-28 T1 — L4 两套主题截图挪到 T10 统一走查 — 一次构建安装覆盖全部 AC。
 - 2026-10-28 T3 — 不新建 `ui/focus.module.css`：DSH ui-theme `focus.css` 已给全局 `:focus-visible` 设颜色与 `--dsw-focus-ring-width`，并在指针输入时隐藏；插件只需不再 `outline: none`，行/菜单项用负 `outline-offset` 画在内侧防止被滚动容器裁掉。焦点检查改为「`outline: none` 必须登记例外」，比「同文件有 :focus-visible」更严也更好判定。
@@ -226,7 +228,7 @@ export function moveFocus(rows: readonly TreeRow[], currentId: string, key: 'Arr
 - 2026-10-28 T9 — 不建 `ui/motion.module.css`、不给十几个覆盖层组件逐个加 class：动效写在 `GitWorkbench.module.css` 的 `.content` 上（`> *` 淡入、`[role='dialog']` 滑入），新增覆盖层自动获得，改动只有一处。代价：内容区里任何新挂载的直接子元素（含浮动菜单）都会 120ms 淡入；数据刷新不重挂载，不受影响。4 个旧弹层自带的 `slideUp` 被这条更具体的规则覆盖，效果相近，未删（保留它们在工作台外单独渲染时的动效）。
 - 2026-10-28 T9 — 没有 DOM 测试断言动效 class（CSS-only，无 class 可断言；happy-dom 不加载样式）：由 T1 的 reduced-motion 静态规则 + L4 读 `getComputedStyle().animationName` 与样式表里的 media 规则覆盖。
 
-- 2026-10-28 终审 — I1（文件右键菜单里不可用的「文件历史/Blame」改成 `aria-disabled` 后失去 `:disabled` 置灰与悬停排除，看起来可用）已修：传 `menuItemDisabled` 类、样式与悬停条件同时覆盖，DOM 测试先红后绿。Minor 7 条不修，记入 TODO：① 搜索中对分组头/目录按 ← 会切换被搜索强制展开的存储折叠状态，清空搜索后分组意外折叠；② 停靠点优先「最近焦点行」而非 AC3 原文的「选中行」（T4 决策，待负责人确认）；③ `.content [role='dialog']` 让分支抽屉和推送被拒页改为竖向 8px 滑入；④ 提交 ▾ 菜单开着时开关按钮被禁用，Esc 还焦失败落到 body；⑤ 菜单内 Tab 关闭后焦点回开关（APG 为移到下一个元素）；⑥ `tabbablesOf` 不认 `contenteditable`、`display:none`；⑦ reduced-motion 检查只看文件内是否存在该 media 规则，不逐个动画核对。
+- 2026-10-28 终审 — I1（文件右键菜单里不可用的「文件历史/Blame」改成 `aria-disabled` 后失去 `:disabled` 置灰与悬停排除，看起来可用）已修：传 `menuItemDisabled` 类、样式与悬停条件同时覆盖，DOM 测试先红后绿。Minor 7 条不修，记入 TODO：① 搜索中对分组头/目录按 ← 会切换被搜索强制展开的存储折叠状态，清空搜索后分组意外折叠；② 停靠点优先「最近焦点行」而非 AC3 原文的「选中行」（T4 决策，2026-10-28 负责人确认保持）；③ `.content [role='dialog']` 让分支抽屉和推送被拒页改为竖向 8px 滑入；④ 提交 ▾ 菜单开着时开关按钮被禁用，Esc 还焦失败落到 body；⑤ 菜单内 Tab 关闭后焦点回开关（APG 为移到下一个元素）；⑥ `tabbablesOf` 不认 `contenteditable`、`display:none`；⑦ reduced-motion 检查只看文件内是否存在该 media 规则，不逐个动画核对。
 
 ## 意外与发现
 

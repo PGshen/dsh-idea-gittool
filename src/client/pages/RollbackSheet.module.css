@@ -140,7 +140,7 @@
 
 .notice {
   margin: 0;
-  color: var(--dsw-alias-state-warn-primary);
+  color: color-mix(in oklab, var(--dsw-alias-state-warn-primary) 60%, var(--dsw-alias-label-primary));
 }
 
 .footer {

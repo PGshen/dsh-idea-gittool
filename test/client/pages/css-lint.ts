@@ -37,6 +37,8 @@ export const FOCUS_EXEMPT: readonly FocusExemption[] = [
   { file: 'pages/FilterBar.module.css', selector: '.jump', reason: 'text input: brand border on .jump:focus' },
 ]
 
+export const TEXT_TONE_HINT = 'color-mix(in oklab, var(--dsw-alias-state-…-primary) 60%, var(--dsw-alias-label-primary))'
+
 export function stripComments(css: string): string {
   return css.replace(/\/\*[\s\S]*?\*\//g, '')
 }
@@ -62,6 +64,11 @@ export function lintCss(
   }
   if (/\b(animation|transition)\s*:/.test(css) && !/prefers-reduced-motion\s*:\s*(reduce|no-preference)/.test(css)) {
     problems.push(`${file}: animates without a prefers-reduced-motion rule`)
+  }
+  // B4b T8: pure success/warn are 2.2:1 on the light theme's white; as text they are mixed toward
+  // label-primary (design §15.3's lane recipe; 60% measures ≥5.3:1 light, ≥8:1 dark).
+  for (const match of css.matchAll(/(?:^|[;{\s])color\s*:\s*var\(\s*(--dsw-alias-state-(?:success|warn)-primary)\s*\)/g)) {
+    problems.push(`${file}: text colour ${match[1] ?? ''} is below 3:1 on light backgrounds (use ${TEXT_TONE_HINT})`)
   }
   for (const match of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
     const selector = (match[1] ?? '').trim().replace(/\s+/g, ' ')

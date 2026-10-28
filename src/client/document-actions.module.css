@@ -14,8 +14,8 @@
 }
 
 .unknown { color: var(--dsw-alias-label-tertiary); }
-.statusM { color: var(--dsw-alias-state-warn-primary); }
-.statusA { color: var(--dsw-alias-state-success-primary); }
+.statusM { color: color-mix(in oklab, var(--dsw-alias-state-warn-primary) 60%, var(--dsw-alias-label-primary)); }
+.statusA { color: color-mix(in oklab, var(--dsw-alias-state-success-primary) 60%, var(--dsw-alias-label-primary)); }
 .statusD { color: var(--dsw-alias-state-error-primary); }
 .statusU { color: var(--dsw-alias-label-tertiary); }
 

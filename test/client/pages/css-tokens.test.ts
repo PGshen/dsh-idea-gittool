@@ -5,7 +5,7 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { DSH_TOKENS } from '../dsh-tokens'
-import { FOCUS_EXEMPT, lintCss } from './css-lint'
+import { FOCUS_EXEMPT, TEXT_TONE_HINT, lintCss } from './css-lint'
 
 const CLIENT_ROOT = join(import.meta.dirname, '../../../src/client')
 
@@ -43,6 +43,20 @@ describe('CSS lint rules', () => {
     expect(lintCss('y.module.css', css, new Set())).toEqual([])
     const opted = '@media (prefers-reduced-motion: no-preference) { .a { animation: pulse 1s; } }'
     expect(lintCss('z.module.css', opted, new Set())).toEqual([])
+  })
+})
+
+describe('state colour text rule', () => {
+  it('flags success/warn used directly as a text colour, not as a border or inside color-mix', () => {
+    const css = [
+      '.a { color: var(--dsw-alias-state-warn-primary); }',
+      '.b { border-left: 2px solid var(--dsw-alias-state-warn-primary); background-color: var(--dsw-alias-state-success-primary); }',
+      '.c { color: color-mix(in oklab, var(--dsw-alias-state-success-primary) 60%, var(--dsw-alias-label-primary)); }',
+      '.d { color: var(--dsw-alias-state-error-primary); }',
+    ].join('\n')
+    expect(lintCss('s.module.css', css, new Set(['--dsw-alias-state-warn-primary', '--dsw-alias-state-success-primary', '--dsw-alias-label-primary', '--dsw-alias-state-error-primary']), [])).toEqual([
+      `s.module.css: text colour --dsw-alias-state-warn-primary is below 3:1 on light backgrounds (use ${TEXT_TONE_HINT})`,
+    ])
   })
 })
 

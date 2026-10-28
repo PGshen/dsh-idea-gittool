@@ -9,11 +9,11 @@
 
 | 项 | 值 |
 |---|---|
-| 状态 | 执行中 |
+| 状态 | 已完成（2026-10-28 负责人统一验收 B3 通过） |
 | 里程碑 | B3 高级操作（第 4 份，共 4 份；拆分见 [TODO](../TODO.md)） |
 | 设计依据 | [产品设计 v0.2](../../design/2026-10-25-产品设计-v0.2.md) §6.2（「Worktree 列表/新建/删除」「Remotes」行）、§8.3.4（P1：设为/取消 upstream、在 Worktree 中打开；标签右键：推送标签、删除标签（本地/远程分开确认））、§11（Remotes：URL 脱敏显示凭据）、§17 M5（Worktree 用 feature flag）；[A3 计划](../completed/a3-分支贮藏冲突.md)「不包含」（远程分支删除、远程重命名、标签推送/删除推迟到 B3） |
 | 分支 | `b3d-worktree-remotes`（独立 worktree，从 `b3c-shelf-changelist` 切出） |
-| 批准记录 | 2026-10-27 负责人离开前授权：由 AI 自行起草、执行、自评审 B3b–B3d，回来统一 review。本计划「待确认」按推荐执行，验收时可推翻 |
+| 批准记录 | 2026-10-27 负责人离开前授权：由 AI 自行起草、执行、自评审 B3b–B3d，回来统一 review。本计划「待确认」按推荐执行，验收时可推翻；2026-10-28 负责人统一验收 B3 通过，按 b3a → b3b → b3c → b3d 顺序 rebase、`make check`、`--no-ff` 合并到 main |
 
 ## 目标
 
@@ -89,7 +89,7 @@ worktreePrune: WriteRequest → { pruned: number }
 
 ## 下一步
 
-- 等负责人统一验收 B3（合并顺序 b3a → b3b → b3c → b3d）；验收后开启 flag `worktrees`。
+- 无。2026-10-28 负责人验收通过并已合并到 main；`interactiveRebase`、`worktrees` 两个 flag 改为默认开启。遗留 Minor 见 [TODO](../TODO.md)。
 
 ## 决策记录
 

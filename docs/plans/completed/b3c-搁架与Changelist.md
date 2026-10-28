@@ -9,11 +9,11 @@
 
 | 项 | 值 |
 |---|---|
-| 状态 | 执行中 |
+| 状态 | 已完成（2026-10-28 负责人统一验收 B3 通过） |
 | 里程碑 | B3 高级操作（第 3 份，共 4 份；拆分见 [TODO](../TODO.md)） |
 | 设计依据 | [产品设计 v0.2](../../design/2026-10-25-产品设计-v0.2.md) §6.2（「Changelist、拖放、Shelve/Unshelve」「Shelf（命名补丁）」行）、§8.2.2（P1 Changelist 分组）、§8.4.1（`Stash \| Shelf` 分段）、§13（按仓库覆盖的选项单独存）、§14.3（拖入/拖出 changelist）；[参考项目调研](../../references/reference-feature-inventory.md) §2.3（IntelliJ Shelf 语义） |
 | 分支 | `b3c-shelf-changelist`（独立 worktree，从 `b3b-diff-commit-menu` 切出） |
-| 批准记录 | 2026-10-27 负责人离开前授权：由 AI 自行起草、执行、自评审 B3b–B3d，回来统一 review。本计划「待确认」按推荐执行，验收时可推翻 |
+| 批准记录 | 2026-10-27 负责人离开前授权：由 AI 自行起草、执行、自评审 B3b–B3d，回来统一 review。本计划「待确认」按推荐执行，验收时可推翻；2026-10-28 负责人统一验收 B3 通过，按 b3a → b3b → b3c → b3d 顺序 rebase、`make check`、`--no-ff` 合并到 main |
 
 ## 目标
 
@@ -101,7 +101,7 @@ interface ShelfEntry { id: string /* 时间戳 + 随机，[0-9a-z-]{1,64} */; na
 
 ## 下一步
 
-- 等负责人统一验收 B3（b3a → b3b → b3c → b3d 顺序合并）。
+- 无。2026-10-28 负责人验收通过并已合并到 main；`interactiveRebase`、`worktrees` 两个 flag 改为默认开启。遗留 Minor 见 [TODO](../TODO.md)。
 
 ## 决策记录
 

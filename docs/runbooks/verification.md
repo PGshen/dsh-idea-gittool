@@ -147,7 +147,7 @@ git checkout -q feature && git rebase main   # stops at topic1; after continue, 
 准备同 B2（隔离 HOME、3081）。补充：
 
 - 工作区记录要带 `createdAt`/`updatedAt`（ISO 字符串），否则 `workspaceRegistry` 报 `does not match its schema`，整个工作区服务挂起（2026-10-27 实测）。
-- flag 默认关：在 3081 页面的控制台执行 `localStorage.setItem('dsh-git.feature.interactiveRebase', '1')` 后刷新。
+- flag 自 2026-10-28 默认开启，无需操作；要对照关闭时的行为，在控制台执行 `localStorage.setItem('dsh-git.feature.interactiveRebase', '0')` 后刷新（`removeItem` 恢复默认）。
 - 走查仓库：`git init -b main` 后连做 5 个提交（每个改一个文件），`git branch mid HEAD~2`。
 
 | # | 操作 | 期望 |
@@ -184,7 +184,7 @@ git checkout -q feature && git rebase main   # stops at topic1; after continue, 
 
 ## Worktree 与远程实机验证（B3d，L4）
 
-准备：走查仓库加一个本地 bare 远程（`git init --bare ../walk-bare && git remote add origin ../walk-bare && git push -u origin main`），推一个 `topic` 分支，再建一个没有 upstream 的本地分支和一个标签。Worktree 入口要先在浏览器里打开 flag：`localStorage.setItem('dsh-git.feature.worktrees', '1')`。
+准备：走查仓库加一个本地 bare 远程（`git init --bare ../walk-bare && git remote add origin ../walk-bare && git push -u origin main`），推一个 `topic` 分支，再建一个没有 upstream 的本地分支和一个标签。Worktree 入口的 flag `worktrees` 自 2026-10-28 默认开启（`localStorage.setItem('dsh-git.feature.worktrees', '0')` 可关闭对照）。
 
 | # | 操作 | 期望 |
 |---|---|---|

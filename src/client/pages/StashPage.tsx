@@ -3,7 +3,7 @@
 // pop / delete. Everything addresses a stash by sha. The view is hook-free; StashPage owns the
 // transient state (delete confirmation, selected file) and runs the writes.
 import { useEffect, useRef, useState } from 'react'
-import type { KeyboardEvent, MouseEvent, ReactNode } from 'react'
+import type { FocusEvent, KeyboardEvent, MouseEvent, ReactNode, RefObject } from 'react'
 import type { CommitFileEntry, DiffRequest, StashEntry, StashFilesValue } from '../../shared/protocol.ts'
 import type { FocusTarget } from '../focus.ts'
 import { activeFocusTarget } from '../focus.ts'
@@ -115,6 +115,8 @@ function StashRow({ entry, selected, now, state, onSelect, onPreview, onAskDrop,
       className={selected ? `${css.row} ${css.selected}` : css.row}
       title={t('stash.row.title', { message: entry.message, sha: entry.sha })}
       onClick={() => onSelect(entry.sha)}
+      // B4b: selection follows focus (single-select listbox), so Tab into the list selects a stash.
+      onFocus={() => { if (!selected) onSelect(entry.sha) }}
       onDoubleClick={event => onPreview(entry, triggerOf(event))}
       onKeyDown={onKeyDown}
     >
@@ -163,9 +165,35 @@ function DropConfirm({ summary, sha, canDrop, onCancel, onConfirm }: DropConfirm
   )
 }
 
+/**
+ * B4b: a stash write disables the focused button and the browser drops focus to <body>. When the
+ * write ends, give focus back to the control that had it, else to the selected (or first) row.
+ */
+function useRefocusAfterBusy(rootRef: RefObject<HTMLElement>, busy: boolean): (event: FocusEvent<HTMLElement>) => void {
+  const last = useRef<HTMLElement | null>(null)
+  const wasBusy = useRef(busy)
+  useEffect(() => {
+    const ended = wasBusy.current && !busy
+    wasBusy.current = busy
+    const root = rootRef.current
+    if (!ended || root === null) return
+    const active = root.ownerDocument.activeElement
+    if (active !== null && active !== root.ownerDocument.body) return
+    const target = last.current
+    if (target !== null && target.isConnected && !target.matches(':disabled')) {
+      target.focus()
+      return
+    }
+    root.querySelector<HTMLElement>('[role="option"][aria-selected="true"], [role="option"]')?.focus()
+  }, [busy, rootRef])
+  return (event) => { if (event.target instanceof HTMLElement) last.current = event.target }
+}
+
 export function StashPageView(props: StashPageViewProps): ReactNode {
   const t = useT()
   const { state, busy, block, dropBlock, confirmingSha } = props
+  const rootRef = useRef<HTMLElement>(null)
+  const rememberFocus = useRefocusAfterBusy(rootRef, busy)
   const { entries } = state.list
   const selected = entries.find(item => item.sha === state.selectedSha) ?? null
   const confirming = entries.find(item => item.sha === confirmingSha) ?? null
@@ -265,7 +293,7 @@ export function StashPageView(props: StashPageViewProps): ReactNode {
   }
 
   return (
-    <section className={css.page} aria-label={t('stash.title')}>
+    <section ref={rootRef} className={css.page} aria-label={t('stash.title')} onFocus={rememberFocus}>
       <div className={css.header}>
         <strong className={css.title}>{`${t('stash.title')} (${entries.length})`}</strong>
         <span className={css.actions}>

@@ -200,11 +200,12 @@ export function moveFocus(rows: readonly TreeRow[], currentId: string, key: 'Arr
 - 2026-10-28 — T6 完成：`focus-trap.ts` 的 `trapTab` 接到全部 `aria-modal` 对话框（SheetFrame 及其 8 个使用方、回滚、未提交改动、智能签出、分支表单、分支抽屉）；DOM 测试覆盖设置弹层/未提交改动询问的进入焦点 + Esc + Tab 圈定、覆盖层控制器还焦、提交右键菜单 Esc 还焦（df8b24b）
 - 2026-10-28 — T7 完成：`nameViolations` 审计（2.5.3 label-in-name + 4.1.2 无名控件）覆盖仓库栏、分支面板、分支页、状态栏、设置弹层、合并窗口头部/底栏、操作菜单、日志页（中英各一遍），全部合规；干净文件状态点提示改为状态原因（「文件没有未提交的改动」/「不在仓库中」）（9b23c9e）
 - 2026-10-28 — T8 完成：L4 实测两套主题对比度；成功/警告色和静态色作文字时往 `label-primary` 混 60%（浅色 2.2 → 5.3+），样式检查新增「状态/静态色不得直接作文字色」；`scripts/contrast-probe.mjs` + 单测 + runbook「对比度测量」（49f3124、e1c955b、a3cebee）
+- 2026-10-28 — T10：自验证（L4 键盘走查、两套主题截图、全量 `make check` 482s）、文档同步；整分支终审（新上下文评审代理）0 Critical / 1 Important / 7 Minor，I1 已修
 - 2026-10-28 — T9 完成：工作台内容区一处规则——挂载的页面/抽屉 120ms 淡入，`role="dialog"` 覆盖层 160ms 滑入，`prefers-reduced-motion: reduce` 时全部关闭；L4 实测 `animationName` 与 reduced-motion 规则
 
 ## 下一步
 
-- 从 T1 开始：先把 `test/client/pages/css-tokens.test.ts` 改为全量扫描并确认失败。
+- 等负责人验收：演示 L4（隔离 DSH，见 runbook「对比度测量」与本计划验证记录），补走贮藏恢复与合并窗口的纯键盘流程；确认终审 Minor ②（停靠点优先级）。验收后按 SOP §7 收尾：计划移入 completed、TODO 移到「已完成」并登记终审 Minor、rebase 到 main 后 `make check`、`--no-ff` 合并。
 
 ## 决策记录
 
@@ -224,6 +225,8 @@ export function moveFocus(rows: readonly TreeRow[], currentId: string, key: 'Arr
 - 2026-10-28 T8 — 走查构建在 scratchpad 的 detached worktree 里做、隔离 HOME、端口 3082：负责人的 web profile 链接到主 checkout 的 `lib/`，在主 checkout `pnpm build` 会把分支代码热更进负责人正在用的 3080；3081 被另一个会话的 DSH 占着。
 - 2026-10-28 T9 — 不建 `ui/motion.module.css`、不给十几个覆盖层组件逐个加 class：动效写在 `GitWorkbench.module.css` 的 `.content` 上（`> *` 淡入、`[role='dialog']` 滑入），新增覆盖层自动获得，改动只有一处。代价：内容区里任何新挂载的直接子元素（含浮动菜单）都会 120ms 淡入；数据刷新不重挂载，不受影响。4 个旧弹层自带的 `slideUp` 被这条更具体的规则覆盖，效果相近，未删（保留它们在工作台外单独渲染时的动效）。
 - 2026-10-28 T9 — 没有 DOM 测试断言动效 class（CSS-only，无 class 可断言；happy-dom 不加载样式）：由 T1 的 reduced-motion 静态规则 + L4 读 `getComputedStyle().animationName` 与样式表里的 media 规则覆盖。
+
+- 2026-10-28 终审 — I1（文件右键菜单里不可用的「文件历史/Blame」改成 `aria-disabled` 后失去 `:disabled` 置灰与悬停排除，看起来可用）已修：传 `menuItemDisabled` 类、样式与悬停条件同时覆盖，DOM 测试先红后绿。Minor 7 条不修，记入 TODO：① 搜索中对分组头/目录按 ← 会切换被搜索强制展开的存储折叠状态，清空搜索后分组意外折叠；② 停靠点优先「最近焦点行」而非 AC3 原文的「选中行」（T4 决策，待负责人确认）；③ `.content [role='dialog']` 让分支抽屉和推送被拒页改为竖向 8px 滑入；④ 提交 ▾ 菜单开着时开关按钮被禁用，Esc 还焦失败落到 body；⑤ 菜单内 Tab 关闭后焦点回开关（APG 为移到下一个元素）；⑥ `tabbablesOf` 不认 `contenteditable`、`display:none`；⑦ reduced-motion 检查只看文件内是否存在该 media 规则，不逐个动画核对。
 
 ## 意外与发现
 

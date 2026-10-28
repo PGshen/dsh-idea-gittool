@@ -6,7 +6,6 @@ import {
   finishRowMenu,
   firstMenuIndex,
   keyboardMenuAnchor,
-  lastMenuIndex,
   menuKeyAction,
   shouldFocusMenu,
   stepMenuIndex,
@@ -45,25 +44,16 @@ describe('menu item focus order', () => {
     expect(firstMenuIndex([true, true])).toBe(0)
     expect(firstMenuIndex([])).toBe(-1)
   })
-  it('last enabled item for End', () => {
-    expect(lastMenuIndex([false, false, true])).toBe(1)
-    expect(lastMenuIndex([true])).toBe(0)
-    expect(lastMenuIndex([])).toBe(-1)
+  it('ArrowDown / ArrowUp wrap over every item, unavailable ones included (B4b, WAI-ARIA APG)', () => {
+    expect(stepMenuIndex(4, 0, 1)).toBe(1)
+    expect(stepMenuIndex(4, 3, 1)).toBe(0)
+    expect(stepMenuIndex(4, 0, -1)).toBe(3)
+    expect(stepMenuIndex(4, 2, -1)).toBe(1)
   })
-  it('ArrowDown / ArrowUp skip disabled items and wrap', () => {
-    const disabled = [false, true, false, false]
-    expect(stepMenuIndex(disabled, 0, 1)).toBe(2)
-    expect(stepMenuIndex(disabled, 3, 1)).toBe(0)
-    expect(stepMenuIndex(disabled, 0, -1)).toBe(3)
-    expect(stepMenuIndex(disabled, 2, -1)).toBe(0)
-  })
-  it('focus outside the items (current -1) starts from the ends', () => {
-    expect(stepMenuIndex([false, false], -1, 1)).toBe(0)
-    expect(stepMenuIndex([false, false], -1, -1)).toBe(1)
-  })
-  it('all disabled: moves over every item; empty: none', () => {
-    expect(stepMenuIndex([true, true, true], 2, 1)).toBe(0)
-    expect(stepMenuIndex([], 0, 1)).toBe(-1)
+  it('focus outside the items (current -1) starts from the ends; empty: none', () => {
+    expect(stepMenuIndex(2, -1, 1)).toBe(0)
+    expect(stepMenuIndex(2, -1, -1)).toBe(1)
+    expect(stepMenuIndex(0, 0, 1)).toBe(-1)
   })
   it('focus moves into the menu only once it is placed and focus is not already inside', () => {
     expect(shouldFocusMenu(false, false)).toBe(false)

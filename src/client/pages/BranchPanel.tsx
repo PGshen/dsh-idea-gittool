@@ -21,6 +21,7 @@ import {
 import type { BranchGroup, BranchGroupKind, BranchRow, CollapsedGroups, PanelMode } from './branch-store.ts'
 import css from './BranchPanel.module.css'
 import { finishRowMenu, rowMenuAnchor, rowOf, treeRowKeyAction } from './menu-focus.ts'
+import { MenuItemButton } from './MenuItemButton.tsx'
 import { useFloatingMenu } from './menu-position.ts'
 import type { MenuAnchor } from './menu-position.ts'
 import { useTreeRoving } from './use-tree-roving.ts'
@@ -476,19 +477,17 @@ export function BranchContextMenu({ entry, items, onSelect, onClose, anchor }: B
     previousSection = item.section
     const reason = item.disabledReason === undefined ? null : t(item.disabledReason.key, item.disabledReason.params)
     nodes.push(
-      <button
+      <MenuItemButton
         key={item.id}
-        type="button"
-        role="menuitem"
-        className={`${css.menuItem} ${reason === null ? '' : css.menuItemDisabled}`}
-        data-action={item.id}
-        {...(item.danger === true ? { 'data-danger': true } : {})}
-        {...(reason === null ? {} : { 'aria-disabled': true, title: reason })}
-        onClick={() => { if (reason === null) onSelect(item.id) }}
-      >
-        <span>{t(item.label.key, item.label.params)}</span>
-        {reason === null ? null : <span className={css.menuReason}>{reason}</span>}
-      </button>,
+        label={t(item.label.key, item.label.params)}
+        reason={reason}
+        {...(item.danger === true ? { danger: true } : {})}
+        className={css.menuItem}
+        disabledClassName={css.menuItemDisabled}
+        reasonClassName={css.menuReason}
+        data={{ 'data-action': item.id }}
+        onSelect={() => onSelect(item.id)}
+      />,
     )
   }
   return (

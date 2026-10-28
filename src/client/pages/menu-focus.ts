@@ -34,27 +34,15 @@ export function firstMenuIndex(disabled: readonly boolean[]): number {
   return index === -1 ? 0 : index
 }
 
-/** Index focused by End: the last enabled item, else the last item; -1 when empty. */
-export function lastMenuIndex(disabled: readonly boolean[]): number {
-  if (disabled.length === 0) return -1
-  const index = disabled.lastIndexOf(false)
-  return index === -1 ? disabled.length - 1 : index
-}
-
 /**
- * Next item for ArrowDown (`step` 1) / ArrowUp (-1): wraps and skips disabled items (when every
- * item is disabled it moves over all of them). `current` -1 (focus elsewhere) starts from an end.
+ * Next item for ArrowDown (`step` 1) / ArrowUp (-1), wrapping. Unavailable (`aria-disabled`) items
+ * are visited too, so a screen reader reaches their reason (B4b, WAI-ARIA APG); natively disabled
+ * buttons cannot take focus and are not counted. `current` -1 (focus elsewhere) starts from an end.
  */
-export function stepMenuIndex(disabled: readonly boolean[], current: number, step: 1 | -1): number {
-  const count = disabled.length
+export function stepMenuIndex(count: number, current: number, step: 1 | -1): number {
   if (count === 0) return -1
-  const anyEnabled = disabled.includes(false)
-  let index = current < 0 ? (step === 1 ? -1 : count) : current
-  for (let tries = 0; tries < count; tries += 1) {
-    index = (index + step + count) % count
-    if (!anyEnabled || disabled[index] !== true) return index
-  }
-  return current
+  const from = current < 0 ? (step === 1 ? -1 : count) : current
+  return (from + step + count) % count
 }
 
 /** Focus moves into the menu once it is placed (never into the hidden measuring pass), and only once. */
@@ -122,9 +110,9 @@ export function finishRowMenu(row: FocusTarget | null, choose?: (trigger: FocusT
 const MENU_ITEM = '[role="menuitem"]'
 const TREE_ITEM = '[role="treeitem"]'
 
-/** The menu items of `root` and whether each is disabled. */
+/** The focusable menu items of `root` (natively disabled buttons left out) and whether each is unavailable. */
 export function menuItemsOf(root: HTMLElement): { items: HTMLElement[]; disabled: boolean[] } {
-  const items = [...root.querySelectorAll<HTMLElement>(MENU_ITEM)]
+  const items = [...root.querySelectorAll<HTMLElement>(MENU_ITEM)].filter(item => !item.matches(':disabled'))
   return { items, disabled: items.map(item => item.getAttribute('aria-disabled') === 'true') }
 }
 

@@ -69,6 +69,13 @@ export function click(target: Element): void {
   })
 }
 
+/** A pointer-down (outside-click handlers listen for it in the capture phase). */
+export function pointerDown(target: Element): void {
+  act(() => {
+    target.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true }))
+  })
+}
+
 export function focus(target: Element): void {
   act(() => { (target as HTMLElement).focus() })
 }

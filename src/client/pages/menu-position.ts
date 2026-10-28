@@ -3,7 +3,7 @@
 // hangs from the button's right edge. Both flip above when there is no room below.
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { CSSProperties, KeyboardEvent, RefObject } from 'react'
-import { firstMenuIndex, lastMenuIndex, menuItemsOf, menuKeyAction, shouldFocusMenu, stepMenuIndex } from './menu-focus.ts'
+import { firstMenuIndex, menuItemsOf, menuKeyAction, shouldFocusMenu, stepMenuIndex } from './menu-focus.ts'
 
 export type MenuAnchor =
   /** Right click / keyboard menu: the pointer (or row) position in viewport coordinates. */
@@ -105,42 +105,59 @@ export function useFloatingMenu(
   anchor: MenuAnchor | undefined,
   onClose: (() => void) | undefined,
 ): { style: CSSProperties | undefined; onKeyDown: (event: KeyboardEvent<HTMLElement>) => void } {
+  const { style, ready } = useMenuPlacement(ref, anchor)
+  const onKeyDown = useMenuKeyboard(ref, onClose, ready)
+  return { style, onKeyDown }
+}
+
+/**
+ * Keyboard and dismissal for any `role="menu"` element (B4b T5, shared by the floating menus and the
+ * inline dropdowns): focus moves to the first available item once `ready`; ↓ ↑ wrap over every
+ * focusable item, Home / End go to the ends; Esc / ArrowLeft / Tab call `onClose('key')` and
+ * pointer-downs outside `boundary` (default: the menu; pass the toggle's wrapper so clicking the
+ * toggle does not close and reopen) call `onClose('pointer')`. `onClose` may change on every
+ * render; the listener and focus do not re-run for it.
+ */
+export function useMenuKeyboard(
+  ref: RefObject<HTMLElement>,
+  onClose: ((via: 'key' | 'pointer') => void) | undefined,
+  ready = true,
+  boundary: RefObject<HTMLElement> = ref,
+): (event: KeyboardEvent<HTMLElement>) => void {
   const closeRef = useRef(onClose)
   closeRef.current = onClose
   const closable = onClose !== undefined
-  const { style, ready } = useMenuPlacement(ref, anchor)
   useEffect(() => {
     if (!closable) return
     const onPointerDown = (event: PointerEvent): void => {
-      if (ref.current !== null && event.target instanceof Node && ref.current.contains(event.target)) return
-      closeRef.current?.()
+      if (boundary.current !== null && event.target instanceof Node && boundary.current.contains(event.target)) return
+      closeRef.current?.('pointer')
     }
     document.addEventListener('pointerdown', onPointerDown, true)
     return () => document.removeEventListener('pointerdown', onPointerDown, true)
-  }, [closable, ref])
+  }, [closable, boundary])
   useEffect(() => {
     const root = ref.current
     if (root === null || !shouldFocusMenu(ready, root.contains(document.activeElement))) return
     const { items, disabled } = menuItemsOf(root)
     items[firstMenuIndex(disabled)]?.focus()
   }, [ready, ref])
-  const onKeyDown = (event: KeyboardEvent<HTMLElement>): void => {
+  return (event: KeyboardEvent<HTMLElement>): void => {
     const action = menuKeyAction(event)
     if (action === null) return
     event.preventDefault()
     event.stopPropagation()
     if (action === 'close') {
-      closeRef.current?.()
+      closeRef.current?.('key')
       return
     }
     const root = ref.current
     if (root === null) return
-    const { items, disabled } = menuItemsOf(root)
+    const { items } = menuItemsOf(root)
     const current = items.findIndex(item => item === document.activeElement)
     const index = action === 'first'
-      ? firstMenuIndex(disabled)
-      : action === 'last' ? lastMenuIndex(disabled) : stepMenuIndex(disabled, current, action === 'next' ? 1 : -1)
+      ? 0
+      : action === 'last' ? items.length - 1 : stepMenuIndex(items.length, current, action === 'next' ? 1 : -1)
     items[index]?.focus()
   }
-  return { style, onKeyDown }
 }

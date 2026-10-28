@@ -11,6 +11,7 @@ import { createFakeSubprocess } from './fake-subprocess.ts'
 import { TEST_GIT_ENV, createTempRepo } from './fixtures.ts'
 import type { TempRepo } from './fixtures.ts'
 import { createRemoteSetup } from './remote-fixtures.ts'
+import { GIT_BINARY } from './git-binary.ts'
 
 vi.setConfig({ testTimeout: 60_000 })
 
@@ -184,7 +185,7 @@ describe('readRebasePlan', () => {
       `from ${index === 0 ? base : `:${String(index)}`}`,
       '',
     ].join('\n')).join('')
-    const imported = spawnSync('git', ['fast-import', '--quiet'], { cwd: repo.root, env: TEST_GIT_ENV, input: stream, encoding: 'utf8' })
+    const imported = spawnSync(GIT_BINARY, ['fast-import', '--quiet'], { cwd: repo.root, env: TEST_GIT_ENV, input: stream, encoding: 'utf8' })
     expect(imported.status, imported.stderr).toBe(0)
     const value = await readRebasePlan(run, repo.root, { sessionId: 's', base })
     expect(value.blocked).toBe('too-many')

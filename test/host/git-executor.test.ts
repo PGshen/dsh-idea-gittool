@@ -18,6 +18,7 @@ import {
   writeExecutableScript,
 } from './fixtures.ts'
 import { createFakeSubprocess, lastSpawn } from './fake-subprocess.ts'
+import { GIT_BINARY } from './git-binary.ts'
 
 const cleanups: Array<() => void> = []
 
@@ -54,7 +55,7 @@ describe('createGitRunner', () => {
     expect(canonicalPath(result.stdout.trim())).toBe(canonicalPath(repo.root))
 
     const spec = lastSpawn(fake)
-    expect(spec.argv[0]).toBe('git')
+    expect(spec.argv[0]).toBe(GIT_BINARY)
     expect(spec.argv.slice(1)).toEqual(['rev-parse', '--show-toplevel'])
     expect(spec.cwd).toBe(repo.root)
     expect(spec.stdio.stdin).toBe('ignore')
@@ -203,7 +204,7 @@ describe('createGitRunner directBinary (B4c T2)', () => {
     const run = createGitRunner(fake, { directBinary: true })
 
     await expect(run(['status'], { cwd: repo.root, timeoutMs: 200 })).rejects.toMatchObject({ code: 'git/timeout' })
-    fake.executable = 'git'
+    fake.executable = GIT_BINARY
     await run(['status'], { cwd: repo.root })
 
     expect(probes(fake)).toBe(2)
@@ -218,7 +219,7 @@ describe('createGitRunner directBinary (B4c T2)', () => {
     await run(['status'], { cwd: repo.root })
 
     expect(probes(fake)).toBe(0)
-    expect(lastSpawn(fake).argv[0]).toBe('git')
+    expect(lastSpawn(fake).argv[0]).toBe(GIT_BINARY)
   })
 })
 

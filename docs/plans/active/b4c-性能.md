@@ -104,7 +104,7 @@ export function createBenchRepo(dir: string, options?: { commits?: number /* 10_
 - **完成标准**：AC3 前半；L4 在 T6 一并做。
 - **验证命令**：`pnpm build && pnpm smoke`、`make check`
 
-### T4：`make check` 提速（待开始）
+### T4：`make check` 提速（完成）
 
 - **目标**：AC6。按 T1 的逐文件耗时从大头开始优化。
 - **涉及文件**：新增 `vitest.config.ts`（如需 pool/并发/`isolate` 配置）、`test/host/fixtures.ts`（模板仓库：一次建好后 `cp -R`/`git clone --local` 复用）、耗时 Top 文件。
@@ -140,7 +140,7 @@ export function createBenchRepo(dir: string, options?: { commits?: number /* 10_
 
 ## 下一步
 
-- T4：`make check` 提速。先让 `test/host/fake-subprocess.ts` 与 `test/host/fixtures.ts` 用真实 git 二进制（`$(git --exec-path)/git`，模块加载时解析一次，找不到退回 `git`），单独跑 `test/host/merge-file.test.ts` 对比 45s 的基线；再跑全量 `vitest run --reporter=json` 看逐文件耗时，决定是否需要 `vitest.config.ts`（pool/并发）。
+- T5：`test/client/graph/layout.test.ts` 两个「< 50ms」断言改为「< 200ms」（待确认 3），并在 bench/harness 里保留真实预算；TD-16（`test/host/watch.test.ts` 嵌套 refs）改为轮询等待 version；在加负载（同时跑两份 `make check`）下各跑 3 次验证。
 
 ## 决策记录
 
@@ -155,6 +155,8 @@ export function createBenchRepo(dir: string, options?: { commits?: number /* 10_
 - 2026-10-28 T3 — Ruling: 主包在 banner 之后加一行 `// client.merge.js <哈希>` 注释，而不是把哈希作为 define 常量 — 常量在压缩时被常量折叠掉了，起不到带动包版本的作用（实测）；注释在 banner 区，不经过压缩 — 若错：DSH 若改为忽略注释计算版本（目前按文件内容），只改 chunk 时浏览器会用旧 chunk，直到主包也变化。
 - 2026-10-28 T3 — Ruling: 模块体进 IIFE 后，esbuild 输出的 `"use strict"` 成为该函数的指令（以前在 banner 变量之后，不是指令），代码改在严格模式下运行 — 源码全是 TS/ES 模块、按严格模式编写，第三方依赖（CodeMirror、lezer）也是 ES 模块；smoke 在 vm 里执行两个 factory 通过 — 若错：某处依赖非严格语义（如给未声明变量赋值）会在运行时抛错，T6 L4 走查各页面兜底。
 - 2026-10-28 T3 — 写了 [ADR 0013](../../decisions/0013-客户端产物拆分按需chunk与标识符后压缩.md)：产物形态变化影响后续所有用 CodeMirror 的代码与 B4d 安装验证。
+- 2026-10-28 T4 — Ruling: 提速只做「测试直接用真实 git 二进制」一项，不加 `vitest.config.ts`、不改 pool/并发、不建模板仓库 — 基线的 480s 里 CPU 只用了 238s，瓶颈是每次 spawn 经 xcrun 多付约 40ms；改掉之后测试段 23s、全量 33s，已远低于 150s 目标，其余手段收益小且有风险 — 若错：在没有 xcrun 的机器（Linux）上本来就不慢，收益只在 macOS。
+- 2026-10-28 T4 — Ruling: `GIT_BINARY` 在模块加载时用 `git --exec-path` 解析一次，找不到就退回 `git`；涉及「spawn 的程序是 git」的 6 处断言改为比较 `GIT_BINARY` — 断言的意图是「执行器把解析出的程序放在 argv[0]」，与程序名无关 — 若错：无。
 - 2026-10-28 T1 — Ruling: 本计划各任务的关口先用「针对性测试 + lint/typecheck/layers」，全量 `make check` 放在 T4（提速）之后跑 — 基线全量 8 分钟且有 8 个负载超时，在 T4 解决之前每任务跑全量既慢又不会更可信；负责人本次会话开头也要求先跳过 — 若错：T2/T3 的回归要到 T4 后才被全量发现，届时回退定位成本略高。
 
 ## 意外与发现
@@ -218,3 +220,12 @@ export function createBenchRepo(dir: string, options?: { commits?: number /* 10_
 | `lib/client.merge.js`（按需） | 276.8 KB | 93,018 B | 只在打开合并窗口时加载 |
 
 `pnpm smoke` 通过：包装三行、CSS 注入与 HMR 替换、无短类名、体积门槛、chunk 注册（`id` + `chunk: 'client.merge.js'`）、chunk 只 require 基线模块并导出 `createMergePane`、主包含 `require.async("./client.merge.js")` 且不含 CodeMirror、哈希行与 chunk 一致；删掉 chunk 时报「缺少 lib/client.merge.js」。`pnpm dev` 实测：给 `merge-editor.ts` 加一行代码，chunk 与主包哈希行都更新（`bcf2a4f8cccd → 659666883f1d`），改回后恢复。`vitest run test/client` 95 个文件 1502 个用例全绿；typecheck、lint、layers 通过。
+
+### T4 `make check` 时长（2026-10-28，同一台机器）
+
+| | 测试文件 | 用例 | 测试段 | 全量 `make check` | 失败 |
+|---|---|---|---|---|---|
+| 基线（T1） | 134 | 2230 | 480.3s | 约 488s（lint 3.0 + typecheck 3.5 + layers 1.0 + 测试） | 8 个负载超时 |
+| T4 之后 | 136 | 2242 | 23.0s（user 74s、sys 64s） | 32.3s / 33.3s / 32.9s（3 次） | 0 |
+
+单个文件 `merge-file.test.ts`：45.0s → 4.35s。逐文件墙钟 Top 3：`push` 9.4s、`commit-write` 9.2s、`rpc` 8.7s。用例增加 12 个均为本计划新增，无删除、无 skip。AC6 达成（目标 ≤ 150s 且 ≤ 基线 50%）。

@@ -18,6 +18,7 @@ import type { TempRepo } from './fixtures.ts'
 import { createFakeSubprocess } from './fake-subprocess.ts'
 import { contextFor, createRemoteSetup, pushFromOther, scriptedContext } from './remote-fixtures.ts'
 import type { RemoteSetup } from './remote-fixtures.ts'
+import { GIT_BINARY } from './git-binary.ts'
 
 // Each test spawns dozens of git processes (clones, pushes); allow for a loaded machine.
 vi.setConfig({ testTimeout: 90_000 })
@@ -424,7 +425,7 @@ describe('readPushPreview', () => {
         '',
       ].join('\n')
     }).join('')
-    const imported = spawnSync('git', ['fast-import', '--quiet'], {
+    const imported = spawnSync(GIT_BINARY, ['fast-import', '--quiet'], {
       cwd: repo.root,
       env: TEST_GIT_ENV,
       input: stream,

@@ -8,6 +8,7 @@ import { bindWriteContext, createGitRunner } from '../../src/host/git-executor.t
 import { TEST_GIT_ENV, createTempDir, createTempRepo, removeTempDir } from './fixtures.ts'
 import type { TempRepo } from './fixtures.ts'
 import { createFakeSubprocess } from './fake-subprocess.ts'
+import { GIT_BINARY } from './git-binary.ts'
 
 export interface RemoteSetup {
   /** Absolute path of the bare repository (remote `origin`). */
@@ -22,7 +23,7 @@ export interface RemoteSetup {
 /** A bare `origin`, a local clone with upstream and a second clone. */
 export function createRemoteSetup(): RemoteSetup {
   const bare = realpathSync(createTempDir('dsh-git-bare-'))
-  const init = spawnSync('git', ['init', '-q', '--bare', '-b', 'main', bare], { env: TEST_GIT_ENV, encoding: 'utf8' })
+  const init = spawnSync(GIT_BINARY, ['init', '-q', '--bare', '-b', 'main', bare], { env: TEST_GIT_ENV, encoding: 'utf8' })
   if (init.status !== 0) throw new Error(`git init --bare failed: ${init.stderr}`)
 
   const local = createTempRepo()

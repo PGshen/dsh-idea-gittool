@@ -8,6 +8,8 @@ import { isAbsolute } from 'node:path'
 import { PassThrough } from 'node:stream'
 import type { Readable } from 'node:stream'
 
+import { GIT_BINARY } from './git-binary.ts'
+
 import type {
   SubprocessHandle,
   SubprocessOutcome,
@@ -26,7 +28,7 @@ export interface RecordedSpawn {
 /** Minimal `ctx.subprocess` surface consumed by the git executor. */
 export interface FakeSubprocess {
   readonly spawns: readonly RecordedSpawn[]
-  /** Executable returned by `resolveExecutable` (defaults to the real `git`). */
+  /** Executable returned by `resolveExecutable` (defaults to the real git binary, see git-binary.ts). */
   executable: string
   resolveExecutable: (
     command: string,
@@ -44,7 +46,7 @@ export function createFakeSubprocess(options: { executable?: string; withholdStd
   const spawns: RecordedSpawn[] = []
   const fake: FakeSubprocess = {
     spawns,
-    executable: options.executable ?? 'git',
+    executable: options.executable ?? GIT_BINARY,
     async resolveExecutable(command, _env, signal) {
       signal?.throwIfAborted()
       // Like the real provider for absolute paths: they must exist and be executable (B4c T2).

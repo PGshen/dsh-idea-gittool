@@ -196,7 +196,8 @@ export function moveFocus(rows: readonly TreeRow[], currentId: string, key: 'Arr
 - 2026-10-28 — T2 完成：happy-dom + `test/client/dom.tsx`；日志 ↑↓、仓库栏 ⋯ Esc 还焦两条 DOM 测试；修复 ⋯ 菜单 Esc 后焦点丢失（ee66462）
 - 2026-10-28 — T3 完成：`outline: none` 一律须登记 `FOCUS_EXEMPT`（17 条：11 个 tabIndex=-1 容器根、6 个有替代指示的输入/列表）；11 处菜单项/行/拖拽条改用 DSH 全局焦点环（内缩 `--dsw-focus-ring-width`）（2add967）
 - 2026-10-28 — T4 完成：`tree-focus.ts` 纯模型 + `use-tree-roving.ts`；分支面板与分支页的树都是单一 Tab 停靠点，分组头改为 level-1 treeitem 参与导航；删除不再使用的 `moveTreeFocus`/`treeStepIndex`（09e54ef）
-- 2026-10-28 — T5 完成：`useMenuKeyboard` 从 `useFloatingMenu` 抽出，仓库栏 ⋯、提交 ▾、合并窗口「应用非冲突更改 ▾」、文件右键菜单、Changelist「移到」都接入（取得焦点、↑↓ 环绕、Home/End、Esc/Tab/← 关闭并还焦、外部点击关闭）；不可用项可聚焦，`MenuItemButton` 用 `aria-labelledby`/`aria-describedby` 分开名称与原因
+- 2026-10-28 — T5 完成：`useMenuKeyboard` 从 `useFloatingMenu` 抽出，仓库栏 ⋯、提交 ▾、合并窗口「应用非冲突更改 ▾」、文件右键菜单、Changelist「移到」都接入（取得焦点、↑↓ 环绕、Home/End、Esc/Tab/← 关闭并还焦、外部点击关闭）；不可用项可聚焦，`MenuItemButton` 用 `aria-labelledby`/`aria-describedby` 分开名称与原因（5646681）
+- 2026-10-28 — T6 完成：`focus-trap.ts` 的 `trapTab` 接到全部 `aria-modal` 对话框（SheetFrame 及其 9 个使用方、回滚、未提交改动、智能签出、分支表单、分支抽屉）；DOM 测试覆盖设置弹层/未提交改动询问的进入焦点 + Esc + Tab 圈定、覆盖层控制器还焦、提交右键菜单 Esc 还焦
 
 ## 下一步
 
@@ -214,6 +215,7 @@ export function moveFocus(rows: readonly TreeRow[], currentId: string, key: 'Arr
 - 2026-10-28 T4 — 改为焦点移动用 `element.focus()`，展开/折叠用 `element.click()` 复用行自身的切换逻辑，不用 `aria-activedescendant`（与 ChangesTree 一致）。
 - 2026-10-28 T5 — Home/End 改为到第一/最后一项（含不可用项，APG）；打开菜单时仍聚焦第一个可用项（沿用 I-1，便于直接回车）。原生 `disabled`（无原因、如「刷新中」）仍不可聚焦、导航跳过；有原因的不可用项一律 `aria-disabled`。
 - 2026-10-28 T5 — `useMenuKeyboard` 的 `onClose(via)` 区分键盘关闭（还焦到触发按钮/行）与外部点击（不抢焦点）；`boundary` 参数让开关按钮所在的包裹元素不算「外部」，避免按下即关、点击又开。顺手修掉 TODO「应用非冲突更改 ▾ 点外部不关闭」。
+- 2026-10-28 T6 — 不新建 `use-overlay-focus.ts`：进入焦点（`useInitialFocus`/各自的 `focus()`）、Esc（`escapeHandler`/各自 handler + 工作台兜底 `handleOverlayEscape`）、还焦（`createOverlayController` + `rememberFocus`）已经统一且行为正确，DOM 测试直接作为回归保护；唯一缺的是模态对话框的 Tab 圈定，补成 `trapTab`。Blame、历史、比较等非模态覆盖层不圈定。合并窗口的焦点行为已有 `merge-window-controller` 单测（`focusIsLost`/`shouldRefocusAfterWrite`），不另写 DOM 测试。
 
 ## 意外与发现
 

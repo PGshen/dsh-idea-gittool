@@ -8,6 +8,7 @@ import type { Translate } from '../i18n.tsx'
 import type { StashAsk } from '../store/action-store.ts'
 import { Button } from '../ui/Button.tsx'
 import css from './DirtyWorktreeSheet.module.css'
+import { trapTab } from './focus-trap.ts'
 
 /** Paths listed before the total. */
 export const DIRTY_VISIBLE_PATHS = 10
@@ -35,7 +36,7 @@ export function DirtyWorktreeSheetView({ t, ask, rootRef, onStash, onCancel, onK
         aria-modal="true"
         aria-label={t('dirty.dialogLabel', { operation })}
         tabIndex={-1}
-        onKeyDown={onKeyDown}
+        onKeyDown={(event) => { onKeyDown?.(event); trapTab(event, event.currentTarget) }}
       >
         <header className={css.header}>
           <strong>{t('dirty.title')}</strong>

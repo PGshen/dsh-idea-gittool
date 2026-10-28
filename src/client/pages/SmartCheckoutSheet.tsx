@@ -13,6 +13,7 @@ import type { LocalizedText } from '../localized-text.ts'
 import type { ActionOutcome, ActionStore } from '../store/action-store.ts'
 import { Button } from '../ui/Button.tsx'
 import css from './BranchSheets.module.css'
+import { trapTab } from './focus-trap.ts'
 
 /** Paths listed before the total. */
 export const SMART_VISIBLE_PATHS = 10
@@ -68,7 +69,7 @@ export function SmartCheckoutSheetView(props: SmartCheckoutSheetViewProps): Reac
         aria-modal="true"
         aria-label={t('branch.smart.dialogLabel', { target: target.name })}
         tabIndex={-1}
-        onKeyDown={props.onKeyDown}
+        onKeyDown={(event) => { props.onKeyDown?.(event); trapTab(event, event.currentTarget) }}
       >
         <header className={css.header}>
           <strong>{t('branch.smart.title')}</strong>

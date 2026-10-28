@@ -51,3 +51,20 @@ describe('log grid keyboard (DOM)', () => {
     expect(selectedSubjects(view.container).join()).toContain('subject 0')
   })
 })
+
+describe('commit context menu (DOM)', () => {
+  it('Shift+F10 on the grid opens the menu with focus inside; Esc closes it and focus returns to the grid', async () => {
+    const store = await loadedStore(3)
+    const commitMenu = { writable: true, operation: null, onAction: () => {} }
+    view = render(withLocale(<LogPage store={store} autoLoad={false} viewportHeight={520} commitMenu={commitMenu} />) as React.ReactElement)
+    const grid = byRole(view.container, 'grid')
+    focus(grid)
+    press('ArrowDown', grid)
+    press('F10', grid, { shiftKey: true })
+    const menu = byRole(view.container, 'menu')
+    expect(menu.contains(document.activeElement)).toBe(true)
+    press('Escape')
+    expect(view.container.querySelector('[role="menu"]')).toBeNull()
+    expect(document.activeElement).toBe(grid)
+  })
+})

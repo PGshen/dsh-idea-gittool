@@ -25,6 +25,7 @@ import { MenuItemButton } from './MenuItemButton.tsx'
 import { useFloatingMenu } from './menu-position.ts'
 import type { MenuAnchor } from './menu-position.ts'
 import { useTreeRoving } from './use-tree-roving.ts'
+import { trapTab } from './focus-trap.ts'
 
 export interface BranchPanelProps {
   value: BranchesValue | null
@@ -136,7 +137,7 @@ export function BranchPanel(props: BranchPanelProps): ReactNode {
         aria-modal="true"
         aria-label={t('branch.panel')}
         className={`${css.panel} ${mode === 'compact' ? css.compact : css.drawer}`}
-        onKeyDown={onKeyDown}
+        onKeyDown={(event) => { onKeyDown(event); trapTab(event, event.currentTarget) }}
       >
         <BranchPanelBody {...props} />
       </div>

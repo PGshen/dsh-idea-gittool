@@ -64,6 +64,11 @@ export function clampRefreshInterval(value: unknown): number {
   return Math.min(REFRESH_INTERVAL_MAX_SEC, Math.max(REFRESH_INTERVAL_MIN_SEC, Math.round(value)))
 }
 
+/** Poller interval for the refresh setting. */
+export function refreshIntervalMs(settings: Pick<WorkbenchSettings, 'refreshIntervalSec'>): number {
+  return settings.refreshIntervalSec * 1000
+}
+
 /** Stored JSON → settings; every field falls back to its default on its own. */
 export function parseSettings(raw: unknown): WorkbenchSettings {
   const source = typeof raw === 'object' && raw !== null && !Array.isArray(raw) ? raw as Record<string, unknown> : {}

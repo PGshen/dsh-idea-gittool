@@ -83,7 +83,7 @@ import { RemoteBranchDeleteSheet, TagSheet, UpstreamSheet, WorktreeAddSheet } fr
 import { RemotesPage, WorktreesPage } from './RemotesPages.tsx'
 import { addList, moveTo, removeList, renameList, setActive } from '../changelists/changelist-model.ts'
 import { useChangelists } from '../changelists/use-changelists.ts'
-import { readChangelistGrouping, writeChangelistGrouping } from '../settings.ts'
+import { readChangelistGrouping, readSettings, useSettings, writeChangelistGrouping } from '../settings.ts'
 import { DiffViewer } from './DiffViewer.tsx'
 import { FileHistoryPage } from './FileHistoryPage.tsx'
 import { fileActions } from './file-actions.ts'
@@ -211,10 +211,13 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
   const { sessionId, client, value, onRefresh } = props
   const status = value.status
 
+  const settings = useSettings()
   const logStore = useMemo(
-    () => createLogStore({ sessionId, loadPage: request => client.log(request) }),
+    // Page size: read once at creation; later changes go through setPageSize (keeps filters).
+    () => createLogStore({ sessionId, loadPage: request => client.log(request), pageSize: readSettings().logPageSize }),
     [client, sessionId],
   )
+  useEffect(() => { logStore.setPageSize(settings.logPageSize) }, [logStore, settings.logPageSize])
   const detailStore = useMemo(
     () => createDetailStore({ load: (sha, signal) => client.commit({ sessionId, sha }, signal) }),
     [client, sessionId],

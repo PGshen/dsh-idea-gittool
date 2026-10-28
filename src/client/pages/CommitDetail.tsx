@@ -13,6 +13,8 @@ import type {
 } from '../../shared/protocol.ts'
 import { render, text, useT } from '../i18n.tsx'
 import type { LocalizedText, Translate } from '../i18n.tsx'
+import { useSettings } from '../settings.ts'
+import type { DateFormat } from '../settings.ts'
 import type { GitWorkbenchKey } from '../locales.ts'
 import { Button } from '../ui/Button.tsx'
 import { Chip } from '../ui/Chip.tsx'
@@ -61,6 +63,13 @@ export function formatRelativeTime(iso: string, now: number, t: Translate): stri
   return render(t, relativeLabel(relativeTime(at, now)))
 }
 
+/** B4a: the visible time and its hover title; the other format goes to the title. */
+export function commitTimeLabels(iso: string, now: number, t: Translate, format: DateFormat): { text: string; title: string } {
+  const absolute = formatAbsoluteTime(iso)
+  const relative = formatRelativeTime(iso, now, t)
+  return format === 'relative' ? { text: relative, title: absolute } : { text: absolute, title: relative }
+}
+
 /** 作者与提交者不同时才单独显示「提交者」（设计 §8.1.5 第 5 条）。 */
 export function committerDiffers(
   detail: Pick<CommitDetailValue, 'author' | 'committer'>,
@@ -69,6 +78,8 @@ export function committerDiffers(
 }
 
 export interface CommitDetailProps {
+  /** B4a: overrides the date format setting (tests). */
+  dateFormat?: DateFormat
   detail: CommitDetailValue | null
   status: 'idle' | 'loading' | 'ready' | 'error'
   error: GitError | null
@@ -219,8 +230,11 @@ export function CommitDetail({
   onNavigate,
   onRetry,
   onCopy,
+  dateFormat,
 }: CommitDetailProps): ReactNode {
   const t = useT()
+  const settings = useSettings()
+  const format = dateFormat ?? settings.dateFormat
   const [bodyExpanded, setBodyExpanded] = useState<boolean>(defaultBodyExpanded ?? false)
   const [collapsedParents, setCollapsedParents] = useState<ReadonlySet<string>>(
     () => new Set(defaultCollapsedParents ?? []),
@@ -288,8 +302,8 @@ export function CommitDetail({
       <div className={css.metaRow}>
         <span className={css.author}>{detail.author.name} &lt;{detail.author.email}&gt;</span>
         <span className={css.separator}>·</span>
-        <time dateTime={detail.author.date} title={formatRelativeTime(detail.author.date, now, t)}>
-          {formatAbsoluteTime(detail.author.date)}
+        <time dateTime={detail.author.date} title={commitTimeLabels(detail.author.date, now, t, format).title}>
+          {commitTimeLabels(detail.author.date, now, t, format).text}
         </time>
       </div>
 
@@ -299,8 +313,8 @@ export function CommitDetail({
             {t('detail.committer', { name: detail.committer.name, email: detail.committer.email })}
           </span>
           <span className={css.separator}>·</span>
-          <time dateTime={detail.committer.date} title={formatRelativeTime(detail.committer.date, now, t)}>
-            {formatAbsoluteTime(detail.committer.date)}
+          <time dateTime={detail.committer.date} title={commitTimeLabels(detail.committer.date, now, t, format).title}>
+            {commitTimeLabels(detail.committer.date, now, t, format).text}
           </time>
         </div>
       ) : null}

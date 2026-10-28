@@ -17,6 +17,26 @@ import {
 import type { LogStore, LogStoreOptions } from '../../../src/client/store/log-store.ts'
 import type { CommitSummary, LogRequest, LogValue, RefEntry, RpcResult } from '../../../src/shared/protocol.ts'
 
+describe('setPageSize (B4a)', () => {
+  it('reloads with the new page size and keeps the filter', async () => {
+    const { store, requests } = harness([page([commit('a')]), page([commit('a')]), page([commit('a')])], { pageSize: 100 })
+    await store.loadFirstPage()
+    store.setFilter({ branches: ['main'] })
+    await vi.waitFor(() => { expect(requests).toHaveLength(2) })
+    store.setPageSize(50)
+    await vi.waitFor(() => { expect(requests).toHaveLength(3) })
+    expect(requests.map(request => request.limit)).toEqual([100, 100, 50])
+    expect(requests[2]?.branches).toEqual(['main'])
+  })
+
+  it('ignores an unchanged size', async () => {
+    const { store, requests } = harness([page([commit('a')])], { pageSize: 100 })
+    await store.loadFirstPage()
+    store.setPageSize(100)
+    expect(requests).toHaveLength(1)
+  })
+})
+
 describe('pagination', () => {
   it('appends pages, keeps the cursor chain and dedupes repeated commits', async () => {
     const { store, requests } = harness([

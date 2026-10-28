@@ -184,6 +184,37 @@ describe('LogTable virtualization', () => {
   })
 })
 
+describe('B4a display settings', () => {
+  it('formats log dates as relative time when asked', () => {
+    const now = Date.parse('2026-10-25T12:00:00')
+    expect(formatLogDate('2026-10-25T09:00:00', now, 'relative', zhT)).toBe('3 小时前')
+    expect(formatLogDate('2026-10-24T18:12:00', now, 'absolute', zhT)).toBe('10-24 18:12')
+    expect(formatLogDate('not a date', now, 'relative', zhT)).toBe('not a date')
+  })
+
+  it('compact rows drop the author and hash cells and use 24px rows', () => {
+    const data = tableData(commit('abcdef1234', 'p'))
+    const html = renderToStaticMarkup(
+      <LogRow data={data} index={0} selected={false} multi={false} active={false} head={false} currentBranch={null} compact />,
+    )
+    expect(html).not.toContain('>Alice<')
+    expect(html).not.toContain('>abcdef1<')
+    expect(html).toContain('height="24"')
+    const rows = Array.from({ length: 10 }, (_, index) => tableData(commit(`s${index}`)))
+    expect(renderTable({ rows, compact: true })).toContain(`height:${10 * 24}px`)
+    expect(renderTable({ rows })).toContain(`height:${10 * 26}px`)
+  })
+
+  it('relative dates reach the rendered row, absolute time stays in the title', () => {
+    const data = tableData({ ...commit('abcdef1234', 'p'), date: '2026-10-25T09:00:00' })
+    const html = renderToStaticMarkup(
+      <LogRow data={data} index={0} selected={false} multi={false} active={false} head={false} currentBranch={null} dateFormat="relative" now={Date.parse('2026-10-25T12:00:00')} />,
+    )
+    expect(html).toContain('3 小时前')
+    expect(html).toContain('title="2026-10-25T09:00:00"')
+  })
+})
+
 describe('keyboard translation (§14.1)', () => {
   it('passes table keys with shift and drops the rest', () => {
     expect(toLogKeyInput(key('ArrowDown', { shiftKey: true }))).toEqual({ key: 'ArrowDown', shiftKey: true })

@@ -142,6 +142,8 @@ export interface LogStore {
   loadNextPage(): Promise<void>
   /** 重新拉第一页，保留筛选与已选中项（刷新用）。 */
   refresh(): Promise<void>
+  /** B4a: new rows-per-request; reloads like refresh (filter and selection kept). Same size: no-op. */
+  setPageSize(size: number): void
   /** 输入框变化：立即更新原文，600ms 后应用。 */
   setQuery(raw: string): void
   /** Enter：立即应用当前输入。 */
@@ -166,8 +168,12 @@ export interface LogStore {
 }
 
 export function createLogStore(options: LogStoreOptions): LogStore {
-  const pageSize = Math.min(LOG_PAGE_MAX_LIMIT, Math.max(1, Math.trunc(options.pageSize ?? LOG_PAGE_SIZE)))
-  const maxRows = Math.max(pageSize, Math.trunc(options.maxRows ?? LOG_MAX_ROWS))
+  const clampPageSize = (size: number): number => Math.min(LOG_PAGE_MAX_LIMIT, Math.max(1, Math.trunc(size)))
+  let pageSize = clampPageSize(options.pageSize ?? LOG_PAGE_SIZE)
+  const maxRowsOption = Math.trunc(options.maxRows ?? LOG_MAX_ROWS)
+  let maxRows = Math.max(pageSize, maxRowsOption)
+  // PageUp/PageDown step: fixed at creation so the page-size setting does not change keyboard paging.
+  const keyStep = pageSize
   const debounceMs = Math.max(0, Math.trunc(options.debounceMs ?? LOG_SEARCH_DEBOUNCE_MS))
 
   let state: LogState = {
@@ -551,11 +557,11 @@ export function createLogStore(options: LogStoreOptions): LogStore {
           return { handled: true }
         case 'PageUp':
           if (count === 0) return { handled: false }
-          moveActive((state.activeIndex < 0 ? 0 : state.activeIndex) - pageSize, input.shiftKey === true)
+          moveActive((state.activeIndex < 0 ? 0 : state.activeIndex) - keyStep, input.shiftKey === true)
           return { handled: true }
         case 'PageDown':
           if (count === 0) return { handled: false }
-          moveActive((state.activeIndex < 0 ? 0 : state.activeIndex) + pageSize, input.shiftKey === true)
+          moveActive((state.activeIndex < 0 ? 0 : state.activeIndex) + keyStep, input.shiftKey === true)
           return { handled: true }
         case 'Home':
           if (count === 0) return { handled: false }
@@ -611,6 +617,13 @@ export function createLogStore(options: LogStoreOptions): LogStore {
     },
     clearJumpError() {
       if (state.jumpError !== null) setState({ jumpError: null })
+    },
+    setPageSize(size) {
+      const next = clampPageSize(size)
+      if (next === pageSize) return
+      pageSize = next
+      maxRows = Math.max(pageSize, maxRowsOption)
+      void store.refresh()
     },
     dispose() {
       cancelDebounce()

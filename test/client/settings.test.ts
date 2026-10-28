@@ -8,6 +8,7 @@ import {
   readChangelistGrouping,
   readDiffMode,
   readSettings,
+  refreshIntervalMs,
   resetSettings,
   resetSettingsForTest,
   subscribeSettings,
@@ -194,5 +195,12 @@ describe('subscribeSettings', () => {
 
     unsubscribe()
     expect(handlers).toHaveLength(0)
+  })
+})
+
+describe('refreshIntervalMs', () => {
+  it('converts the setting to the poller interval', () => {
+    expect(refreshIntervalMs(DEFAULT_SETTINGS)).toBe(3000)
+    expect(refreshIntervalMs({ ...DEFAULT_SETTINGS, refreshIntervalSec: 10 })).toBe(10_000)
   })
 })

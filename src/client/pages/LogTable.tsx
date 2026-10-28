@@ -1,11 +1,12 @@
-// 提交图表格（设计 §8.1.3）：@tanstack/react-virtual 虚拟化，26px 行高，接近底部自动加载下一页。
+// 提交图表格（设计 §8.1.3）：@tanstack/react-virtual 虚拟化，26px 行高（紧凑 24px），接近底部自动加载下一页。
 // 键盘交给 log-store.handleKey（§14.1），这里只做事件翻译、preventDefault 与滚动跟随。
 import { useEffect, useRef } from 'react'
 import type { KeyboardEvent, MouseEvent, ReactNode, Ref } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import type { FocusTarget } from '../focus.ts'
-import { ROW_HEIGHT } from '../graph/layout.ts'
+import { COMPACT_ROW_HEIGHT, ROW_HEIGHT } from '../graph/layout.ts'
 import { useT } from '../i18n.tsx'
+import type { DateFormat } from '../settings.ts'
 import type { LogAction, LogKeyInput, LogKeyResult, LogTableData } from '../store/log-store.ts'
 import { isContextMenuKey } from './commit-actions.ts'
 import { LogRow } from './LogRow.tsx'
@@ -87,6 +88,10 @@ export interface LogTableProps {
   footerError?: { message: string; onRetry(): void } | null
   tableRef?: Ref<HTMLDivElement>
   viewportHeight?: number
+  /** B4a compact mode (24px rows, no author/hash cells). */
+  compact?: boolean
+  /** B4a date column format. */
+  dateFormat?: DateFormat
 }
 
 export function LogTable({
@@ -107,17 +112,22 @@ export function LogTable({
   footerError = null,
   tableRef,
   viewportHeight = DEFAULT_VIEWPORT_HEIGHT,
+  compact = false,
+  dateFormat = 'absolute',
 }: LogTableProps): ReactNode {
   const t = useT()
   const scrollRef = useRef<HTMLDivElement | null>(null)
+  const rowHeight = compact ? COMPACT_ROW_HEIGHT : ROW_HEIGHT
   const virtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => scrollRef.current,
-    estimateSize: () => ROW_HEIGHT,
+    estimateSize: () => rowHeight,
     overscan: LOG_OVERSCAN,
     initialRect: { width: 0, height: viewportHeight },
     getItemKey: (index) => rows[index]?.commit.sha ?? index,
   })
+  // Row height changed (compact toggled): drop the cached sizes.
+  useEffect(() => { virtualizer.measure() }, [rowHeight, virtualizer])
   const items = virtualizer.getVirtualItems()
   const lastRendered = items[items.length - 1]?.index ?? -1
   const selected = new Set(selection)
@@ -189,6 +199,8 @@ export function LogTable({
               active={item.index === activeIndex}
               head={headSha !== null && data.commit.sha === headSha}
               currentBranch={currentBranch}
+              compact={compact}
+              dateFormat={dateFormat}
               style={{ transform: `translateY(${item.start}px)` }}
               onClick={onRowClick}
               onDoubleClick={onRowOpen}

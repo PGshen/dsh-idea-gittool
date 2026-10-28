@@ -105,7 +105,7 @@ export function useSettings(): WorkbenchSettings                         // useS
 - **完成标准**：L4 能打开弹层、改值、恢复默认、`Esc` 关闭焦点回到 `⋯`。
 - **验证命令**：`make check`
 
-### T3：刷新、日志与显示类设置接线（待开始）
+### T3：刷新、日志与显示类设置接线（完成）
 
 - **目标**：自动刷新/间隔、每页条数、默认 Diff 模式、日期格式、紧凑模式生效。
 - **涉及文件**：`src/client/GitBody.tsx`（`autoRefresh` 改读写设置，`intervalMs = refreshIntervalSec * 1000` 进 effect 依赖）、`src/client/pages/GitWorkbench.tsx`（`createLogStore({ pageSize: settings.logPageSize })`，条数变化时重建 store 并 dispose 旧的）、`src/client/pages/LogRow.tsx`（`formatLogDate` 增加 `format` 参数；相对格式复用 `CommitDetail.formatRelativeTime`）、`src/client/pages/CommitDetail.tsx`（日期主显示按格式，`title` 显示另一种）、`src/client/pages/LogTable.tsx` 与 `src/client/graph/layout.ts`/`GraphCell.tsx`（行高由常量改为参数：`ROW_HEIGHT = 26`、新增 `COMPACT_ROW_HEIGHT = 24`；紧凑时隐藏作者与哈希列）、`src/client/pages/DiffViewer.tsx`（仍读 `readDiffMode`，设置弹层改的就是同一个值，无需改动，只补测试）。
@@ -148,13 +148,15 @@ export function useSettings(): WorkbenchSettings                         // useS
 
 - 2026-10-28 — T1 — `settings.ts` 扩展为完整 `WorkbenchSettings`（逐字段校验、间隔钳制、未知键保留、写失败退回内存、同页订阅 + 跨标签页 `storage` 事件、`useSettings`）；DSH 无日期格式偏好，写进 references §16
 - 2026-10-28 — T2 — `SettingsSheet`（底部浮层，复用 `SheetFrame`）+ `settingsPatchFor`；仓库栏 `⋯`「设置…」；浮层种类 `settings`（Level 2）；文案分区 `locales/settings.ts`；新样式纳入 CSS 变量守卫
+- 2026-10-28 — T3 — `GitBody` 自动刷新/间隔读写设置（状态栏开关写设置，刷新页面后保持）；`log-store.setPageSize`；`formatLogDate`/`commitTimeLabels` 支持相对时间；紧凑模式（`COMPACT_ROW_HEIGHT = 24`，隐藏作者/哈希，虚拟列表在行高变化时重新测量）
 
 ## 下一步
 
-- T3：`GitBody` 自动刷新/间隔改读设置；`createLogStore` 用 `logPageSize`；`formatLogDate` 加格式参数；`LogTable`/`GraphCell` 紧凑行高。先在 `polling.test.ts`、`log-page.test.tsx` 补失败测试。
+- T4：抽出 `afterCommitRoute`、自动打开冲突列表的判断函数并先写测试；`merge-window-controller` 新增 `autoApplyNonConflicting`（无草稿时首次就绪应用一次）。
 
 ## 决策记录
 
+- 2026-10-28 — T3 — 每页条数变化不重建日志 store（计划原写法），改为新增 `setPageSize`：重建会丢掉筛选；`setPageSize` 等同刷新，保留筛选与选中。PageUp/PageDown 步长固定为创建时的条数，不随设置变化。
 - 2026-10-28 — T2 — 刷新间隔用 1–10 秒的下拉而不是数字输入：不需要失焦钳制、读屏直接读出可选值；其他多选项同样用下拉（计划写「分段按钮或单选组」，下拉在窄面板下更省空间）。
 - 2026-10-28 — 计划草稿：git 路径与默认推送方式不进 B4a（理由见「不包含」）；设置仍按设计 §13 存 `localStorage` 键 `dsh-idea-git.settings.v1`，与 B3b/B3c 已写入的值共用。
 

@@ -8,14 +8,14 @@
 .badge {
   min-width: 14px;
   text-align: center;
-  font-family: var(--dsw-font-mono, monospace);
+  font-family: var(--dsw-font-markdown-code-block-font-family, monospace);
   font-size: 11px;
   font-weight: 600;
 }
 
 .unknown { color: var(--dsw-alias-label-tertiary); }
-.statusM { color: var(--dsw-alias-state-warn); }
-.statusA { color: var(--dsw-alias-state-success); }
+.statusM { color: var(--dsw-alias-state-warn-primary); }
+.statusA { color: var(--dsw-alias-state-success-primary); }
 .statusD { color: var(--dsw-alias-state-error-primary); }
 .statusU { color: var(--dsw-alias-label-tertiary); }
 

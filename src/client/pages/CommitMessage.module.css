@@ -116,7 +116,7 @@
 }
 
 .hint {
-  color: var(--dsw-alias-state-warn);
+  color: var(--dsw-alias-state-warn-primary);
 }
 
 .shortcut {

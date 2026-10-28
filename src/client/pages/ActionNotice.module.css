@@ -15,7 +15,7 @@
 }
 
 .warning {
-  border-left: 2px solid var(--dsw-alias-state-warn);
+  border-left: 2px solid var(--dsw-alias-state-warn-primary);
 }
 
 .message {

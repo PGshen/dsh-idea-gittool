@@ -24,7 +24,7 @@ button.chip:hover {
 }
 
 .local {
-  color: var(--dsw-alias-state-success);
+  color: var(--dsw-alias-state-success-primary);
 }
 
 .remote {

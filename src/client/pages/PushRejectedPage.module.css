@@ -56,7 +56,7 @@
 .subtitle {
   overflow: hidden;
   color: var(--dsw-alias-label-secondary);
-  font-family: var(--dsw-font-mono);
+  font-family: var(--dsw-font-markdown-code-block-font-family);
   font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -80,7 +80,7 @@
 
 .warning {
   margin: 0;
-  color: var(--dsw-alias-state-warn);
+  color: var(--dsw-alias-state-warn-primary);
 }
 
 .muted {
@@ -90,7 +90,7 @@
 }
 
 .inlineCode {
-  font-family: var(--dsw-font-mono);
+  font-family: var(--dsw-font-markdown-code-block-font-family);
   word-break: break-all;
 }
 
@@ -133,7 +133,7 @@
 .sha {
   flex: 0 0 auto;
   color: var(--dsw-alias-label-tertiary);
-  font-family: var(--dsw-font-mono);
+  font-family: var(--dsw-font-markdown-code-block-font-family);
 }
 
 .subject {
@@ -212,7 +212,7 @@
 .commandText {
   padding: 2px 6px;
   background: var(--dsw-alias-bg-layer-2);
-  font-family: var(--dsw-font-mono);
+  font-family: var(--dsw-font-markdown-code-block-font-family);
   font-size: 12px;
   user-select: all;
   word-break: break-all;

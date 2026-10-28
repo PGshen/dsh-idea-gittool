@@ -88,7 +88,7 @@
 
 .selected,
 .selected:hover {
-  background: var(--dsw-alias-interactive-bg-selected, var(--dsw-alias-interactive-bg-hover));
+  background: var(--dsw-alias-interactive-bg-active, var(--dsw-alias-interactive-bg-hover));
 }
 
 .message {
@@ -107,7 +107,7 @@
 }
 
 .index {
-  font-family: var(--dsw-font-mono);
+  font-family: var(--dsw-font-markdown-code-block-font-family);
 }
 
 .detail {

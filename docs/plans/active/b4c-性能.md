@@ -87,7 +87,7 @@ export function createBenchRepo(dir: string, options?: { commits?: number /* 10_
 - **完成标准**：`pnpm bench` 输出 AC1/AC2 表；基线数据入计划。
 - **验证命令**：`pnpm vitest run test/scripts/bench-fixture.test.ts`、`pnpm bench`、`make check`
 
-### T2：超标项修复（视 T1 结果，可能为空）（待开始）
+### T2：超标项修复（视 T1 结果，可能为空）（完成）
 
 - **目标**：AC1/AC2 中超预算的项定位并修复。
 - **涉及文件**：视结果而定（候选：`src/host/git/status.ts` 的多次 git 调用合并或缓存、`src/host/cache.ts` 键带 version）。
@@ -140,13 +140,16 @@ export function createBenchRepo(dir: string, options?: { commits?: number /* 10_
 
 ## 下一步
 
-- T2：Host 解析一次真实 git 二进制（`git --exec-path` 下的 `git`，存在才用，否则保留 `resolveExecutable` 结果），并把 bootstrap 的两次 `rev-parse` 合成一次；测试先行（`test/host/git-executor.test.ts`、`test/host/rpc.test.ts` 断言 spawn 次数/程序路径），完成后 `pnpm bench` 两种跑法（`pnpm bench` 与直接 `node --experimental-transform-types scripts/bench/host.ts`）都要达标。
+- T3：`test/bundle.smoke.mjs` 先加 gzip ≤ 250 KB 断言（RED，当前约 302 KB），再在 `build.mjs` 合成 CSS 之后对 JS 做一次 `transform({ minifyIdentifiers: true })`；注意 smoke 里「无前缀短 CSS 类名」的正则可能误报压缩后的 JS，需要核对。
 
 ## 决策记录
 
 - 2026-10-28 T1 — Ruling: 基准脚本写成 `scripts/bench/host.ts`（契约写的是 `.mjs`），用 Node 24 的 `--experimental-transform-types` 直接运行 `src/host` 的 TypeScript — 直接复用真实处理器与 `test/host` 的 subprocess 替身，不需要先打包、也不加依赖（`tsx` 等）；`src/host` 有参数属性，strip-only 模式跑不了 — 若错：Node 升级后该 flag 变化，`bench` 脚本改一行。
 - 2026-10-28 T1 — Ruling: 每个样本用新的处理器（不吃缓存），先不计时地调一次 `bootstrap` 预热仓库解析；bootstrap 另测「同一处理器、时钟每次前进 3s」的稳态轮询（这才是 §16.8「状态轮询每次 ≤50ms」的场景），首个请求只记录 — 若错：稳态口径偏乐观，首个请求另有一行可对照。
 - 2026-10-28 T1 — Ruling: 合成仓库的合并放在每 50 个提交的第 25 个，保证最近 24 个提交不含合并，变基计划可测；变基计划项是 24 条而非计划写的 50 条 — 若错：50 条的计划没测到，但耗时与条数近似线性。
+- 2026-10-28 T2 — Ruling: 超标的根因是进程启动开销（不是 git 本身），修法是执行器可选的 `directBinary`：第一次运行时用 PATH 解析出的 git 执行 `--exec-path`，`<目录>/git`（Windows `git.exe`）经 `ctx.subprocess.resolveExecutable` 校验通过就固定用它，否则继续用 PATH 的结果；探测被中止/超时不缓存、下次重试。默认关闭、只在 `src/host/index.ts` 打开 — 默认开启会让每个测试的 spawn 列表多一条探测，几十处断言要改；生产只有一个入口 — 若错：沙箱 confine 下直接执行 Xcode 内的 git 若被 Seatbelt 拒绝，写命令会失败（T6 的 L4 必须在 confine 下做一次提交验证），且 B4d 的 git 路径设置要在这个解析结果之上叠加。
+- 2026-10-28 T2 — Ruling: 计划里预想的「两次 `rev-parse` 合一」不做 — 开启 `directBinary` 后 bootstrap 稳态 15ms，已远低于 50ms，再改仓库解析会动到每个端点的公共路径，收益不值风险 — 若错：极慢的文件系统上 bootstrap 仍可能超预算，届时再合并。
+- 2026-10-28 T2 — Ruling: `index.ts` 的接线没有单测（Host 入口没有测试替身），由执行器的 4 个单测 + `pnpm bench`（与 `index.ts` 同参数）+ T6 L4 覆盖 — 若错：有人删掉这个参数不会被 `make check` 发现，只会在基准里变慢。
 - 2026-10-28 T1 — Ruling: 本计划各任务的关口先用「针对性测试 + lint/typecheck/layers」，全量 `make check` 放在 T4（提速）之后跑 — 基线全量 8 分钟且有 8 个负载超时，在 T4 解决之前每任务跑全量既慢又不会更可信；负责人本次会话开头也要求先跳过 — 若错：T2/T3 的回归要到 T4 后才被全量发现，届时回退定位成本略高。
 
 ## 意外与发现
@@ -181,3 +184,21 @@ export function createBenchRepo(dir: string, options?: { commits?: number /* 10_
 | 无命中搜索扫完 10k | — | 570 | 272 | 260 |
 
 >256 KiB 文件 diff 返回 `truncated`、响应 358 KB（< 4 MiB）。JSON 在 `.evidence/b4c/`。
+
+### T2 修复后（2026-10-28，`pnpm bench`，`directBinary` 开启，同一台机器）
+
+| 项 | 预算 | 中位 | p95 | 修复前（`pnpm bench`） |
+|---|---|---|---|---|
+| bootstrap 稳态轮询 / 首个请求 | 50 / — | 15.0 / 20.4 | 15.8 / 20.9 | 285（首个请求） |
+| log 首页 50 / 200 | 500 | 33.1 / 33.3 | 34.7 / 33.7 | 174 |
+| commit 详情 / 合并提交 | 200 | 13.8 / 14.1 | 14.2 / 22.5 | 223 / 256 |
+| diff 工作区 / 4500 行 / >256 KiB（truncated，358 KB） | 300 | 8.9 / 16.6 / 16.0 | 10.3 / 17.3 / 16.8 | 141 / 237 / 236 |
+| branches | 100 | 11.7 | 12.8 | 188 |
+| blame 4500 行首页 | — | 24.0 | 26.7 | 247 |
+| 文件历史首页 | — | 48.4 | 48.9 | 188 |
+| 分支比较 | — | 23.8 | 24.5 | 290 |
+| 变基计划 24 条 | — | 30.6 | 34.2 | 517 |
+| 贮藏列表 | — | 4.9 | 5.4 | 99 |
+| 无命中搜索扫完 10k | — | 206.6 | 220.8 | 570 |
+
+全部通过（AC1、AC2 的 Host 部分）。

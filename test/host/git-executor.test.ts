@@ -1,4 +1,5 @@
-import { mkdtempSync } from 'node:fs'
+import { mkdtempSync, realpathSync } from 'node:fs'
+import { spawnSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -151,6 +152,73 @@ describe('createGitRunner', () => {
     await delay(60)
     controller.abort()
     await assertion
+  })
+})
+
+function probes(fake: ReturnType<typeof createFakeSubprocess>): number {
+  return fake.spawns.filter((spawn) => spawn.spec.argv.slice(1).join(' ') === '--exec-path').length
+}
+
+describe('createGitRunner directBinary (B4c T2)', () => {
+  const directGit = realpathSync(
+    join(spawnSync('git', ['--exec-path'], { encoding: 'utf8' }).stdout.trim(), 'git'),
+  )
+
+  it('runs every command with the git binary under --exec-path after one probe', async () => {
+    const repo = makeRepo()
+    const fake = createFakeSubprocess()
+    const run = createGitRunner(fake, { directBinary: true })
+
+    await run(['rev-parse', 'HEAD'], { cwd: repo.root })
+    await run(['status', '--porcelain'], { cwd: repo.root })
+
+    expect(probes(fake)).toBe(1)
+    const commands = fake.spawns.filter((spawn) => spawn.spec.argv[1] !== '--exec-path')
+    expect(commands.map((spawn) => spawn.spec.argv[0])).toEqual([directGit, directGit])
+  })
+
+  it('keeps the PATH git when --exec-path has no git binary', async () => {
+    const repo = makeRepo()
+    const dir = makeTempDir()
+    const shim = writeExecutableScript(
+      dir,
+      'git-shim.sh',
+      `#!/bin/sh\nif [ "$1" = "--exec-path" ]; then echo ${dir}/empty; exit 0; fi\nexec git "$@"\n`,
+    )
+    const fake = createFakeSubprocess({ executable: shim })
+    const run = createGitRunner(fake, { directBinary: true })
+
+    const result = await run(['rev-parse', '--show-toplevel'], { cwd: repo.root })
+    await run(['status'], { cwd: repo.root })
+
+    expect(result.exitCode).toBe(0)
+    expect(lastSpawn(fake).argv[0]).toBe(shim)
+    expect(probes(fake)).toBe(1)
+  })
+
+  it('maps a deadline during the probe to git/timeout and probes again next time', async () => {
+    const repo = makeRepo()
+    const dir = makeTempDir()
+    const fake = createFakeSubprocess({ executable: makeSlowExecutable(dir) })
+    const run = createGitRunner(fake, { directBinary: true })
+
+    await expect(run(['status'], { cwd: repo.root, timeoutMs: 200 })).rejects.toMatchObject({ code: 'git/timeout' })
+    fake.executable = 'git'
+    await run(['status'], { cwd: repo.root })
+
+    expect(probes(fake)).toBe(2)
+    expect(lastSpawn(fake).argv[0]).toBe(directGit)
+  })
+
+  it('is off by default: commands use the resolved executable without probing', async () => {
+    const repo = makeRepo()
+    const fake = createFakeSubprocess()
+    const run = createGitRunner(fake)
+
+    await run(['status'], { cwd: repo.root })
+
+    expect(probes(fake)).toBe(0)
+    expect(lastSpawn(fake).argv[0]).toBe('git')
   })
 })
 

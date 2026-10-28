@@ -157,6 +157,17 @@ export interface GitRunnerDefaults {
   timeoutMs?: number | undefined
   stdoutMaxBytes?: number | undefined
   stderrMaxBytes?: number | undefined
+  /**
+   * B4c T2: probe `git --exec-path` once and run the `git` binary found there. The PATH `git`
+   * can be a launcher (macOS `/usr/bin/git` goes through xcrun) that costs 5–40ms per spawn.
+   * Falls back to the PATH result when the probe finds nothing; an aborted probe is retried.
+   */
+  directBinary?: boolean | undefined
+}
+
+/** Name of the git binary inside `--exec-path`. */
+function directBinaryName(): string {
+  return process.platform === 'win32' ? 'git.exe' : 'git'
 }
 
 /** One git invocation boundary: argv + completely specified execution world. */
@@ -212,6 +223,48 @@ export function createGitRunner(
   const defaultTimeoutMs = defaults.timeoutMs ?? GIT_TIMEOUT_MS
   const defaultStdoutMaxBytes = defaults.stdoutMaxBytes ?? GIT_STDOUT_MAX_BYTES
   const defaultStderrMaxBytes = defaults.stderrMaxBytes ?? GIT_STDERR_MAX_BYTES
+  /** Settled direct-binary decision; undefined until a probe has completed. */
+  let directProgram: Promise<string> | undefined
+
+  /** `<exec-path>/git` when it resolves, otherwise `fallback`; throws only when the probe was aborted. */
+  const probeDirect = async (fallback: string, cwd: string, signal: AbortSignal): Promise<string> => {
+    const child = subprocess.spawn({
+      argv: [fallback, '--exec-path'],
+      cwd,
+      env: GIT_READ_ENV,
+      signal,
+      graceMs: GIT_GRACE_MS,
+      stdio: { stdin: 'ignore', stdout: { maxBytes: 64 * 1024 }, stderr: { maxBytes: 64 * 1024 } },
+    })
+    try {
+      const outcome = await child.done
+      // A killed probe exits too: never settle the decision on an aborted run.
+      if (signal.aborted) throw new Error('git --exec-path probe aborted')
+      const dir = outcome.exitCode === 0 ? (child.collected.stdout?.readFrom(0).text ?? '').trim() : ''
+      if (dir === '') return fallback
+      try {
+        return await subprocess.resolveExecutable(`${dir}/${directBinaryName()}`, undefined, signal)
+      } catch (error) {
+        if (signal.aborted) throw error
+        return fallback
+      }
+    } finally {
+      child.terminate()
+      await child.waitForExit().catch(() => false)
+    }
+  }
+
+  const resolveProgram = async (cwd: string, signal: AbortSignal): Promise<string> => {
+    if (directProgram !== undefined) return directProgram
+    const fallback = await subprocess.resolveExecutable('git', undefined, signal)
+    if (defaults.directBinary !== true) return fallback
+    const probe = probeDirect(fallback, cwd, signal)
+    directProgram = probe
+    probe.catch(() => {
+      if (directProgram === probe) directProgram = undefined
+    })
+    return probe
+  }
 
   return async function runGit(argv, options) {
     const mode = options.mode ?? 'read'
@@ -247,7 +300,7 @@ export function createGitRunner(
 
     let program: string
     try {
-      program = await subprocess.resolveExecutable('git', undefined, lifetime)
+      program = await resolveProgram(options.cwd, lifetime)
     } catch (error) {
       throw new GitCommandFailure(
         classifyAbort(error).code,

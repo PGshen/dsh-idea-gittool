@@ -3,6 +3,8 @@
 // 目的是让 src/host 的 git 代码在测试里被真实 git 驱动，同时不引入新的 devDependency。
 
 import { spawn as spawnChild } from 'node:child_process'
+import { accessSync, constants, realpathSync } from 'node:fs'
+import { isAbsolute } from 'node:path'
 import { PassThrough } from 'node:stream'
 import type { Readable } from 'node:stream'
 
@@ -43,8 +45,13 @@ export function createFakeSubprocess(options: { executable?: string; withholdStd
   const fake: FakeSubprocess = {
     spawns,
     executable: options.executable ?? 'git',
-    async resolveExecutable(_command, _env, signal) {
+    async resolveExecutable(command, _env, signal) {
       signal?.throwIfAborted()
+      // Like the real provider for absolute paths: they must exist and be executable (B4c T2).
+      if (isAbsolute(command)) {
+        accessSync(command, constants.X_OK)
+        return realpathSync(command)
+      }
       return fake.executable
     },
     spawn: (spec) => {

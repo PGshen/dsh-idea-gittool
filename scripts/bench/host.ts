@@ -69,7 +69,8 @@ async function main(): Promise<void> {
     const fresh = (): GitRpcHandler =>
       createRpcHandler({
         now: () => clock,
-        runner: createGitRunner(createFakeSubprocess()),
+        // Same runner options as src/host/index.ts.
+        runner: createGitRunner(createFakeSubprocess(), { directBinary: true }),
         sandboxPolicy: () => ({ workspaceRoot: repo.root, resolve: () => ({ mode: 'read-only', workspaceRoot: repo.root }) }),
       })
 

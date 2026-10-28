@@ -156,3 +156,36 @@
 .pad {
   background: var(--dsw-alias-bg-layer-1);
 }
+
+/* 并排模式：行不横向滚动，各半栏的代码按 --diff-sx 一起平移，行号留在原处；滚动条是底部吸附的独立条。 */
+.splitScroller {
+  display: flex;
+  flex-direction: column;
+  overflow-x: hidden;
+}
+
+/* 内容不满一屏时画布撑满，横向滚动条始终贴在底部。 */
+.splitScroller > .canvas {
+  flex: 1 0 auto;
+}
+
+.clip {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.clip > .code {
+  display: inline-block;
+  transform: translateX(calc(-1 * var(--diff-sx, 0px)));
+}
+
+.hscroll {
+  flex: none;
+  position: sticky;
+  bottom: 0;
+  left: 0;
+  min-height: 10px;
+  overflow-x: auto;
+  overflow-y: hidden;
+}

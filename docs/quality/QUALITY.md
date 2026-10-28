@@ -31,4 +31,4 @@
 | `src/client/{changelists/*,store/shelf-store.ts}`、`ShelfPanel`、`ChangelistView`（B3c） | B | 模型（增删改、活动、移动、同步、持久化与损坏回退）与 store、静态渲染有单测；拖放只有处理函数共用、未经 L4 | 2026-10-28 |
 | `src/host/git/{remote-write,worktree}.ts`、`tag-write.ts` 推送/删除（B3d） | A | 真实临时仓库 + 本地 bare 远程测试覆盖：标签推送与删除（只本地/本地+远程/不存在）、远程分支删除与跟踪 ref、upstream 设置与取消、远程增改删重命名与凭据脱敏、以 `-` 开头的名字与 URL 被拒；worktree 列表/从已有或新分支新增/重复签出拒绝/有改动需 force/清理/不能删当前/仓库外路径被拒 | 2026-10-28 |
 | `RemoteSheets`、`RemotesPages`、`branch-actions` 新项（B3d） | B | 菜单可用性、flag 关闭时入口消失、静态渲染有单测；表单交互与布局由 L4 覆盖 | 2026-10-28 |
-
+| `src/client/{settings.ts,blame-renderer.tsx}`、`SettingsSheet`（B4a） | B | 设置模型（默认值、逐字段回退、钳制、未知键保留、写失败退回内存、同页与跨标签页订阅）、控件到补丁的映射、渲染器注册绑定（开/关/再开/重复 id）、正文状态判定与回退视图有单测；L4（隔离 DSH 3082）走查 AC1–AC8：弹层、紧凑/相对日期、刷新间隔与持久化、提交后跳日志、自动打开冲突列表开关、合并自动应用与撤销、Blame 渲染器开关与跨标签页同步。缺口：未装文档预览插件时的跳过只按 cordis 语义推断、未实机验证；并排 Diff 默认值未在 ≥900px 面板实机看 | 2026-10-28 |

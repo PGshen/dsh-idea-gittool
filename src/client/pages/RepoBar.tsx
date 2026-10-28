@@ -66,6 +66,8 @@ export function RepoBar(props: RepoBarProps): ReactNode {
   const { repoRoot, refreshing = false, mode = 'wide', maxPathChars = 48 } = props
   const [menuOpen, setMenuOpen] = useState(props.defaultMenuOpen === true)
   const menuRef = useRef<HTMLDivElement>(null)
+  // Focus returns here when an overlay opened from the menu closes: the menu item itself unmounts.
+  const moreRef = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
     if (!menuOpen) return
@@ -148,6 +150,7 @@ export function RepoBar(props: RepoBarProps): ReactNode {
         <button
           type="button"
           className={css.button}
+          ref={moreRef}
           aria-label={t('repo.more')}
           aria-haspopup="menu"
           aria-expanded={menuOpen}
@@ -179,28 +182,28 @@ export function RepoBar(props: RepoBarProps): ReactNode {
                 {props.onRemotes === undefined
                   ? null
                   : (
-                      <button type="button" role="menuitem" className={css.menuItem} data-repo-remotes="" onClick={(event) => { const trigger = event.currentTarget; choose(() => props.onRemotes?.(trigger)) }}>
+                      <button type="button" role="menuitem" className={css.menuItem} data-repo-remotes="" onClick={() => { choose(() => props.onRemotes?.(moreRef.current)) }}>
                         {t('repo.remotes')}
                       </button>
                     )}
                 {props.onWorktrees === undefined
                   ? null
                   : (
-                      <button type="button" role="menuitem" className={css.menuItem} data-repo-worktrees="" onClick={(event) => { const trigger = event.currentTarget; choose(() => props.onWorktrees?.(trigger)) }}>
+                      <button type="button" role="menuitem" className={css.menuItem} data-repo-worktrees="" onClick={() => { choose(() => props.onWorktrees?.(moreRef.current)) }}>
                         {t('repo.worktrees')}
                       </button>
                     )}
                 {props.onApplyPatch === undefined
                   ? null
                   : (
-                      <button type="button" role="menuitem" className={css.menuItem} data-repo-apply-patch="" onClick={(event) => { const trigger = event.currentTarget; choose(() => props.onApplyPatch?.(trigger)) }}>
+                      <button type="button" role="menuitem" className={css.menuItem} data-repo-apply-patch="" onClick={() => { choose(() => props.onApplyPatch?.(moreRef.current)) }}>
                         {t('repo.applyPatch')}
                       </button>
                     )}
                 {props.onSettings === undefined
                   ? null
                   : (
-                      <button type="button" role="menuitem" className={css.menuItem} data-repo-settings="" onClick={(event) => { const trigger = event.currentTarget; choose(() => props.onSettings?.(trigger)) }}>
+                      <button type="button" role="menuitem" className={css.menuItem} data-repo-settings="" onClick={() => { choose(() => props.onSettings?.(moreRef.current)) }}>
                         {t('repo.settings')}
                       </button>
                     )}

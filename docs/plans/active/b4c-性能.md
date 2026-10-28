@@ -9,7 +9,7 @@
 
 | 项 | 值 |
 |---|---|
-| 状态 | 执行中 |
+| 状态 | 待验收 |
 | 里程碑 | B4 打磨（第 3 份，共 4 份：B4a 设置页 + Blame 渲染器、B4b a11y 与样式变量、**B4c 性能**、B4d 跨平台/安装升级/文档；拆分 2026-10-28 负责人同意） |
 | 设计依据 | [产品设计 v0.2](../../design/2026-10-25-产品设计-v0.2.md) §16.8（性能预算）、§16.10（CodeMirror 按需 chunk）；[设计决策 v0.2](../../design/2026-10-25-产品设计决策-v0.2.md) §4（B4 打磨）、§5 S5（真实仓库矩阵）；[verification runbook](../../runbooks/verification.md) L5；[tech-debt](../../quality/tech-debt.md) TD-16；[TODO](../TODO.md)「layout 2000 行 50ms 偶发超时」 |
 | 分支 | `b4c-perf`（从 main 切出） |
@@ -129,7 +129,7 @@ export function createBenchRepo(dir: string, options?: { commits?: number /* 10_
 - **完成标准**：AC4/AC5 数值写进「验证记录」，截图 `.evidence/b4c/`。
 - **验证命令**：harness 脚本、L4 走查
 
-### T7：自验证、整分支评审与收尾文档（待开始）
+### T7：自验证、整分支评审与收尾文档（完成，待负责人验收）
 
 - **目标**：AC8；逐条 AC 附证据；独立评审者做整分支评审并处理发现；更新 QUALITY（`build.mjs` 体积、各模块性能已验证）、tech-debt、TODO、AGENTS.md 命令表。
 - **验证命令**：`make check`、`pnpm build && pnpm smoke`、`pnpm bench`
@@ -140,7 +140,7 @@ export function createBenchRepo(dir: string, options?: { commits?: number /* 10_
 
 ## 下一步
 
-- T7：更新 QUALITY（`build.mjs` 体积/chunk、Host 性能已验证、日志 memo）；生成整分支评审包，派独立评审者（最强模型）做整分支评审，按严重度处理发现；然后请负责人验收（演示 `pnpm bench`、`pnpm smoke`、`make check` 时长、合并窗口按需加载）。
+- 等负责人验收（可演示：`make check` 时长、`pnpm bench`、`pnpm smoke` 体积、合并窗口按需加载 chunk、2000 行日志滚动）。验收通过后按 SOP §7/§8：计划移入 `completed/`、TODO 移到已完成，rebase 到最新 main、合并后 `make check`、`--no-ff` 合并；然后开工 B4d。
 
 ## 决策记录
 
@@ -149,10 +149,10 @@ export function createBenchRepo(dir: string, options?: { commits?: number /* 10_
 - 2026-10-28 T1 — Ruling: 合成仓库的合并放在每 50 个提交的第 25 个，保证最近 24 个提交不含合并，变基计划可测；变基计划项是 24 条而非计划写的 50 条 — 若错：50 条的计划没测到，但耗时与条数近似线性。
 - 2026-10-28 T2 — Ruling: 超标的根因是进程启动开销（不是 git 本身），修法是执行器可选的 `directBinary`：第一次运行时用 PATH 解析出的 git 执行 `--exec-path`，`<目录>/git`（Windows `git.exe`）经 `ctx.subprocess.resolveExecutable` 校验通过就固定用它，否则继续用 PATH 的结果；探测被中止/超时不缓存、下次重试。默认关闭、只在 `src/host/index.ts` 打开 — 默认开启会让每个测试的 spawn 列表多一条探测，几十处断言要改；生产只有一个入口 — 若错：沙箱 confine 下直接执行 Xcode 内的 git 若被 Seatbelt 拒绝，写命令会失败（T6 的 L4 必须在 confine 下做一次提交验证），且 B4d 的 git 路径设置要在这个解析结果之上叠加。
 - 2026-10-28 T2 — Ruling: 计划里预想的「两次 `rev-parse` 合一」不做 — 开启 `directBinary` 后 bootstrap 稳态 15ms，已远低于 50ms，再改仓库解析会动到每个端点的公共路径，收益不值风险 — 若错：极慢的文件系统上 bootstrap 仍可能超预算，届时再合并。
-- 2026-10-28 T2 — Ruling: `index.ts` 的接线没有单测（Host 入口没有测试替身），由执行器的 4 个单测 + `pnpm bench`（与 `index.ts` 同参数）+ T6 L4 覆盖 — 若错：有人删掉这个参数不会被 `make check` 发现，只会在基准里变慢。
+- 2026-10-28 T2 — Ruling: `index.ts` 的接线没有单测（Host 入口没有测试替身），由执行器的 4 个单测 + `pnpm bench`（与 `index.ts` 同参数）+ T6 L4 覆盖 — 若错：有人删掉这个参数不会被 `make check` 发现，只会在基准里变慢（终审 M4 指出 T4 之后替身默认就用直连二进制，这条一度不成立；已改为基准的替身使用 PATH 上的 `git`，探测真实发生）。
 - 2026-10-28 T3 — Ruling: 方案 A（标识符后压缩）后 gzip 272 KB 仍超标，按待确认 1 推荐继续做方案 B；spike 结论为可行（DSH client-modules 原生支持包内按需 chunk，references §17），所以 B 不是新机制，而是用宿主公开契约 — 若错：DSH 升级改了 chunk 契约，合并窗口打不开（会显示加载失败 + 重试），smoke 只能校验形态、不能校验宿主行为（T6 L4 补）。
 - 2026-10-28 T3 — Ruling: 只把 `merge-editor.ts`（CodeMirror 封装，无样式）拆进 chunk，合并窗口组件、样式、store 留在主包；窗口在 effect 里异步拿到编辑器模块后创建三栏，已加载过则同步创建；渲染期要用的 `resultEditable` 移到无 CodeMirror 的 `merge-pane-state.ts`（`merge-editor.ts` 再导出，旧测试不改） — 若错：首次打开合并窗口时三栏会空一瞬（本地请求，预计几十毫秒）。
-- 2026-10-28 T3 — Ruling: 主包在 banner 之后加一行 `// client.merge.js <哈希>` 注释，而不是把哈希作为 define 常量 — 常量在压缩时被常量折叠掉了，起不到带动包版本的作用（实测）；注释在 banner 区，不经过压缩 — 若错：DSH 若改为忽略注释计算版本（目前按文件内容），只改 chunk 时浏览器会用旧 chunk，直到主包也变化。
+- 2026-10-28 T3 — Ruling: 主包在 banner 之后加一行 `// client.merge.js <哈希>` 注释，而不是把哈希作为 define 常量 — 常量在压缩时被常量折叠掉了，起不到带动包版本的作用（实测）；注释在 banner 区，不经过压缩 — 若错：（终审更正）DSH 实际按 `client.js` 的 mtime/ctime/size 算版本、不读内容，所以版本前进靠的是「`client.js` 被重写」；哈希行保证只改 chunk 时 `client.js` 内容也变、watch 必然重写它。万一某种流程只替换 chunk 而不重写 `client.js`，浏览器会继续用旧 chunk。
 - 2026-10-28 T3 — Ruling: 模块体进 IIFE 后，esbuild 输出的 `"use strict"` 成为该函数的指令（以前在 banner 变量之后，不是指令），代码改在严格模式下运行 — 源码全是 TS/ES 模块、按严格模式编写，第三方依赖（CodeMirror、lezer）也是 ES 模块；smoke 在 vm 里执行两个 factory 通过 — 若错：某处依赖非严格语义（如给未声明变量赋值）会在运行时抛错，T6 L4 走查各页面兜底。
 - 2026-10-28 T3 — 写了 [ADR 0013](../../decisions/0013-客户端产物拆分按需chunk与标识符后压缩.md)：产物形态变化影响后续所有用 CodeMirror 的代码与 B4d 安装验证。
 - 2026-10-28 T4 — Ruling: 提速只做「测试直接用真实 git 二进制」一项，不加 `vitest.config.ts`、不改 pool/并发、不建模板仓库 — 基线的 480s 里 CPU 只用了 238s，瓶颈是每次 spawn 经 xcrun 多付约 40ms；改掉之后测试段 23s、全量 33s，已远低于 150s 目标，其余手段收益小且有风险 — 若错：在没有 xcrun 的机器（Linux）上本来就不慢，收益只在 macOS。
@@ -161,6 +161,11 @@ export function createBenchRepo(dir: string, options?: { commits?: number /* 10_
 - 2026-10-28 T6 — Ruling: AC4 未达标（中位 5.4ms > 2ms、最大 30ms > 18ms）属于 T2 意义上的「超标项」，在本计划内修：`LogRow` 用 `memo`，`LogTable` 通过 ref 提供身份不变的点击/双击/右键回调，位移从 `style` 对象改为数字 `offset` — 根因是每步滚动都重渲染全部约 49 行（含提交图 SVG）；DOM 测试用计数的 `GraphCell` 替身证明选中变化只重渲染 ≤2 行、父组件无关重渲染 0 行 — 若错：回调读的是 ref 里的最新 props，若某处依赖「回调变化触发行重渲染」会失效（目前行内回调只转发 index，无此依赖）。
 - 2026-10-28 T6 — Ruling: 没有右键菜单配置时，行仍拿到一个稳定的 `onContextMenu`，但它直接返回、不 `preventDefault`，浏览器自己的右键菜单照常出现，行为与之前「不传 onContextMenu」一致 — 若错：无。
 - 2026-10-28 T6 — 发现：A1 的 AC3 数据（每步中位 0.6ms）很可能没测到真实滚动。本次 harness 第一版按 A1 的方式找滚动容器（grid 的父元素），该元素 `scrollHeight == clientHeight`，滚动没有发生；真正的滚动容器是 `role="grid"` 元素本身。harness 现在每一步都校验「渲染出的行覆盖当前滚动位置」（`staleSteps` 必须为 0），并用 `MessageChannel` 让出事件循环（嵌套 `setTimeout(0)` 有 4ms 下限，会把测量值钉在 4.6ms）。
+- 2026-10-28 终审 — 修复 C1：`pnpm smoke` 在 HEAD 是红的（T6 的 `memo(...)` 在模块顶层执行，smoke 的基线模块替身 `{}` 没有 `memo`，factory 抛错后其余断言全部没跑）。替身改为「任何导出都是恒等函数」的 Proxy；RED（`TypeError: memo is not a function`）→ GREEN。Ruling: 把 `pnpm run build && pnpm run smoke` 接进 `package.json` 的 `check`（即 `make check`）— 关口只加强不削弱，耗时约 3s；漏掉的根因正是 smoke 不在关口里 — 若错：`make check` 会写 `lib/`（已 gitignore）。
+- 2026-10-28 终审 — 修复 I2：缓存的直连二进制在进程内永不复核，`brew upgrade git` 删掉旧 Cellar 后所有 git 命令都会失败直到重启。现在每次使用前用 `resolveExecutable` 复核（stat 级），失败则清缓存重新探测；测试 `a cached direct binary that disappears … is re-probed` RED→GREEN。
+- 2026-10-28 终审 — 修复 I3：探测原先用第一个调用方的信号与 cwd，它被取消/超时或 cwd 不存在时，同时等待的其他请求一起失败。现在探测用自己的超时（runner 默认读超时）和固定 cwd（`os.tmpdir()`），调用方各自用自己的信号等待共享结果；未完成或 spawn 失败的探测本次退回 PATH 结果且不缓存；共享 promise 在任何 await 之前赋值，并发首调只起一个探测。测试 `one caller timing out during the shared probe does not fail the others` RED→GREEN，另加 `missing cwd` 与 `times out on its own` 两条回归测试。Ruling: 第二个调用方若加入了一个最终未完成的探测，会拿到这一次的 PATH 结果（能用、只是慢），测试据此在探测自己结束后才断言「下次重新探测」— 若错：探测超时时的那一批请求各慢约 40ms（macOS）。
+- 2026-10-28 终审 — 更正 M4/M8（属于本计划自己 Ruling 的前提）：基准的替身改用 PATH 上的 `git`，让 `directBinary` 探测真实发生；DSH 包版本按 `client.js` 的 mtime/ctime/size 计算（不是内容），ADR 0013、references §17 与 T3 Ruling 已改正。
+- 2026-10-28 终审 — Minor（不进修复轮，已登记 TODO）：chunk 加载失败后因文件/文案变化重新加载成功时，失败提示不消失；加载期间 pane 容器被重挂时用旧的宿主节点；`LogRow` memo 后相对日期只在行 props 变化时刷新；watch 模式 chunk 变化时整体重建 client context（可用 `rebuild()`）；测试替身对绝对路径做 realpath 而真实 provider 不做；Windows 上直连 `libexec/git-core/git.exe` 绕过 `cmd\git.exe` 对 PATH 的补充（B4d 实测或在 win32 默认关闭）。
 - 2026-10-28 T1 — Ruling: 本计划各任务的关口先用「针对性测试 + lint/typecheck/layers」，全量 `make check` 放在 T4（提速）之后跑 — 基线全量 8 分钟且有 8 个负载超时，在 T4 解决之前每任务跑全量既慢又不会更可信；负责人本次会话开头也要求先跳过 — 若错：T2/T3 的回归要到 T4 后才被全量发现，届时回退定位成本略高。
 
 ## 意外与发现
@@ -262,3 +267,9 @@ export function createBenchRepo(dir: string, options?: { commits?: number /* 10_
 | 打开 Git tab（已有缓存）：Cmd+Shift+G → 仓库栏 / 第一页日志 | 70 / 77ms；67 / 74ms | 通过（≤150 / ≤500ms，AC5） |
 | 内存（整页 `usedJSHeapSize`，含 DSH 自身）：Git 标签关闭基线 46MB；加载满 2000 行 50MB（行 DOM 47 个）；5 次打开 >256 KiB diff（「文件过大，仅显示前 2473 行（上限 256KiB）」，DOM 约 43 行）打开时 47MB、关闭后 45MB | `03-huge-diff-truncated.jpg` | 通过（面板增量为个位数 MB，远低于 80MB；关闭后回落，AC5） |
 | 发现 | 「提交后跳到日志」提示「已加载的 100 行中未找到「6669bc8…」」，新提交其实在首行 | 记入 TODO（P2），非本计划改动引起 |
+
+### T7 整分支终审与关口（2026-10-28）
+
+- 评审者：独立上下文（最强模型），范围 `125604d..227d111`，结论「修完再合」：C1 smoke 红、I2 直连路径永不复核、I3 首个调用方中止传染；另 8 条 Minor。处理见「决策记录」终审条目。
+- 修复后：`vitest run test/host/git-executor.test.ts` 27/27；全量 `make check`（含构建与 smoke）**29.7s**，2247/2247 通过，smoke「client.js gzip 175.4 KB」；`pnpm bench`（替身走 PATH `git`，探测真实发生）全部达标：bootstrap 稳态 14.7ms、log 首页 33.8ms、commit 12.8ms、diff 8.8–16.6ms、branches 11.4ms。
+- AC 汇总：AC1 ✅（T2/T7 表）；AC2 ✅（>256 KiB 15–16ms 且 truncated、358 KB）；AC3 ✅（175 KB gzip，smoke 断言，L4 chunk 按需加载；加载失败只有单测）；AC4 ✅（中位 0.4ms、最大 ≤2.5ms、DOM ≤52）；AC5 ✅（首屏 67–77ms，整页堆 ≤50MB）；AC6 ✅（488s → 约 30–35s）；AC7 ✅（负载下 3 次全绿，TD-16 已处理）；AC8 ✅（runbook「性能基准」、AGENTS 命令表）。

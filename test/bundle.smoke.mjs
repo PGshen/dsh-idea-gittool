@@ -24,6 +24,11 @@ const PLATFORM_MODULES = new Set([
 const errors = []
 const fail = (message) => errors.push(message)
 
+// Stand-in for a baseline module: every export is an identity function, so module-level calls such
+// as React's `memo(Component)` succeed while the factory runs (B4c final review: `{}` threw there
+// and silently skipped every check after it).
+const baselineStub = () => new Proxy({}, { get: (_target, key) => (key === 'then' ? undefined : (value) => value) })
+
 // 设计 §16.8 包体积预算：client.js ≤ 250 KB gzip（B4c T3）。
 const CLIENT_GZIP_MAX = 250 * 1024
 const clientGzip = gzipSync(readFileSync(new URL('../lib/client.js', import.meta.url))).length
@@ -55,7 +60,7 @@ if (registration === undefined) {
     const mod = registration.factory((name) => {
       requested.push(name)
       if (!PLATFORM_MODULES.has(name)) throw new Error(`未预期的 require：${name}`)
-      return {}
+      return baselineStub()
     })
     if (mod === null || typeof mod !== 'object') {
       fail('client factory 没有返回模块对象')
@@ -86,10 +91,10 @@ if (registration === undefined) {
     }
     sandbox.document = fakeDocument
     try {
-      registration.factory(() => ({}))
+      registration.factory(baselineStub)
       const first = styles[0]
       if (first !== undefined) first.textContent = 'stale'
-      registration.factory(() => ({}))
+      registration.factory(baselineStub)
       if (styles.length !== 1) fail(`factory 重复执行后应只有 1 个插件 <style>，实际 ${styles.length}`)
       else if (styles[0].textContent === 'stale' || styles[0].textContent === '') fail('factory 重复执行（HMR）没有更新插件 <style> 内容')
     } finally {
@@ -131,7 +136,7 @@ if (chunkSource !== undefined) {
     const chunkExports = chunkRegistration.factory((name) => {
       chunkRequested.push(name)
       if (!PLATFORM_MODULES.has(name)) throw new Error(`未预期的 require：${name}`)
-      return {}
+      return baselineStub()
     })
     if (typeof chunkExports?.createMergePane !== 'function') fail(`${MERGE_CHUNK} 没有导出 createMergePane`)
     if (chunkRequested.some(name => !PLATFORM_MODULES.has(name))) fail(`${MERGE_CHUNK} require 了非基线模块：${chunkRequested.join(', ')}`)

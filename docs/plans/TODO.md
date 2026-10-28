@@ -44,6 +44,7 @@
 | P2 | B4a 终审 Minor（8 条）：Blame 渲染器正文按读完的文本长度作 key（同长度改动可能不刷新、多页文件 blame 请求两次），应改用 `useResource(...).value?.version`；bootstrap 失败或无 `absolutePath` 时正文空白；定义未声明 `wrap: true` 但回退原文读 `wrap`；草稿存在但不可用时不自动应用、Host 判草稿过期时却会；PageUp/PageDown 步长取创建时条数，改设置后与刷新页面后不一致（应固定常量或视口行数）；没打开过日志也会因改条数立即拉一次日志；改刷新间隔立即触发一次刷新、`GitBody` 订阅全部设置；`settings.ts` 读存储中途失败时静默回默认且不通知、写失败后不再写回存储 | B4a 终审，2026-10-28 | 细节见 [b4a 计划](completed/b4a-设置页与Blame渲染器.md)「决策记录」评审条目 |
 | P2 | B4b 终审 Minor（6 条）：搜索中对分组头/目录按 ← 会切换被搜索强制展开的存储折叠状态；分支抽屉与推送被拒页滑入方向变为竖向；提交 ▾ 菜单开着时开关被禁用、Esc 还焦失败；菜单内 Tab 的还焦与 APG 不同；`tabbablesOf` 不认 `contenteditable`/`display:none`；reduced-motion 检查不逐个动画核对 | B4b 终审，2026-10-28 | 细节见 [b4b 计划](completed/b4b-a11y与样式变量.md)「决策记录」终审条目 |
 | P2 | 「提交后跳到日志」在 10k 仓库上偶发提示「已加载的 100 行中未找到「<新提交>」」，而新提交其实在首行：疑为提交使 version 前进、触发第二次日志重载，`logStore.refresh()` 的结果被丢弃后 `jumpTo` 先执行 | B4c T6 L4，2026-10-28 | `src/client/pages/GitWorkbench.tsx:503`；B4c 未改日志 store，非本计划回归（B4a L4 在小仓库上通过） |
+| P2 | B4c 终审 Minor（6 条）：chunk 加载失败后因文件/文案变化重载成功时失败提示不消失；加载期间 pane 容器重挂会用旧宿主节点；`LogRow` memo 后「相对日期」只在行 props 变化时刷新；`pnpm dev` 下 chunk 变化整体重建 client context（可改 `rebuild()`，onEnd 抛错会让 watch 退出）；测试替身对绝对路径 realpath 而真实 provider 不做；Windows 上 `directBinary` 直连 `libexec/git-core/git.exe` 会绕过 `cmd\git.exe` 对 PATH 的补充（B4d 实测，或 win32 默认关闭） | B4c 终审，2026-10-28 | 细节见 [b4c 计划](active/b4c-性能.md)「决策记录」终审条目 |
 
 ## 已完成
 

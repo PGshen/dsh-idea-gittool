@@ -29,7 +29,7 @@ check-fast: check-docs check-fast-code
 check-docs:
 	@$(PYTHON) scripts/check_docs.py
 
-# package.json 的 `check` 脚本依次运行：lint、类型检查、分层契约、测试。
+# package.json 的 `check` 脚本依次运行：lint、类型检查、分层契约、测试、构建与产物 smoke（B4c）。
 check-code:
 	@if [ ! -f package.json ]; then \
 		echo "check-code：尚无 package.json（M0 T1 建立），跳过代码检查"; \

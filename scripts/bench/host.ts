@@ -70,7 +70,8 @@ async function main(): Promise<void> {
       createRpcHandler({
         now: () => clock,
         // Same runner options as src/host/index.ts.
-        runner: createGitRunner(createFakeSubprocess(), { directBinary: true }),
+        // PATH `git` (not test/host/git-binary.ts): the probe must really run, as in production.
+        runner: createGitRunner(createFakeSubprocess({ executable: 'git' }), { directBinary: true }),
         sandboxPolicy: () => ({ workspaceRoot: repo.root, resolve: () => ({ mode: 'read-only', workspaceRoot: repo.root }) }),
       })
 

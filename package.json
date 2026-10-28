@@ -41,7 +41,7 @@
     "typecheck": "tsc --noEmit",
     "layers": "depcruise src --config .dependency-cruiser.cjs",
     "test": "vitest run --exclude '.claude/**' --exclude '.evidence/**' --exclude '**/node_modules/**'",
-    "check": "pnpm run lint && pnpm run typecheck && pnpm run layers && pnpm run test",
+    "check": "pnpm run lint && pnpm run typecheck && pnpm run layers && pnpm run test && pnpm run build && pnpm run smoke",
     "check:fast": "pnpm run lint && pnpm run typecheck"
   },
   "devDependencies": {

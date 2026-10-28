@@ -28,15 +28,15 @@ button.chip:hover {
 }
 
 .remote {
-  color: var(--dsw-static-blue-500);
+  color: color-mix(in oklab, var(--dsw-static-blue-500) 60%, var(--dsw-alias-label-primary));
 }
 
 .tag {
-  color: var(--dsw-static-amber-500);
+  color: color-mix(in oklab, var(--dsw-static-amber-500) 60%, var(--dsw-alias-label-primary));
 }
 
 .head {
-  color: var(--dsw-static-deepseek-500);
+  color: color-mix(in oklab, var(--dsw-static-deepseek-500) 60%, var(--dsw-alias-label-primary));
 }
 
 .filter {

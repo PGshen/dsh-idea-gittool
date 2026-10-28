@@ -53,9 +53,11 @@ describe('state colour text rule', () => {
       '.b { border-left: 2px solid var(--dsw-alias-state-warn-primary); background-color: var(--dsw-alias-state-success-primary); }',
       '.c { color: color-mix(in oklab, var(--dsw-alias-state-success-primary) 60%, var(--dsw-alias-label-primary)); }',
       '.d { color: var(--dsw-alias-state-error-primary); }',
+      '.e { color: var(--dsw-static-amber-500); }',
     ].join('\n')
-    expect(lintCss('s.module.css', css, new Set(['--dsw-alias-state-warn-primary', '--dsw-alias-state-success-primary', '--dsw-alias-label-primary', '--dsw-alias-state-error-primary']), [])).toEqual([
+    expect(lintCss('s.module.css', css, new Set(['--dsw-static-amber-500', '--dsw-alias-state-warn-primary', '--dsw-alias-state-success-primary', '--dsw-alias-label-primary', '--dsw-alias-state-error-primary']), [])).toEqual([
       `s.module.css: text colour --dsw-alias-state-warn-primary is below 3:1 on light backgrounds (use ${TEXT_TONE_HINT})`,
+      `s.module.css: text colour --dsw-static-amber-500 is below 3:1 on light backgrounds (use ${TEXT_TONE_HINT})`,
     ])
   })
 })

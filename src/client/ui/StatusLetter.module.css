@@ -10,7 +10,7 @@
 .modified { color: color-mix(in oklab, var(--dsw-alias-state-warn-primary) 60%, var(--dsw-alias-label-primary)); }
 .added { color: color-mix(in oklab, var(--dsw-alias-state-success-primary) 60%, var(--dsw-alias-label-primary)); }
 .deleted { color: var(--dsw-alias-state-error-primary); }
-.renamed { color: var(--dsw-static-deepseek-500); }
-.typeChanged { color: var(--dsw-static-amber-500); }
+.renamed { color: color-mix(in oklab, var(--dsw-static-deepseek-500) 60%, var(--dsw-alias-label-primary)); }
+.typeChanged { color: color-mix(in oklab, var(--dsw-static-amber-500) 60%, var(--dsw-alias-label-primary)); }
 .conflicted { color: var(--dsw-alias-state-error-primary); }
 .untracked { color: var(--dsw-alias-label-tertiary); }

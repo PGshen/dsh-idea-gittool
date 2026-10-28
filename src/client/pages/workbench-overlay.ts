@@ -72,6 +72,8 @@ export type WorkbenchOverlay =
   | { kind: 'worktreeAdd'; branch?: string }
   | { kind: 'remotes' }
   | { kind: 'worktrees' }
+  /** B4a: the settings sheet. */
+  | { kind: 'settings' }
 
 /** An overlay "← back" can return to; one level only, so it never carries its own `back`. */
 export type BackOverlay = DistributiveOmit<WorkbenchOverlay, 'back'>
@@ -106,6 +108,7 @@ export const OVERLAY_LEVEL: Record<WorkbenchOverlayKind, 1 | 2> = {
   pull: 1,
   updateProject: 1,
   rollback: 2,
+  settings: 2,
   reset: 2,
   stashCreate: 2,
   fetch: 2,

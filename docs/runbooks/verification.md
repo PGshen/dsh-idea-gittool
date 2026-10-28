@@ -198,3 +198,24 @@ git checkout -q feature && git rebase main   # stops at topic1; after continue, 
 | 8 | 手动 `rm -rf` 一个 worktree 目录后打开 Worktree 页 →「清理」 | 该行先标「目录已不存在」，清理后消失，提示「已清理 1 条记录」 |
 | 9 | 「新建 Worktree…」输入新分支名 | 位置随分支名自动填 `.worktrees/<名>`；创建后新分支指向当前 HEAD |
 
+
+## 设置与 Blame 渲染器实机验证（B4a，L4）
+
+准备同 B2（隔离 HOME），补充三点（2026-10-28 实测）：
+
+- 3081 可能已被另一个 DSH 占用，换 3082；临时 HOME 下 Corepack 会重新下载 pnpm 并卡在提示，启动时带 `COREPACK_HOME=$HOME_REAL/.cache/node/corepack COREPACK_ENABLE_DOWNLOAD_PROMPT=0`。
+- 复制的 profile 里 `node_modules/dsh-idea-gittool` 是相对软链，复制后会断，改成本仓库绝对路径。
+- `storages/workspace.json` 里手写的工作区行必须带 `createdAt`/`updatedAt`（ISO 字符串），否则 workspaceRegistry 校验失败、工作区一直「正在加载」。工作区出现后点它右侧的「+」即可新建该工作区的会话。
+
+设置值可在控制台用 `localStorage.getItem('dsh-idea-git.settings.v1')` 对照；模拟「另一个标签页改了设置」：`setItem` 后 `window.dispatchEvent(new StorageEvent('storage', { key: 'dsh-idea-git.settings.v1' }))`。
+
+| # | 操作 | 期望 |
+|---|---|---|
+| 1 | 仓库栏 ⋯ →「设置…」；Esc | 弹层列出全部设置、「确认破坏性操作：始终开启」；焦点先落在「自动刷新」，Esc 关闭后回到 ⋯ |
+| 2 | 打开紧凑模式、日期格式选相对 | 日志行 24px，无作者/哈希列，日期为「N 分钟前」（面板 <720px 时日期列本来就隐藏） |
+| 3 | 刷新间隔 1 秒 / 10 秒，各观察 6 秒 `/dsh-git/bootstrap` 请求数 | 约 6 次 / 0 次 |
+| 4 | 关闭自动刷新后刷新页面 | 状态栏自动刷新按钮 `aria-pressed=false`，5 秒内无 bootstrap 轮询 |
+| 5 | 「提交后」选跳到日志，在提交页提交一个文件 | 切到日志页并选中新提交 |
+| 6 | 关闭「自动打开冲突列表」，终端 `git merge` 出冲突 | 只出现横幅，不弹冲突列表；同一操作中再打开设置也不弹；`merge --abort` 后打开设置再合并 → 自动弹出 |
+| 7 | 打开「自动应用非冲突更改」，冲突文件「逐个解决」 | Result 已含两侧独有改动、冲突块仍待处理；「撤销」回到 base |
+| 8 | 打开「使用 Git Blame 渲染器」，文件页打开已跟踪文件、未跟踪文件；关掉再打开 | 已跟踪文件默认「Git Blame」带 gutter；未跟踪显示原文与「还没有被 Git 跟踪」；关闭后已开 tab 立即回到「代码」，再打开又回来；控制台无插件错误 |

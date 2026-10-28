@@ -11,6 +11,7 @@ import { I18nProvider, useT } from './i18n.tsx'
 import { GitWorkbench } from './pages/GitWorkbench.tsx'
 import { createPoller } from './polling.ts'
 import { ReadOnlyBanner } from './read-only-banner.tsx'
+import { refreshIntervalMs, useSettings, writeSettings } from './settings.ts'
 import { useBootstrap } from './use-bootstrap.ts'
 
 export interface GitBodyInjected {
@@ -42,7 +43,8 @@ function GitBodyContent(props: GitBodyProps): ReactNode {
   const visible = tab.visible
   const value = useBootstrap(bootstrapCache, sessionId)
   const failure = bootstrapCache.getFailure(sessionId)
-  const [autoRefresh, setAutoRefresh] = useState(true)
+  // B4a: auto refresh and its interval are settings (persisted; the status bar toggle writes them).
+  const { autoRefresh, refreshIntervalSec } = useSettings()
   const [lastRefreshAt, setLastRefreshAt] = useState<number | null>(null)
 
   useEffect(() => {
@@ -51,12 +53,13 @@ function GitBodyContent(props: GitBodyProps): ReactNode {
 
   useEffect(() => {
     const poller = createPoller({
+      intervalMs: refreshIntervalMs({ refreshIntervalSec }),
       isVisible: () => visible && autoRefresh,
       refresh: () => bootstrapCache.refresh(sessionId).then(version => ({ version })),
     })
     poller.start()
     return () => poller.stop()
-  }, [autoRefresh, bootstrapCache, sessionId, visible])
+  }, [autoRefresh, bootstrapCache, refreshIntervalSec, sessionId, visible])
 
   if (value === null) {
     return (
@@ -86,7 +89,7 @@ function GitBodyContent(props: GitBodyProps): ReactNode {
       value={value}
       onRefresh={() => bootstrapCache.refresh(sessionId)}
       autoRefresh={autoRefresh}
-      onToggleAutoRefresh={() => { setAutoRefresh(enabled => !enabled) }}
+      onToggleAutoRefresh={() => { writeSettings({ autoRefresh: !autoRefresh }) }}
       lastRefreshAt={lastRefreshAt}
       // Public tab info (references §14): includes the auto fullscreen of narrow viewports.
       sidebar={toggleFullscreen === undefined ? undefined : { fullscreen: sidebar.fullscreen, toggle: toggleFullscreen }}

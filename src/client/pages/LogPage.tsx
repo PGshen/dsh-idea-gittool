@@ -9,6 +9,7 @@ import type { FocusTarget } from '../focus.ts'
 import { DEFAULT_LOG_FILTER } from '../store/log-store.ts'
 import type { LogAction, LogState, LogStore } from '../store/log-store.ts'
 import { useT } from '../i18n.tsx'
+import { useSettings } from '../settings.ts'
 import { EmptyState } from '../ui/EmptyState.tsx'
 import { FilterBar, hasActiveFilter } from './FilterBar.tsx'
 import type { BranchOption } from './FilterBar.tsx'
@@ -124,6 +125,7 @@ export function LogPage({
   viewportHeight,
 }: LogPageProps): ReactNode {
   const t = useT()
+  const settings = useSettings()
   const state = useSyncExternalStore(store.subscribe, store.getState, store.getState)
   const rows = store.getRows()
   const searchRef = useRef<HTMLInputElement | null>(null)
@@ -250,6 +252,8 @@ export function LogPage({
   } else {
     content = (
       <LogTable
+        compact={settings.compact}
+        dateFormat={settings.dateFormat}
         rows={rows}
         selection={state.selection}
         activeIndex={state.activeIndex}

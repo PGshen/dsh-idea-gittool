@@ -9,11 +9,11 @@
 
 | 项 | 值 |
 |---|---|
-| 状态 | 草稿 |
+| 状态 | 已完成（2026-10-28 负责人验收通过） |
 | 里程碑 | B4 打磨（第 1 份，共 4 份：B4a 设置页 + Blame 渲染器、B4b a11y 与样式变量、B4c 性能、B4d 跨平台/安装升级/文档；拆分 2026-10-28 负责人同意） |
 | 设计依据 | [产品设计 v0.2](../../design/2026-10-25-产品设计-v0.2.md) §13（设置）、§9.7（可选「Git Blame 渲染器」）、§10.1（自动打开冲突列表「设置可关，默认开」）、§16（轮询 3s）；[B1 计划](../completed/b1-三栏合并.md)「不包含」（自动打开冲突列表/自动应用非冲突更改的开关）；[B2 计划](../completed/b2-历史与Blame.md) 待确认 3（Blame 渲染器移到 B4，默认关）；[B3b 计划](../completed/b3b-Diff增强与提交菜单.md)（Diff 模式已持久化到 `dsh-idea-git.settings.v1`） |
 | 分支 | `b4a-settings-blame-renderer`（从 main 切出） |
-| 批准记录 | — |
+| 批准记录 | 2026-10-28 负责人批准计划，待确认 1–5 按推荐；执行方式：当前会话内联执行，最后做一次整分支评审；2026-10-28 负责人验收通过，I3(b) 维持现状，`--no-ff` 合并到 main |
 
 ## 目标
 
@@ -87,7 +87,7 @@ export function useSettings(): WorkbenchSettings                         // useS
 
 ## 任务
 
-### T1：设置模型（待开始）
+### T1：设置模型（完成）
 
 - **目标**：完整的设置读写、校验与订阅，旧值兼容。
 - **涉及文件**：`src/client/settings.ts`、`test/client/settings.test.ts`（新）；核实 DSH 是否有日期格式偏好，结论写进 `docs/references/dsh-integration-feasibility.md`。
@@ -96,7 +96,7 @@ export function useSettings(): WorkbenchSettings                         // useS
 - **完成标准**：`settings.test.ts` 全绿，现有引用 `readDiffMode` 等的测试不变。
 - **验证命令**：`make check`
 
-### T2：设置弹层与入口（待开始）
+### T2：设置弹层与入口（完成）
 
 - **目标**：仓库栏 `⋯` →「设置…」打开弹层，可编辑全部设置项。
 - **涉及文件**：`src/client/pages/SettingsSheet.tsx`（+ `.module.css`，新）、`src/client/pages/RepoBar.tsx`（新菜单项 `data-repo-settings`、`onSettings?: (trigger) => void`）、`src/client/pages/GitWorkbench.tsx`（打开/关闭、焦点返还）、`src/client/locales/settings.ts`（新）与 `src/client/locales.ts`、`test/client/pages/settings-sheet.test.tsx`（新）。
@@ -105,7 +105,7 @@ export function useSettings(): WorkbenchSettings                         // useS
 - **完成标准**：L4 能打开弹层、改值、恢复默认、`Esc` 关闭焦点回到 `⋯`。
 - **验证命令**：`make check`
 
-### T3：刷新、日志与显示类设置接线（待开始）
+### T3：刷新、日志与显示类设置接线（完成）
 
 - **目标**：自动刷新/间隔、每页条数、默认 Diff 模式、日期格式、紧凑模式生效。
 - **涉及文件**：`src/client/GitBody.tsx`（`autoRefresh` 改读写设置，`intervalMs = refreshIntervalSec * 1000` 进 effect 依赖）、`src/client/pages/GitWorkbench.tsx`（`createLogStore({ pageSize: settings.logPageSize })`，条数变化时重建 store 并 dispose 旧的）、`src/client/pages/LogRow.tsx`（`formatLogDate` 增加 `format` 参数；相对格式复用 `CommitDetail.formatRelativeTime`）、`src/client/pages/CommitDetail.tsx`（日期主显示按格式，`title` 显示另一种）、`src/client/pages/LogTable.tsx` 与 `src/client/graph/layout.ts`/`GraphCell.tsx`（行高由常量改为参数：`ROW_HEIGHT = 26`、新增 `COMPACT_ROW_HEIGHT = 24`；紧凑时隐藏作者与哈希列）、`src/client/pages/DiffViewer.tsx`（仍读 `readDiffMode`，设置弹层改的就是同一个值，无需改动，只补测试）。
@@ -114,7 +114,7 @@ export function useSettings(): WorkbenchSettings                         // useS
 - **完成标准**：AC3、AC4 有单测；L4 截图紧凑/非紧凑、绝对/相对对比。
 - **验证命令**：`make check`
 
-### T4：行为类设置接线（待开始）
+### T4：行为类设置接线（完成）
 
 - **目标**：提交后行为、自动打开冲突列表、合并窗口自动应用非冲突更改生效。
 - **涉及文件**：`src/client/pages/GitWorkbench.tsx`（`onCommitted` 在 `afterCommit === 'log'` 时切到日志页并发出「选中提交」意图；`autoOpen.observe(...)` 为真且 `settings.autoOpenConflicts` 时才 `openOverlay`）、`src/client/pages/merge-window-controller.ts`（新依赖 `autoApplyNonConflicting: boolean`，模型首次就绪时 dispatch `applyNonConflicting('all')`，并且只做一次：重新加载/草稿恢复不重复应用）、对应测试。
@@ -123,7 +123,7 @@ export function useSettings(): WorkbenchSettings                         // useS
 - **完成标准**：AC5–AC7 有单测。
 - **验证命令**：`make check`
 
-### T5：Git Blame 渲染器（待开始）
+### T5：Git Blame 渲染器（完成）
 
 - **目标**：设置开启时注册「Git Blame」文档渲染器，关闭时注销。
 - **涉及文件**：`src/client/blame-renderer.tsx`（新：定义 + 正文）、`src/client/index.ts`（可选注入 `documentPreviews`；订阅设置驱动注册/注销）、`docs/references/dsh-integration-feasibility.md`（新增一节：注册表排序、`DocumentPreviewProps` 字段、`resourceAddress` → 绝对路径的换算、未装文档预览插件时的表现）、`test/client/blame-renderer.test.tsx`（新）。
@@ -136,7 +136,7 @@ export function useSettings(): WorkbenchSettings                         // useS
 - **完成标准**：AC8；L4 在真实 DSH 里开关两次，截图预览下拉与 Blame 正文。
 - **验证命令**：`make check`
 
-### T6：自验证与文档（待开始）
+### T6：自验证与文档（完成）
 
 - **目标**：L4 走查全部验收标准，更新文档。
 - **涉及文件**：`docs/runbooks/verification.md`（新增「设置与 Blame 渲染器实机验证」步骤）、`docs/ARCHITECTURE.md`（settings、blame-renderer）、`docs/quality/QUALITY.md`、`docs/plans/TODO.md`、本计划「验证记录」；截图 `.evidence/b4a/`。
@@ -146,18 +146,32 @@ export function useSettings(): WorkbenchSettings                         // useS
 
 ## 进度
 
-- 无
+- 2026-10-28 — T1 — `settings.ts` 扩展为完整 `WorkbenchSettings`（逐字段校验、间隔钳制、未知键保留、写失败退回内存、同页订阅 + 跨标签页 `storage` 事件、`useSettings`）；DSH 无日期格式偏好，写进 references §16
+- 2026-10-28 — T2 — `SettingsSheet`（底部浮层，复用 `SheetFrame`）+ `settingsPatchFor`；仓库栏 `⋯`「设置…」；浮层种类 `settings`（Level 2）；文案分区 `locales/settings.ts`；新样式纳入 CSS 变量守卫
+- 2026-10-28 — T3 — `GitBody` 自动刷新/间隔读写设置（状态栏开关写设置，刷新页面后保持）；`log-store.setPageSize`；`formatLogDate`/`commitTimeLabels` 支持相对时间；紧凑模式（`COMPACT_ROW_HEIGHT = 24`，隐藏作者/哈希，虚拟列表在行高变化时重新测量）
+- 2026-10-28 — T4 — `afterCommitPage`（跳到日志页，原有的刷新后 `jumpTo` 选中新提交）；`shouldAutoOpenConflicts`（跟踪器照常记录操作，设置只决定是否打开）；合并 store `autoApplyNonConflicting`（无草稿、未解决的文件首次就绪时应用一次，可撤销）
+- 2026-10-28 — T5 — `blame-renderer.tsx`：定义（`extension` 档、`CODE_HIGHLIGHT_EXTENSIONS`、`text-pages`）、`bindBlameRenderer`（随设置注册/注销，重复 id 不抛）、`blameRendererState` 与原文回退；入口用 `ctx.inject(['documentPreviews'], …)` 作可选依赖；references §16 补正文 props 与可选服务；`pnpm build && pnpm smoke` 通过
+- 2026-10-28 — T6 — L4 走查 AC1–AC8（`.evidence/b4a/`，8 张截图）；修复仓库栏 ⋯ 菜单打开的覆盖层关闭后焦点丢到 body；runbook、ARCHITECTURE、QUALITY、references §16
+- 2026-10-28 — 评审修复 — I1/I2/I3(a)，见决策记录；`make check` 绿
 
 ## 下一步
 
-- 等负责人批准计划（含「待负责人确认」1–5 与执行方式）后，从 `main` 切出 `b4a-settings-blame-renderer`，从 T1 开始：先写 `test/client/settings.test.ts`。
+- 无。2026-10-28 负责人验收通过并已合并到 main；遗留 Minor 见 [TODO](../TODO.md)。
 
 ## 决策记录
 
+- 2026-10-28 — 负责人验收：I3(b) 维持现状（自动应用非冲突更改后窗口算有未保存改动，离开时询问，与 IntelliJ 一致）。
+- 2026-10-28 — 整分支评审（独立子代理，无 Critical）。修复：I1 渲染器认领了 `CODE_HIGHLIGHT_EXTENSIONS` 里的 md/html/csv/svg 等，开启后 README 不再渲染成 Markdown → 剔除 DSH 有专用 `builtin` 查看器的后缀（`RENDERED_BY_DSH`）；I2 被忽略的文件（及 status 截断外的未跟踪文件）判为可 blame，打开后只有「未提交过」空态 → `BlameView`/`BlameOverlay` 新增可选 `renderUntracked`，渲染器用它显示原文与说明；I3(a) 只读模式下自动应用会让窗口 dirty 且无法保存 → 只读时不自动应用。三项各有先失败的单测，L4 复核 README.md 仍为 Markdown、被忽略文件显示原文。I3(b)「自动应用后算不算未保存改动」留给负责人（见 TODO）。M1–M8 进 TODO。
+- 2026-10-28 — T6 — L4 发现：从仓库栏 ⋯ 菜单打开的覆盖层（设置、远程、Worktree、应用补丁）关闭后焦点落到 body，因为传给覆盖层的触发元素是随菜单一起卸载的菜单项。改为统一传 ⋯ 按钮。B3d 起就存在，一并修掉；没有 DOM 测试环境（TD-18），由 L4 验证。
+- 2026-10-28 — T5 — Blame 读取失败不另做「显示原文」回退：复用 B2 Blame 视图自带的错误态与重试（去掉了计划里的 `blameRenderer.failed` 文案）。正文按「读完的文本长度」作 key，文件在磁盘上变化、预览重读后 Blame 重新加载。
+- 2026-10-28 — T4 — 自动应用非冲突更改放在合并 store 的 `open` 里（计划写控制器）：只有 store 知道文件是否带草稿/已解决，且应用作为一次可撤销的模型动作进历史；控制器不变。
+- 2026-10-28 — T3 — 每页条数变化不重建日志 store（计划原写法），改为新增 `setPageSize`：重建会丢掉筛选；`setPageSize` 等同刷新，保留筛选与选中。PageUp/PageDown 步长固定为创建时的条数，不随设置变化。
+- 2026-10-28 — T2 — 刷新间隔用 1–10 秒的下拉而不是数字输入：不需要失焦钳制、读屏直接读出可选值；其他多选项同样用下拉（计划写「分段按钮或单选组」，下拉在窄面板下更省空间）。
 - 2026-10-28 — 计划草稿：git 路径与默认推送方式不进 B4a（理由见「不包含」）；设置仍按设计 §13 存 `localStorage` 键 `dsh-idea-git.settings.v1`，与 B3b/B3c 已写入的值共用。
 
 ## 意外与发现
 
+- 2026-10-28 — L4 环境：临时 HOME 下 Corepack 重新下载 pnpm 并卡住；复制的 profile 相对软链会断；手写工作区行缺 `createdAt`/`updatedAt` 会让工作区一直加载。三条都写进了 runbook。
 - 2026-10-28 — 读 DSH 源码（`ui-sidebar-documentpreview/src/client/document/registry.ts`）：注册表排序是「`extension` 档在前 → 后缀更长 → 注册顺序」，所以插件以默认的 `extension` 档注册就会压过内置代码查看器；工具栏列出所有匹配实现并按 tab 记住选择。这正是设计 §9.7「默认关闭」的原因，T5 将写进 references。
 
 ## 阻塞
@@ -166,4 +180,13 @@ export function useSettings(): WorkbenchSettings                         // useS
 
 ## 验证记录
 
-- 无
+- 2026-10-28 — 单测：`make check` 绿（T1、T4 后各跑一次全量）；`pnpm build && pnpm smoke` 通过。
+- 2026-10-28 — L4（隔离 DSH 3082，git 2.50.1，内置浏览器；runbook「设置与 Blame 渲染器实机验证」1–8 全部通过），截图 `.evidence/b4a/01–08`：
+  - AC1/AC2：弹层与恢复默认（`01`）；打开时焦点在「自动刷新」，Esc 后焦点回到 ⋯（修复后，见决策记录）。
+  - AC3：间隔 1s 时 6 秒 6 次 bootstrap、10s 时 0 次；关闭自动刷新后刷新页面仍为关、无轮询。
+  - AC4：紧凑行 24px、无作者/哈希单元格、相对日期「5 分钟前」（`02`）；改每页条数触发一次日志重载（请求体里的 `limit` 由单测覆盖，内置浏览器看不到请求体）。
+  - AC5：提交后切到日志并选中新提交（`03`）。
+  - AC6：关时只有横幅（`04`），操作中改为开也不弹；中止后再合并自动弹出（`05`）。
+  - AC7：Result 含 `MAIN 1` 与 `THEIRS 6`、第 3 行冲突待处理，撤销回到 base（`06`）。
+  - AC8：已跟踪文件默认「Git Blame」（`07`）；未跟踪文件回退原文与说明；跨标签页事件关闭后已开 tab 回到「代码」（`08`），再开再关正常，控制台无插件错误。未实机验证：未装文档预览插件时跳过（按 cordis `ctx.inject` 语义）。
+  - 未实机验证：默认 Diff 模式「并排」需要 ≥900px 面板，沿用 B3b 的同一个设置值与单测。

@@ -84,6 +84,8 @@ export interface BlameViewProps {
   onShowInLog: (sha: string) => void
   onFileHistory: () => void
   onHoverCardEnter?: () => void
+  /** B4a renderer: replaces the "not committed yet" notice (it shows the file text instead). */
+  renderUntracked?: () => ReactNode
 }
 
 export function BlameView(props: BlameViewProps): ReactNode {
@@ -161,7 +163,9 @@ function bodyOf(props: BlameViewProps, t: Translate): ReactNode {
       </div>
     )
   }
-  if (value.unavailable === 'untracked') return <div className={css.state}><EmptyState title={t('blame.untracked')} /></div>
+  if (value.unavailable === 'untracked') {
+    return props.renderUntracked?.() ?? <div className={css.state}><EmptyState title={t('blame.untracked')} /></div>
+  }
   if (value.unavailable === 'missing') return <div className={css.state}><EmptyState title={t('blame.unavailable.missing')} /></div>
   if (value.totalLines === 0) return <div className={css.state}><EmptyState title={t('blame.empty')} /></div>
   return <BlameLines {...props} />
@@ -352,6 +356,7 @@ export interface BlameOverlayProps {
   onCopy?: (text: string) => void
   /** Highlighter hook; tests inject a stand-in (see DiffViewer). */
   useHighlighter?: (language: string | undefined) => CodeHighlighter
+  renderUntracked?: () => ReactNode
 }
 
 /** Container: owns the blame and diff stores, reopens when the target changes, aborts on unmount. */
@@ -414,6 +419,7 @@ export function BlameOverlay(props: BlameOverlayProps): ReactNode {
         now={Date.now()}
         highlighter={highlighter}
         onBack={props.onBack}
+        renderUntracked={props.renderUntracked}
         onToggleCompact={() => { setCompact(current => !current) }}
         onLoadMore={() => { void store.loadMore() }}
         onRetry={() => { void store.open(target) }}

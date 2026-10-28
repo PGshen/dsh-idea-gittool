@@ -15,7 +15,7 @@
 
 | 优先级 | 事项 | 来源 | 备注 |
 |---|---|---|---|
-| P1 | B4 打磨，拆成 4 份按序做：B4a 设置页 + Blame 渲染器（[计划](active/b4a-设置页与Blame渲染器.md)，草稿待批准）；B4b a11y 与样式变量；B4c 性能；B4d 跨平台/安装升级/文档（含 git 路径设置） | [设计决策 v0.2](../design/2026-10-25-产品设计决策-v0.2.md) §4 | 2026-10-28 负责人同意拆分 |
+| P1 | B4 打磨，拆成 4 份按序做：B4a 设置页 + Blame 渲染器（2026-10-28 已完成，见下方「已完成」）；B4b a11y 与样式变量；B4c 性能；B4d 跨平台/安装升级/文档（含 git 路径设置） | [设计决策 v0.2](../design/2026-10-25-产品设计决策-v0.2.md) §4 | 2026-10-28 负责人同意拆分；下一份 B4b |
 | P2 | 筛选/仓库栏/分支右键菜单改用 ui-primitives `MenuSurface`/`Menu` | A1 走查，2026-10-25 | 当前按 [ADR 0006](../decisions/0006-浮层菜单材质例外.md) 手写菜单材质，迁移后废弃该 ADR |
 | P2 | 向 DSH 反馈：`workspace-write` 的 Seatbelt profile 放行 `DARWIN_USER_CACHE_DIR`，否则 osxkeychain 凭据助手在 confine 下不可用 | A2 T1 spike，2026-10-26 | 见 [references §13](../references/dsh-integration-feasibility.md)「写执行与沙箱」；只反馈不改 DSH 仓库，由负责人决定是否提 |
 | P2 | 分支树改为单一 Tab 停靠点（roving tabindex：选中行或首行为 0，其余 -1）；菜单 ↑↓ 是否停在不可用项上以便读屏听到原因，与负责人确认 | A3 I-1 评审，2026-10-26 | 当前每个叶子行各占一个 Tab 停靠点；↑↓ 跳过不可用项 |
@@ -45,11 +45,13 @@
 | P2 | Fixup/Squash 到此提交的自动变基被中止后，`fixup!`/`squash!` 提交留在 HEAD；是否在中止时提示「撤销该提交」 | B3b L4，2026-10-27 | 与 IntelliJ 一致，需负责人决定 |
 | P2 | 交互式变基等改写历史的操作之后，日志详情区仍显示改写前选中的旧提交（选中项已不在日志里）；变基列表里的分支名标签与背景对比弱 | B3a L4，2026-10-27 | 前者是 A1 的既有行为：选中 sha 不在新日志里时应清空或跟随 HEAD |
 | P2 | B2 终审 Minor（10 条）：Blame 未提交行双击应显示 HEAD→工作区（含已暂存）；修订版 Blame「文件不存在」文案区分修订并给「文件历史」按钮；文件历史第 2 页起合并条目路径退回新名（游标带当前路径）；文档头部 bootstrap 未到时误报「不在仓库」；`openTab` 失败后意图残留在队列；分支比较传 `entry.ref` 而非 `entry.name`（同名标签）；被该提交删除的文件禁用「与工作区比较」；窄头部 `⋯` 点动作/外部/Esc 收起；`git.blame` 页无返回时不吞 Esc；GitWorkbench 卸载时 `historyStore.close()`；（L4）干净文件的状态位「·」提示仍是 M0 的「Git 状态待接入」，应改为「没有未提交的改动」 | B2 终审，2026-10-27 | 细节见 [b2 计划](completed/b2-历史与Blame.md)「决策记录」终审条目 |
+| P2 | B4a 终审 Minor（8 条）：Blame 渲染器正文按读完的文本长度作 key（同长度改动可能不刷新、多页文件 blame 请求两次），应改用 `useResource(...).value?.version`；bootstrap 失败或无 `absolutePath` 时正文空白；定义未声明 `wrap: true` 但回退原文读 `wrap`；草稿存在但不可用时不自动应用、Host 判草稿过期时却会；PageUp/PageDown 步长取创建时条数，改设置后与刷新页面后不一致（应固定常量或视口行数）；没打开过日志也会因改条数立即拉一次日志；改刷新间隔立即触发一次刷新、`GitBody` 订阅全部设置；`settings.ts` 读存储中途失败时静默回默认且不通知、写失败后不再写回存储 | B4a 终审，2026-10-28 | 细节见 [b4a 计划](completed/b4a-设置页与Blame渲染器.md)「决策记录」评审条目 |
 
 ## 已完成
 
 | 完成日期 | 事项 | 计划 |
 |---|---|---|
+| 2026-10-28 | B4a 设置页与 Blame 渲染器：设置模型（单键 localStorage、逐字段校验、跨标签页同步）、仓库栏 ⋯「设置…」弹层（自动刷新/间隔、日志每页条数、日期格式、紧凑模式、默认 Diff、提交后跳日志、自动打开冲突列表、合并自动应用非冲突更改）、可选「Git Blame」文档渲染器（随设置注册/注销，不接管 DSH 专用查看器的后缀）；⋯ 菜单覆盖层焦点返还修复；整分支评审修复 I1–I3(a)，负责人验收通过 | [b4a](completed/b4a-设置页与Blame渲染器.md) |
 | 2026-10-28 | B3 高级操作（拆成 4 份，按序合并）：B3a 交互式变基（变基覆盖页、日志快捷动作、edit 停下）；B3b Diff 增强（并排/词级/忽略空白/完整文件）与完整提交菜单（撤销提交、推送到此、新建标签、Fixup/Squash into、补丁导出与应用）；B3c 搁架（受限 ref 下的提交对象，ADR 0011）与 Changelist；B3d 远程页、标签推送/删除、远程分支删除、upstream、Worktree 页；每份整分支终审 + L4 走查各一轮修复，负责人统一验收通过，`interactiveRebase`、`worktrees` 默认开启 | [b3a](completed/b3a-交互式变基.md)、[b3b](completed/b3b-Diff增强与提交菜单.md)、[b3c](completed/b3c-搁架与Changelist.md)、[b3d](completed/b3d-Worktree与远程.md) |
 | 2026-10-27 | B2 历史与 Blame：Host `blame`/`fileHistory`/`compare` 与 `diff` range（修订号先解析成 sha）、三个 store 与跨 tab 意图队列、Blame 视图（Git tab 覆盖层 + `git.blame` 页）、文件历史页、比较页、覆盖层返回链、文件/提交/分支菜单与文档头部「历史」「Diff」；整分支终审 + L4 走查各一轮修复，负责人验收通过 | [b2-历史与Blame](completed/b2-历史与Blame.md) |
 | 2026-10-27 | B1 三栏合并：Host 合并端点（读三方、草稿 ref、经索引写回、还原冲突解决）、纯合并模型（Myers/diff3/按词简单冲突/草稿往返）、合并 store、CodeMirror 三栏窗口（块操作、同步滚动、宿主全屏、键盘）、冲突列表增强与审查更改；请求体按端点限额（ADR 0009）；AI 逐任务评审 + 整分支终审，负责人验收通过，`mergeWindow` 默认开启 | [b1-三栏合并](completed/b1-三栏合并.md) |

@@ -34,7 +34,7 @@ function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
   return { promise, resolve }
 }
 
-function setup(over: { load?: MergeStoreDeps['loadFile']; run?: MergeStoreDeps['actions']['run']; readOnly?: MergeStoreDeps['readOnlyReason'] } = {}) {
+function setup(over: { load?: MergeStoreDeps['loadFile']; run?: MergeStoreDeps['actions']['run']; readOnly?: MergeStoreDeps['readOnlyReason']; autoApply?: boolean } = {}) {
   const loadFile = vi.fn(over.load ?? (async () => ({ ok: true, value: file() }) as RpcResult<MergeFileValue>))
   const run = vi.fn(over.run ?? (async () => ({ kind: 'done', value: { path: 'a.txt', remaining: 2 } }) as ActionOutcome<never>))
   const onApplied = vi.fn()
@@ -45,6 +45,7 @@ function setup(over: { load?: MergeStoreDeps['loadFile']; run?: MergeStoreDeps['
     readOnlyReason: over.readOnly,
     onApplied,
     onOpened,
+    ...(over.autoApply === undefined ? {} : { autoApplyNonConflicting: () => over.autoApply === true }),
   })
   return { store, loadFile, run, onApplied, onOpened }
 }
@@ -387,5 +388,51 @@ describe('resolved files (T7 Review Changes, ruling 16)', () => {
     const store = createMergeStore({ loadFile: async () => ({ ok: false, error }), actions: { run: vi.fn() } as unknown as MergeStoreDeps['actions'], onLoadFailed })
     await store.open('a.txt')
     expect(onLoadFailed).toHaveBeenCalledWith('a.txt', error)
+  })
+})
+
+describe('auto-apply non-conflicting changes (B4a)', () => {
+  /** Left-only change on line 1, a conflict on line 3, right-only change on line 5. */
+  const mixed = (): MergeFileValue => file({
+    base: side('a\nb\nc\nd\ne\n', '1'.repeat(40)),
+    ours: side('A\nb\nX\nd\ne\n', '2'.repeat(40)),
+    theirs: side('a\nb\nY\nd\nE\n', '3'.repeat(40)),
+  })
+
+  it('applies them once on open when the setting is on; undo goes back to base', async () => {
+    const { store } = setup({ load: async () => ({ ok: true, value: mixed() }), autoApply: true })
+    await store.open('a.txt')
+    const state = store.getState()
+    expect(state.model?.result).toBe('A\nb\nc\nd\nE\n')
+    expect(state.model?.chunks.filter(chunk => chunk.kind === 'conflict')).toHaveLength(1)
+    expect(state.dirty).toBe(true)
+    expect(store.undo()).toBe(true)
+    expect(store.getState().model?.result).toBe('a\nb\nc\nd\ne\n')
+  })
+
+  it('leaves the model alone when off, or when a draft was restored', async () => {
+    const off = setup({ load: async () => ({ ok: true, value: mixed() }), autoApply: false })
+    await off.store.open('a.txt')
+    expect(off.store.getState().model?.result).toBe('a\nb\nc\nd\ne\n')
+    expect(off.store.getState().dirty).toBe(false)
+
+    const draft = toDraft(off.store.getState().model!, STAGES)
+    const restored = setup({ load: async () => ({ ok: true, value: { ...mixed(), draft } }), autoApply: true })
+    await restored.store.open('a.txt')
+    expect(restored.store.getState().model?.result).toBe('a\nb\nc\nd\ne\n')
+    expect(restored.store.getState().dirty).toBe(false)
+  })
+
+  it('skips in read-only mode (review I3: the window could not be left without discarding)', async () => {
+    const { store } = setup({ load: async () => ({ ok: true, value: mixed() }), autoApply: true, readOnly: () => text('readOnly.title') })
+    await store.open('a.txt')
+    expect(store.getState().model?.result).toBe('a\nb\nc\nd\ne\n')
+    expect(store.getState().dirty).toBe(false)
+  })
+
+  it('does not touch an already resolved file', async () => {
+    const { store } = setup({ load: async () => ({ ok: true, value: { ...mixed(), resolved: true, worktreeText: 'a\nb\nX\nd\ne\n' } }), autoApply: true })
+    await store.open('a.txt')
+    expect(store.getState().dirty).toBe(false)
   })
 })

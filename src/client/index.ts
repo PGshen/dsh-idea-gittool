@@ -4,8 +4,10 @@ import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type { ShortcutCommandId } from '@deepseek-ai/dsh-client-shortcuts/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
+import type {} from '@deepseek-ai/dsh-client-ui-sidebar-documentpreview/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import type {} from '@deepseek-ai/dsh-client-ui-slots'
+import { BLAME_RENDERER_ID, BlameRendererBody, bindBlameRenderer, blameRendererDefinition } from './blame-renderer.tsx'
 import { createBootstrapCache } from './bootstrap-cache.ts'
 import { GIT_ID, GIT_KIND, gitDefinition } from './definition.tsx'
 import { createGitClient } from './git-client.ts'
@@ -14,6 +16,7 @@ import { GitTitle } from './GitTitle.tsx'
 import { en, zh } from './locales.ts'
 import { text } from './localized-text.ts'
 import { registerBlameTab, registerDocumentActions } from './register-document-actions.ts'
+import { readSettings, subscribeSettings } from './settings.ts'
 import { useStatusLetter } from './use-bootstrap.ts'
 import { postIntent } from './workbench-intents.ts'
 import type { WorkbenchIntent } from './workbench-intents.ts'
@@ -87,6 +90,26 @@ export function apply(ctx: ClientContext): void {
     }
   }
   registerBlameTab(ctx, { gitClient, bootstrapCache, openInGit: (sessionId, intent) => { openInGit(sessionId, intent) } })
+
+  // B4a: optional "Git Blame" document renderer. The keyed body is always registered (inert while no
+  // definition selects it); the definition follows the setting, and only when DSH provides the
+  // document preview registry (cordis runs an inject callback once the service exists).
+  ctx.effect(() => ctx.slots.inject('sidebar.right.tab.document', () => ctx.slots.register(
+    {
+      name: 'sidebar.right.tab.document',
+      key: BLAME_RENDERER_ID,
+      locale: NS,
+      inject: () => ({ gitClient, bootstrapCache, openInGit: (sessionId: string, intent: WorkbenchIntent) => { openInGit(sessionId, intent) } }),
+    },
+    BlameRendererBody,
+  )), 'git: blame renderer body')
+  ctx.inject(['documentPreviews'], (previews) => {
+    previews.effect(() => bindBlameRenderer(
+      previews.documentPreviews,
+      blameRendererDefinition(() => t('blameRenderer.title')),
+      { read: () => readSettings().blameRenderer, subscribe: listener => subscribeSettings((next) => { listener(next.blameRenderer) }) },
+    ), 'git: blame renderer definition')
+  })
   registerDocumentActions(ctx, {
     useStatus: (absolutePath, sessionId) => useStatusLetter(bootstrapCache, sessionId, absolutePath),
     repoRootFor: (_absolutePath, sessionId) => bootstrapCache.get(sessionId)?.repoRoot ?? null,

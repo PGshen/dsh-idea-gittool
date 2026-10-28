@@ -62,6 +62,8 @@ export interface MergeStoreDeps {
   actions: Pick<ActionStore, 'run'>
   /** Non-null in read-only mode: the reason shown instead of sending a write. */
   readOnlyReason?: () => LocalizedText | null
+  /** B4a setting: apply the non-conflicting changes when a fresh (no draft, unresolved) file opens. */
+  autoApplyNonConflicting?: () => boolean
   /** A file finished loading in the window (Review Changes marks it reviewed). */
   onOpened?: (path: string) => void
   /**
@@ -235,6 +237,12 @@ export function createMergeStore(deps: MergeStoreDeps): MergeStore {
       }
       baseline = model
       emit({ ...IDLE, status: 'ready', path, file, model, draftDiscarded, draftDiffers })
+      // Only a fresh start: a restored draft or a resolved file already holds the user's choices.
+      // Not in read-only mode: the window could only be left by discarding (saving the draft is a write).
+      const writable = (deps.readOnlyReason?.() ?? null) === null
+      if (model !== null && writable && !file.resolved && file.draft === null && deps.autoApplyNonConflicting?.() === true) {
+        setModel(applyNonConflicting(model, 'all'), false)
+      }
       deps.onOpened?.(path)
     },
 

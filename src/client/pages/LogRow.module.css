@@ -16,6 +16,10 @@
   user-select: none;
 }
 
+.compact {
+  height: 24px;
+}
+
 .row:hover {
   background: var(--dsw-alias-interactive-bg-hover);
 }

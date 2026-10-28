@@ -21,6 +21,7 @@ import {
   formatRelativeTime,
   relativeLabel,
   shouldCollapseBody,
+  commitTimeLabels,
 } from '../../../src/client/pages/CommitDetail.tsx'
 import {
   buildChangedTree,
@@ -437,5 +438,13 @@ describe('CommitDetail 选中保持与模式', () => {
     const html = renderToStaticMarkup(<CommitDetail detail={detail()} status="loading" error={null} now={NOW} />)
     expect(html).toContain('data-loading="true"')
     expect(html).toContain('feat(log): 实现日志首屏')
+  })
+})
+
+describe('commitTimeLabels (B4a date format)', () => {
+  it('puts the chosen format in the text and the other in the title', () => {
+    const now = Date.parse('2026-10-25T12:00:00')
+    expect(commitTimeLabels('2026-10-25T09:00:00', now, zhT, 'absolute')).toEqual({ text: '2026-10-25 09:00', title: '3 小时前' })
+    expect(commitTimeLabels('2026-10-25T09:00:00', now, zhT, 'relative')).toEqual({ text: '3 小时前', title: '2026-10-25 09:00' })
   })
 })

@@ -19,6 +19,9 @@ export const LANE_WIDTH = 14
 /** 行高（px，设计 §8.1.3：26px）。 */
 export const ROW_HEIGHT = 26
 
+/** B4a compact mode row height (design §13). */
+export const COMPACT_ROW_HEIGHT = 24
+
 export type GraphEdgeKind = 'line' | 'curve' | 'stub' | 'dashed'
 
 /**

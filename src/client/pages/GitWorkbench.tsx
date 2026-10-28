@@ -64,6 +64,7 @@ import { FetchSheet } from './FetchSheet.tsx'
 import { MergePage } from './MergePage.tsx'
 import { PullPage } from './PullPage.tsx'
 import { ResetSheet } from './ResetSheet.tsx'
+import { SettingsSheet } from './SettingsSheet.tsx'
 import { UpdateProjectPage } from './UpdateProjectPage.tsx'
 import { commitActionEffect } from './commit-actions.ts'
 import type { CommitActionId } from './commit-actions.ts'
@@ -82,7 +83,8 @@ import { RemoteBranchDeleteSheet, TagSheet, UpstreamSheet, WorktreeAddSheet } fr
 import { RemotesPage, WorktreesPage } from './RemotesPages.tsx'
 import { addList, moveTo, removeList, renameList, setActive } from '../changelists/changelist-model.ts'
 import { useChangelists } from '../changelists/use-changelists.ts'
-import { readChangelistGrouping, writeChangelistGrouping } from '../settings.ts'
+import { readChangelistGrouping, readSettings, useSettings, writeChangelistGrouping } from '../settings.ts'
+import type { AfterCommit } from '../settings.ts'
 import { DiffViewer } from './DiffViewer.tsx'
 import { FileHistoryPage } from './FileHistoryPage.tsx'
 import { fileActions } from './file-actions.ts'
@@ -205,15 +207,32 @@ export function logRefreshKey(head: string | null | undefined, refsBySha: Record
   return `${head ?? ''}|${refs.join(',')}`
 }
 
+/** B4a "after commit" setting: the page to switch to after a successful commit (null: stay). */
+export function afterCommitPage(setting: AfterCommit): 'log' | null {
+  return setting === 'log' ? 'log' : null
+}
+
+/**
+ * B4a: open the conflict list for an operation that just stopped on conflicts (design §10.1) unless
+ * the setting is off or the user is working in another overlay. The tracker records the operation
+ * either way, so turning the setting on later does not pop the list for the same operation.
+ */
+export function shouldAutoOpenConflicts(input: { newOperation: boolean; enabled: boolean; overlayOpen: boolean }): boolean {
+  return input.newOperation && input.enabled && !input.overlayOpen
+}
+
 export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
   const t = useT()
   const { sessionId, client, value, onRefresh } = props
   const status = value.status
 
+  const settings = useSettings()
   const logStore = useMemo(
-    () => createLogStore({ sessionId, loadPage: request => client.log(request) }),
+    // Page size: read once at creation; later changes go through setPageSize (keeps filters).
+    () => createLogStore({ sessionId, loadPage: request => client.log(request), pageSize: readSettings().logPageSize }),
     [client, sessionId],
   )
+  useEffect(() => { logStore.setPageSize(settings.logPageSize) }, [logStore, settings.logPageSize])
   const detailStore = useMemo(
     () => createDetailStore({ load: (sha, signal) => client.commit({ sessionId, sha }, signal) }),
     [client, sessionId],
@@ -479,7 +498,8 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
   }, [overlays.open, sessionId, status])
 
   const onCommitted = useCallback((result: CommitResultValue) => {
-    // 刷新状态与日志后在日志里定位新 HEAD（切回日志页时可见）。
+    // 刷新状态与日志后在日志里定位新 HEAD（切回日志页时可见）；B4a「提交后」设置为跳到日志时立即切过去。
+    if (afterCommitPage(readSettings().afterCommit) === 'log') setPage('log')
     void Promise.all([onRefresh(), logStore.refresh()]).then(() => { logStore.jumpTo(result.sha) })
   }, [logStore, onRefresh])
 
@@ -536,7 +556,10 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
   useEffect(() => {
     if (operationValue === null) return
     // Once per operation (design §10.1); never over another overlay the user is working in.
-    if (autoOpen.observe(operationValue) && currentRoute().overlay === null) openOverlay({ kind: 'conflicts' }, null)
+    const newOperation = autoOpen.observe(operationValue)
+    if (shouldAutoOpenConflicts({ newOperation, enabled: readSettings().autoOpenConflicts, overlayOpen: currentRoute().overlay !== null })) {
+      openOverlay({ kind: 'conflicts' }, null)
+    }
   }, [autoOpen, currentRoute, openOverlay, operationValue])
   const conflictsOpen = overlay?.kind === 'conflicts'
   useEffect(() => { if (conflictsOpen) autoOpen.noteOpened() }, [autoOpen, conflictsOpen])
@@ -680,6 +703,7 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
     onOpened: review.opened,
     onLoadFailed: review.loadFailed,
     onApplied: review.applied,
+    autoApplyNonConflicting: () => readSettings().mergeAutoApplyNonConflicting,
   }), [actions, client, review, sessionId])
   mergeLeft.current = review.left
   const openMergeWindow = useCallback((path: string, trigger: FocusTarget | null) => {
@@ -812,6 +836,7 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
         onOpenConsole={() => { setConsoleOpen(true) }}
         onApplyPatch={(trigger) => { overlays.open({ kind: 'applyPatch' }, trigger) }}
         onRemotes={(trigger) => { overlays.open({ kind: 'remotes' }, trigger) }}
+        onSettings={(trigger) => { overlays.open({ kind: 'settings' }, trigger) }}
         {...(worktreesEnabled ? { onWorktrees: (trigger: HTMLElement | null) => { overlays.open({ kind: 'worktrees' }, trigger) } } : {})}
         onToggleBranches={() => { branchesStore.setOpen(!branches.open) }}
         onPush={() => { openPush({}) }}
@@ -1261,6 +1286,7 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
             onClose={() => { overlays.closeIf('reset') }}
           />
         )}
+        {overlay?.kind !== 'settings' ? null : <SettingsSheet onClose={() => { overlays.closeIf('settings') }} />}
         {overlay?.kind !== 'fetch' ? null : (
           <FetchSheet
             loadRemotes={() => client.pushPreview(sessionId)}

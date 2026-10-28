@@ -2,7 +2,12 @@
 // 行是绝对定位的虚拟行，只负责渲染；选择与键盘由 LogTable / store 处理。
 import type { CSSProperties, MouseEvent, ReactNode } from 'react'
 import { GraphCell } from '../graph/GraphCell.tsx'
+import { COMPACT_ROW_HEIGHT, ROW_HEIGHT } from '../graph/layout.ts'
+import { useT } from '../i18n.tsx'
+import type { Translate } from '../i18n.tsx'
+import type { DateFormat } from '../settings.ts'
 import type { LogTableData } from '../store/log-store.ts'
+import { formatRelativeTime } from './CommitDetail.tsx'
 import { RefChips } from './RefChips.tsx'
 import css from './LogRow.module.css'
 
@@ -29,12 +34,17 @@ export interface LogRowProps {
   onContextMenu?(index: number, event: MouseEvent): void
   /** 日期显示的参照「现在」（年份不同才显示年），测试可注入。 */
   now?: number
+  /** B4a: absolute (default) or relative dates. */
+  dateFormat?: DateFormat
+  /** B4a compact mode: 24px rows without the author and hash cells. */
+  compact?: boolean
 }
 
-/** 日志日期：同年 `MM-DD HH:mm`，跨年 `YYYY-MM-DD`；非法输入原样返回。 */
-export function formatLogDate(iso: string, now: number = Date.now()): string {
+/** 日志日期：同年 `MM-DD HH:mm`，跨年 `YYYY-MM-DD`；`relative` 时为「3 小时前」；非法输入原样返回。 */
+export function formatLogDate(iso: string, now: number = Date.now(), format: DateFormat = 'absolute', t?: Translate): string {
   const date = new Date(iso)
   if (Number.isNaN(date.getTime())) return iso
+  if (format === 'relative' && t !== undefined) return formatRelativeTime(iso, now, t)
   const pad = (value: number): string => String(value).padStart(2, '0')
   const day = `${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
   if (date.getFullYear() !== new Date(now).getFullYear()) return `${date.getFullYear()}-${day}`
@@ -59,10 +69,14 @@ export function LogRow({
   onDoubleClick,
   onContextMenu,
   now,
+  dateFormat = 'absolute',
+  compact = false,
 }: LogRowProps): ReactNode {
+  const t = useT()
   const { commit, graph, refs } = data
   const classes = [
     css.row,
+    compact ? css.compact : undefined,
     selected ? (multi ? css.multi : css.selected) : undefined,
     active ? css.active : undefined,
   ].filter((value): value is string => typeof value === 'string' && value.length > 0).join(' ')
@@ -87,15 +101,15 @@ export function LogRow({
       onContextMenu={onContextMenu === undefined ? undefined : (event) => onContextMenu(index, event)}
     >
       <span role="gridcell" className={css.graph}>
-        <GraphCell row={graph} head={head} current={onCurrentBranch} selected={selected} />
+        <GraphCell row={graph} head={head} current={onCurrentBranch} selected={selected} height={compact ? COMPACT_ROW_HEIGHT : ROW_HEIGHT} />
       </span>
       <span role="gridcell" className={css.subject} title={commit.subject}>
         <span className={css.subjectText}>{commit.subject}</span>
         <RefChips refs={refs} currentBranch={currentBranch} />
       </span>
-      <span role="gridcell" className={css.author} title={`${commit.author} <${commit.email}>`}>{commit.author}</span>
-      <span role="gridcell" className={css.date} title={commit.date}>{formatLogDate(commit.date, now)}</span>
-      <span role="gridcell" className={css.hash}>{commit.shortSha}</span>
+      {compact ? null : <span role="gridcell" className={css.author} title={`${commit.author} <${commit.email}>`}>{commit.author}</span>}
+      <span role="gridcell" className={css.date} title={commit.date}>{formatLogDate(commit.date, now, dateFormat, t)}</span>
+      {compact ? null : <span role="gridcell" className={css.hash}>{commit.shortSha}</span>}
     </div>
   )
 }

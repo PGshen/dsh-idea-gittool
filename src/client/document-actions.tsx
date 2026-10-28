@@ -170,7 +170,8 @@ export function DocumentActionsView(props: DocumentActionsViewProps): ReactNode 
           <span
             className={`git-document-actions__status ${css.badge} ${css.unknown}`}
             data-status="unknown"
-            title={t('document.status.pending')}
+            // B4b (B2 L4): no letter means a clean file, a file outside the repository, or the Git tab not wired yet.
+            title={render(t, states.status ?? text('document.diff.clean'))}
           >
             ·
           </span>

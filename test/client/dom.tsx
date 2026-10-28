@@ -128,3 +128,42 @@ export function byRole(root: ParentNode, role: string, name?: string | RegExp): 
   }
   return found[0] as HTMLElement
 }
+
+const CONTROL_ROLES = new Set(['button', 'menuitem', 'tab', 'checkbox', 'switch', 'treeitem', 'option', 'link'])
+
+/** Visible text of `element`, leaving out `aria-hidden` parts, whitespace collapsed. */
+export function visibleText(element: Element): string {
+  const walk = (node: Node): string => {
+    if (node.nodeType === Node.TEXT_NODE) return node.textContent ?? ''
+    if (node instanceof Element && node.getAttribute('aria-hidden') === 'true') return ''
+    return [...node.childNodes].map(walk).join(' ')
+  }
+  return walk(element).replace(/\s+/g, ' ').trim()
+}
+
+const MEANINGFUL = /[\p{L}\p{N}]/u
+
+/**
+ * WCAG 2.5.3 label-in-name and 4.1.2 name audit for every control under `root`: a control with
+ * meaningful visible text whose aria-label / aria-labelledby name does not contain that text, and a
+ * control with no name at all (no text, label or title). Symbol-only text (⋯ ✕ ▾) needs no match.
+ */
+export function nameViolations(root: ParentNode): string[] {
+  const problems: string[] = []
+  for (const element of root.querySelectorAll<HTMLElement>('*')) {
+    const role = roleOf(element)
+    if (role === null || !CONTROL_ROLES.has(role)) continue
+    const shown = visibleText(element)
+    const name = accessibleName(element)
+    // aria-labelledby pointing at the control's own visible label (MenuItemButton) already satisfies
+    // label-in-name; an aria-label replaces the visible text and must contain it.
+    const labelled = element.hasAttribute('aria-label') && !element.hasAttribute('aria-labelledby')
+    const describe = `${role} "${shown || element.outerHTML.slice(0, 80)}"`
+    if (name === '' && (element.getAttribute('title') ?? '') === '' && element.closest('label') === null) {
+      problems.push(`${describe} has no accessible name`)
+    } else if (labelled && MEANINGFUL.test(shown) && !name.toLowerCase().includes(shown.toLowerCase())) {
+      problems.push(`${describe} is named "${name}" (does not contain its visible text)`)
+    }
+  }
+  return problems
+}

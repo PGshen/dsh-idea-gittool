@@ -197,7 +197,8 @@ export function moveFocus(rows: readonly TreeRow[], currentId: string, key: 'Arr
 - 2026-10-28 — T3 完成：`outline: none` 一律须登记 `FOCUS_EXEMPT`（17 条：11 个 tabIndex=-1 容器根、6 个有替代指示的输入/列表）；11 处菜单项/行/拖拽条改用 DSH 全局焦点环（内缩 `--dsw-focus-ring-width`）（2add967）
 - 2026-10-28 — T4 完成：`tree-focus.ts` 纯模型 + `use-tree-roving.ts`；分支面板与分支页的树都是单一 Tab 停靠点，分组头改为 level-1 treeitem 参与导航；删除不再使用的 `moveTreeFocus`/`treeStepIndex`（09e54ef）
 - 2026-10-28 — T5 完成：`useMenuKeyboard` 从 `useFloatingMenu` 抽出，仓库栏 ⋯、提交 ▾、合并窗口「应用非冲突更改 ▾」、文件右键菜单、Changelist「移到」都接入（取得焦点、↑↓ 环绕、Home/End、Esc/Tab/← 关闭并还焦、外部点击关闭）；不可用项可聚焦，`MenuItemButton` 用 `aria-labelledby`/`aria-describedby` 分开名称与原因（5646681）
-- 2026-10-28 — T6 完成：`focus-trap.ts` 的 `trapTab` 接到全部 `aria-modal` 对话框（SheetFrame 及其 9 个使用方、回滚、未提交改动、智能签出、分支表单、分支抽屉）；DOM 测试覆盖设置弹层/未提交改动询问的进入焦点 + Esc + Tab 圈定、覆盖层控制器还焦、提交右键菜单 Esc 还焦
+- 2026-10-28 — T6 完成：`focus-trap.ts` 的 `trapTab` 接到全部 `aria-modal` 对话框（SheetFrame 及其 8 个使用方、回滚、未提交改动、智能签出、分支表单、分支抽屉）；DOM 测试覆盖设置弹层/未提交改动询问的进入焦点 + Esc + Tab 圈定、覆盖层控制器还焦、提交右键菜单 Esc 还焦（df8b24b）
+- 2026-10-28 — T7 完成：`nameViolations` 审计（2.5.3 label-in-name + 4.1.2 无名控件）覆盖仓库栏、分支面板、分支页、状态栏、设置弹层、合并窗口头部/底栏、操作菜单、日志页（中英各一遍），全部合规；干净文件状态点提示改为状态原因（「文件没有未提交的改动」/「不在仓库中」）
 
 ## 下一步
 
@@ -216,6 +217,7 @@ export function moveFocus(rows: readonly TreeRow[], currentId: string, key: 'Arr
 - 2026-10-28 T5 — Home/End 改为到第一/最后一项（含不可用项，APG）；打开菜单时仍聚焦第一个可用项（沿用 I-1，便于直接回车）。原生 `disabled`（无原因、如「刷新中」）仍不可聚焦、导航跳过；有原因的不可用项一律 `aria-disabled`。
 - 2026-10-28 T5 — `useMenuKeyboard` 的 `onClose(via)` 区分键盘关闭（还焦到触发按钮/行）与外部点击（不抢焦点）；`boundary` 参数让开关按钮所在的包裹元素不算「外部」，避免按下即关、点击又开。顺手修掉 TODO「应用非冲突更改 ▾ 点外部不关闭」。
 - 2026-10-28 T6 — 不新建 `use-overlay-focus.ts`：进入焦点（`useInitialFocus`/各自的 `focus()`）、Esc（`escapeHandler`/各自 handler + 工作台兜底 `handleOverlayEscape`）、还焦（`createOverlayController` + `rememberFocus`）已经统一且行为正确，DOM 测试直接作为回归保护；唯一缺的是模态对话框的 Tab 圈定，补成 `trapTab`。Blame、历史、比较等非模态覆盖层不圈定。合并窗口的焦点行为已有 `merge-window-controller` 单测（`focusIsLost`/`shouldRefocusAfterWrite`），不另写 DOM 测试。
+- 2026-10-28 T7 — TODO「合并窗口按钮 label-in-name」核实为误报：这些按钮没有 `aria-label`，名称取可见文字，`title` 只作描述（可访问性树里显示为 description）；审计测试把它锁住。源码粗扫所有「带 `aria-label` 的按钮」，有文字子节点的只有纯符号（▸ ✕ ▾ ⋯），不需要匹配。
 
 ## 意外与发现
 

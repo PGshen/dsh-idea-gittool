@@ -1,6 +1,6 @@
 // A1 工作台接线：日志选择 → 详情动作、Diff 文件列表展开。
 import { describe, expect, it } from 'vitest'
-import { changeFilesFor, commitFailedJustNow, commitFeedbackIsStale, commitNoticeClearsOnOtherWrite, directPushAllowed, detailActionFor, diffFilesOf, logRefreshKey, rollbackTargetsFor } from '../../../src/client/pages/GitWorkbench.tsx'
+import { afterCommitPage, changeFilesFor, shouldAutoOpenConflicts, commitFailedJustNow, commitFeedbackIsStale, commitNoticeClearsOnOtherWrite, directPushAllowed, detailActionFor, diffFilesOf, logRefreshKey, rollbackTargetsFor } from '../../../src/client/pages/GitWorkbench.tsx'
 import type { CommitDetailValue, CommitSummary, StatusValue } from '../../../src/shared/protocol.ts'
 
 function summary(sha: string): CommitSummary {
@@ -142,5 +142,19 @@ describe('演示问题 2/3：提交提示的刷新与清除', () => {
     expect(commitNoticeClearsOnOtherWrite('failure')).toBe(true)
     expect(commitNoticeClearsOnOtherWrite('success')).toBe(false)
     expect(commitNoticeClearsOnOtherWrite('idle')).toBe(false)
+  })
+})
+
+describe('B4a behaviour settings', () => {
+  it('afterCommitPage follows the setting', () => {
+    expect(afterCommitPage('stay')).toBeNull()
+    expect(afterCommitPage('log')).toBe('log')
+  })
+
+  it('shouldAutoOpenConflicts needs a new operation, the setting on and no overlay on screen', () => {
+    expect(shouldAutoOpenConflicts({ newOperation: true, enabled: true, overlayOpen: false })).toBe(true)
+    expect(shouldAutoOpenConflicts({ newOperation: true, enabled: false, overlayOpen: false })).toBe(false)
+    expect(shouldAutoOpenConflicts({ newOperation: false, enabled: true, overlayOpen: false })).toBe(false)
+    expect(shouldAutoOpenConflicts({ newOperation: true, enabled: true, overlayOpen: true })).toBe(false)
   })
 })

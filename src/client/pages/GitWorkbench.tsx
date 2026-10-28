@@ -84,6 +84,7 @@ import { RemotesPage, WorktreesPage } from './RemotesPages.tsx'
 import { addList, moveTo, removeList, renameList, setActive } from '../changelists/changelist-model.ts'
 import { useChangelists } from '../changelists/use-changelists.ts'
 import { readChangelistGrouping, readSettings, useSettings, writeChangelistGrouping } from '../settings.ts'
+import type { AfterCommit } from '../settings.ts'
 import { DiffViewer } from './DiffViewer.tsx'
 import { FileHistoryPage } from './FileHistoryPage.tsx'
 import { fileActions } from './file-actions.ts'
@@ -204,6 +205,20 @@ export function logRefreshKey(head: string | null | undefined, refsBySha: Record
     .map(entry => `${entry.ref}=${entry.sha}`)
     .sort()
   return `${head ?? ''}|${refs.join(',')}`
+}
+
+/** B4a "after commit" setting: the page to switch to after a successful commit (null: stay). */
+export function afterCommitPage(setting: AfterCommit): 'log' | null {
+  return setting === 'log' ? 'log' : null
+}
+
+/**
+ * B4a: open the conflict list for an operation that just stopped on conflicts (design §10.1) unless
+ * the setting is off or the user is working in another overlay. The tracker records the operation
+ * either way, so turning the setting on later does not pop the list for the same operation.
+ */
+export function shouldAutoOpenConflicts(input: { newOperation: boolean; enabled: boolean; overlayOpen: boolean }): boolean {
+  return input.newOperation && input.enabled && !input.overlayOpen
 }
 
 export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
@@ -483,7 +498,8 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
   }, [overlays.open, sessionId, status])
 
   const onCommitted = useCallback((result: CommitResultValue) => {
-    // 刷新状态与日志后在日志里定位新 HEAD（切回日志页时可见）。
+    // 刷新状态与日志后在日志里定位新 HEAD（切回日志页时可见）；B4a「提交后」设置为跳到日志时立即切过去。
+    if (afterCommitPage(readSettings().afterCommit) === 'log') setPage('log')
     void Promise.all([onRefresh(), logStore.refresh()]).then(() => { logStore.jumpTo(result.sha) })
   }, [logStore, onRefresh])
 
@@ -540,7 +556,10 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
   useEffect(() => {
     if (operationValue === null) return
     // Once per operation (design §10.1); never over another overlay the user is working in.
-    if (autoOpen.observe(operationValue) && currentRoute().overlay === null) openOverlay({ kind: 'conflicts' }, null)
+    const newOperation = autoOpen.observe(operationValue)
+    if (shouldAutoOpenConflicts({ newOperation, enabled: readSettings().autoOpenConflicts, overlayOpen: currentRoute().overlay !== null })) {
+      openOverlay({ kind: 'conflicts' }, null)
+    }
   }, [autoOpen, currentRoute, openOverlay, operationValue])
   const conflictsOpen = overlay?.kind === 'conflicts'
   useEffect(() => { if (conflictsOpen) autoOpen.noteOpened() }, [autoOpen, conflictsOpen])
@@ -684,6 +703,7 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
     onOpened: review.opened,
     onLoadFailed: review.loadFailed,
     onApplied: review.applied,
+    autoApplyNonConflicting: () => readSettings().mergeAutoApplyNonConflicting,
   }), [actions, client, review, sessionId])
   mergeLeft.current = review.left
   const openMergeWindow = useCallback((path: string, trigger: FocusTarget | null) => {

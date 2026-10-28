@@ -66,6 +66,24 @@ export function isStrayEscape(
   return modals.every(modal => root.contains(modal))
 }
 
+/**
+ * B4b: a gutter » « × re-renders the pane's buttons, so the pressed one is gone and focus falls to
+ * <body> (where F7 / Ctrl+Z no longer reach the window). When focus is lost, move it to the same
+ * action on the next chunk of that pane (wrapping), else to the Result editor. Returns what it focused.
+ */
+export function refocusAfterGutter(
+  pane: ParentNode,
+  resultEditor: HTMLElement | null,
+  pressed: { chunk: number; kind: 'accept' | 'ignore' },
+): HTMLElement | null {
+  const doc = typeof document === 'undefined' ? null : document
+  if (doc === null || !focusIsLost(doc.activeElement, doc)) return null
+  const buttons = [...pane.querySelectorAll<HTMLElement>(`[data-chunk-action="${pressed.kind}"]`)]
+  const target = buttons.find(button => Number(button.dataset['chunk']) > pressed.chunk) ?? buttons[0] ?? resultEditor
+  target?.focus()
+  return target ?? null
+}
+
 /** A save / apply that ended in an error: the disabled button lost focus, put it back in the window. */
 export function shouldRefocusAfterWrite(previous: MergeStatus, next: MergeStatus, hasError: boolean): boolean {
   return (previous === 'saving' || previous === 'applying') && next === 'ready' && hasError

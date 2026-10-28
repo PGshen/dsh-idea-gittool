@@ -53,6 +53,8 @@ describe('registerRpcRoutes / per-endpoint body limit', () => {
     expect(bodyLimitFor('mergeFile')).toBe(DEFAULT_BODY_MAX_BYTES)
     expect(bodyLimitFor('mergeApply')).toBe(MERGE_BODY_MAX_BYTES)
     expect(bodyLimitFor('mergeDraftSave')).toBe(MERGE_BODY_MAX_BYTES)
+    // B3b: an 8 MiB patch plus JSON escaping (ADR 0009).
+    expect(bodyLimitFor('applyPatch')).toBe(MERGE_BODY_MAX_BYTES)
     // An 8 MiB result whose every character escapes to two bytes still fits.
     expect(MERGE_BODY_MAX_BYTES).toBeGreaterThan(2 * 8 * 1024 * 1024)
   })

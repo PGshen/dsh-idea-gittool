@@ -191,3 +191,15 @@
   padding: 12px;
   color: var(--dsw-alias-label-tertiary);
 }
+
+/* B3b：统一/并排分段按钮。 */
+.segmented {
+  display: inline-flex;
+  gap: 2px;
+}
+
+/* B3b L4: the active toggle must look on. */
+.tools button[aria-pressed='true'] {
+  background: var(--dsw-alias-interactive-bg-active);
+  color: var(--dsw-alias-label-primary);
+}

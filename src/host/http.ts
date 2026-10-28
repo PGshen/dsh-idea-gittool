@@ -34,7 +34,7 @@ export const DEFAULT_BODY_MAX_BYTES = 256 * 1024
  */
 export const MERGE_BODY_MAX_BYTES = 4 * MERGE_APPLY_RESULT_MAX_BYTES
 
-const LARGE_BODY_ENDPOINTS: ReadonlySet<string> = new Set(['mergeApply', 'mergeDraftSave'])
+const LARGE_BODY_ENDPOINTS: ReadonlySet<string> = new Set(['mergeApply', 'mergeDraftSave', 'applyPatch'])
 
 /** Request body limit for one endpoint. */
 export function bodyLimitFor(endpoint: string): number {

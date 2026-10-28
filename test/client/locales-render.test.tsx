@@ -87,6 +87,7 @@ const PREVIEW: PushPreviewValue = {
 function pushState(overrides: Partial<PushState> = {}): PushState {
   return {
     view: 'push',
+    revision: null,
     previewStatus: 'ready',
     preview: PREVIEW,
     previewError: null,

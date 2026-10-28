@@ -257,6 +257,8 @@ export interface PushState {
   choiceRiskConfirmed: boolean
   /** The single automatic retry after a successful pull was rejected again. */
   autoRetryRejected: boolean
+  /** B3b "push up to here": the commit pushed instead of HEAD (never forced, no pull-and-retry). */
+  revision: string | null
 }
 
 export type PushOutcome =
@@ -266,7 +268,7 @@ export type PushOutcome =
   | { kind: 'failed'; error: GitError }
   | { kind: 'blocked' }
 
-export type PushBlockReason = 'loading' | 'busy' | 'no-remote' | 'no-branch' | 'detached-branch' | 'risk-unconfirmed'
+export type PushBlockReason = 'loading' | 'busy' | 'no-remote' | 'no-branch' | 'detached-branch' | 'risk-unconfirmed' | 'nothing-to-push'
 export type RejectedBlockReason = 'busy' | 'risk-unconfirmed' | 'force-protected'
 
 /** Why the push button is disabled (null = enabled). Read-only is decided by the caller. */
@@ -275,6 +277,8 @@ export function pushSubmitBlock(state: PushState): PushBlockReason | null {
   if (state.previewStatus !== 'ready' || state.preview === null) return 'loading'
   if (state.form.remote === '') return 'no-remote'
   if (state.form.branch.trim() === '') return state.preview.detached ? 'detached-branch' : 'no-branch'
+  // B3b review I1: pushing an older commit than the remote has would only work by force.
+  if (state.revision !== null && state.preview.commits.length === 0) return 'nothing-to-push'
   if (state.form.forceWithLease && !state.form.riskConfirmed) return 'risk-unconfirmed'
   return null
 }
@@ -325,6 +329,8 @@ export interface PushStoreOptions {
   newRequestId?: () => string
   /** Open directly on the rejected view (e.g. "commit and push" was rejected). */
   initialRejection?: PushRejectedDetails
+  /** B3b "push up to here": push this commit instead of HEAD. */
+  revision?: string
 }
 
 /**
@@ -346,6 +352,7 @@ export function createPushStore(options: PushStoreOptions): PushStore {
     error: null,
     rejected: initial ?? null,
     rejectedFromPush: false,
+    revision: options.revision ?? null,
     choice: 'rebase',
     choiceRiskConfirmed: false,
     autoRetryRejected: false,
@@ -375,6 +382,7 @@ export function createPushStore(options: PushStoreOptions): PushStore {
       forceWithLease: force,
       tags: form.tags,
       ...(force && expectedRemoteSha !== undefined ? { expectedRemoteSha } : {}),
+      ...(options.revision === undefined ? {} : { revision: options.revision }),
     }))
   }
 
@@ -384,6 +392,11 @@ export function createPushStore(options: PushStoreOptions): PushStore {
       remember(form)
       patch({ busy: null, error: null })
       return { kind: 'pushed', value: result.value }
+    }
+    // B3b review I1/I2: a push up to a commit never goes to the pull / force choices.
+    if (result.error.code === 'git/rejected' && options.revision !== undefined) {
+      patch({ busy: null, error: result.error })
+      return { kind: 'failed', error: result.error }
     }
     if (result.error.code === 'git/rejected') {
       const details = parseRejectedDetails(result.error, { remote: form.remote, branch: form.branch.trim() })
@@ -421,7 +434,9 @@ export function createPushStore(options: PushStoreOptions): PushStore {
       const controller = new AbortController()
       previewController = controller
       patch({ previewStatus: 'loading', previewError: null })
-      const result = await settle(() => options.client.pushPreview(options.sessionId, controller.signal))
+      const result = await settle(() => options.revision === undefined
+        ? options.client.pushPreview(options.sessionId, controller.signal)
+        : options.client.pushPreview(options.sessionId, controller.signal, options.revision))
       if (disposed || controller.signal.aborted || previewController !== controller) return
       previewController = undefined
       if (!result.ok) {
@@ -447,7 +462,7 @@ export function createPushStore(options: PushStoreOptions): PushStore {
       if (pushSubmitBlock(state) !== null) return { kind: 'blocked' }
       const form = state.form
       patch({ busy: 'push', error: null })
-      const result = await runPush(form, form.forceWithLease)
+      const result = await runPush(form, form.forceWithLease && options.revision === undefined)
       return finishPush(result, form, false)
     }),
 

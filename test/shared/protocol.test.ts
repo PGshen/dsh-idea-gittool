@@ -9,6 +9,8 @@ import {
   LOG_PAGE_MAX_LIMIT,
   MERGE_CHUNK_STATES,
   MERGE_DRAFT_VERSION,
+  APPLY_PATCH_MAX_BYTES,
+  FORMAT_PATCH_MAX_COMMITS,
   REBASE_ACTIONS,
   REBASE_PLAN_MAX_COMMITS,
   REBASE_STOPS,
@@ -58,6 +60,16 @@ describe('B2 历史端点', () => {
       expect([...RPC_ENDPOINTS], endpoint).toContain(endpoint)
       expect(isWriteEndpoint(endpoint), endpoint).toBe(false)
     }
+  })
+})
+
+describe('B3b 端点（T1 契约冻结）', () => {
+  it('formatPatch 是读端点；createTag、fixupCommit、applyPatch 是写端点', () => {
+    expect([...RPC_ENDPOINTS]).toEqual(expect.arrayContaining(['formatPatch', 'createTag', 'fixupCommit', 'applyPatch']))
+    expect(isWriteEndpoint('formatPatch')).toBe(false)
+    for (const endpoint of ['createTag', 'fixupCommit', 'applyPatch']) expect(isWriteEndpoint(endpoint), endpoint).toBe(true)
+    expect(FORMAT_PATCH_MAX_COMMITS).toBe(100)
+    expect(APPLY_PATCH_MAX_BYTES).toBe(8 * 1024 * 1024)
   })
 })
 

@@ -57,6 +57,24 @@ export interface DiffQuery {
   mergeBase?: unknown
   /** scope=range: the file's path on the old side when it was renamed (limits the scan to both paths). */
   origPath?: unknown
+  /** B3b: `-w` (whitespace-only lines drop out of the patch; the file still counts as changed). */
+  ignoreWhitespace?: unknown
+  /** B3b: `full` = the whole file as context (still truncated by the usual limits). */
+  context?: unknown
+}
+
+/** Context lines that cover any file the truncation limits let through ("whole file"). */
+const FULL_CONTEXT_LINES = 1_000_000
+
+/** Patch-shaping options of a diff query: `-U<n>` and optionally `-w`. */
+function patchShapeArgs(query: DiffQuery): string[] {
+  if (query.ignoreWhitespace !== undefined && typeof query.ignoreWhitespace !== 'boolean') {
+    throw invalidPayload('ignoreWhitespace must be a boolean')
+  }
+  if (query.context !== undefined && query.context !== 'default' && query.context !== 'full') {
+    throw invalidPayload('context must be "default" or "full"')
+  }
+  return [query.context === 'full' ? `-U${String(FULL_CONTEXT_LINES)}` : '-U3', ...(query.ignoreWhitespace === true ? ['-w'] : [])]
 }
 
 export interface ReadDiffOptions {
@@ -191,6 +209,7 @@ export async function readDiff(
     throw invalidPayload('from/to/mergeBase/origPath are only valid for scope "range"')
   }
   const origPath = query.origPath === undefined ? undefined : validateRepoPath(query.origPath)
+  const shape = patchShapeArgs(query)
 
   const range = await rangeArgs(run, cwd, scope, query, signal)
 
@@ -217,7 +236,7 @@ export async function readDiff(
 
   if (change === undefined) {
     if (scope === 'worktree' && (await isUntracked(run, cwd, path, signal))) {
-      return await untrackedDiff(run, cwd, path, options)
+      return await untrackedDiff(run, cwd, path, options, shape)
     }
     return { oldPath: path, newPath: path, status: 'M', binary: false, hunks: [], truncated: false }
   }
@@ -227,7 +246,7 @@ export async function readDiff(
   const patch = await runPatch(
     run,
     cwd,
-    [...GIT_BASE_ARGV, '-c', 'core.quotepath=false', 'diff', ...DIFF_SHAPE_ARGS, '--full-index', '-U3', ...range, '--', ...paths],
+    [...GIT_BASE_ARGV, '-c', 'core.quotepath=false', 'diff', ...DIFF_SHAPE_ARGS, '--full-index', ...shape, ...range, '--', ...paths],
     [0],
     options,
   )
@@ -316,11 +335,12 @@ async function untrackedDiff(
   cwd: string,
   path: string,
   options: ReadDiffOptions,
+  shape: readonly string[],
 ): Promise<DiffFileValue> {
   const patch = await runPatch(
     run,
     cwd,
-    [...GIT_BASE_ARGV, 'diff', '--no-index', ...DIFF_SHAPE_ARGS, '--full-index', '-U3', '--', '/dev/null', path],
+    [...GIT_BASE_ARGV, 'diff', '--no-index', ...DIFF_SHAPE_ARGS, '--full-index', ...shape, '--', '/dev/null', path],
     // --no-index exits 1 when the files differ, which is always the case here.
     [0, 1],
     options,

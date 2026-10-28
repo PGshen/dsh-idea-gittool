@@ -61,3 +61,14 @@
 | `exec`/`update-ref` 行计入 `msgnum`/`end` 步数（「Rebasing (2/5)」），横幅显示的步数比提交数多 | ✅ 2026-10-27 | spike.mjs stderr |
 | **环境变量 `GIT_SEQUENCE_EDITOR` 优先于 `-c sequence.editor`**：插件写环境 `GIT_WRITE_ENV` 设了 `GIT_SEQUENCE_EDITOR=true`，此时 `-c sequence.editor='cat >'` 不生效（`git var GIT_SEQUENCE_EDITOR` 输出 `true`），git 用自己生成的 todo。执行层因此用单独的 `GIT_TODO_STDIN_ENV`（只改这一个变量）承载 `rebase -i` | ✅ 2026-10-27 | b3a T3 `test/host/git-executor.test.ts` todoFromStdin |
 | Windows（Git for Windows 自带 sh）未实测 | ⚠️ 未实测 | 留给 B4 跨平台验证 |
+
+## 5. Diff 选项、补丁与 autosquash（B3b T3，2026-10-27，git 2.50.1）
+
+| 结论 | 状态 | 证据 |
+|---|---|---|
+| `git diff -w`：只有空白差异的文件在 `--raw` 里仍列为已修改，但补丁没有 hunk；混合改动只保留非空白行 | ✅ 2026-10-27 | `test/host/diff.test.ts`「readDiff options」 |
+| `-U<很大的数>` 输出整文件一个 hunk，行号连续 | ✅ 2026-10-27 | 同上 |
+| `rebase -i --autosquash` + `GIT_SEQUENCE_EDITOR=true` + `GIT_EDITOR=true`：`fixup!` 静默合入；`squash!` 合入后信息为目标主题 + 空行 + squash 提交的正文（`squash! <主题>` 那一行被注释掉） | ✅ 2026-10-27 | 本机探测 + `test/host/commit-menu-writes.test.ts` |
+| `git am --3way` 失败后 `rebase-apply/` 存在；`git am --abort` 恢复 HEAD 与工作区 | ✅ 2026-10-27 | `commit-menu-writes.test.ts`「aborts a mailbox」 |
+| `format-patch -1 <merge>` 不输出任何内容（合并提交被跳过），所以导出前要拒绝合并提交 | ✅ 2026-10-27 | 同上 |
+| 同一秒内创建的提交按 `log --no-walk=sorted` 排序不稳定；按 `rev-list --count`（祖先数）排序稳定 | ✅ 2026-10-27 | 同上（首次实现即踩到） |

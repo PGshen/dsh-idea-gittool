@@ -374,3 +374,50 @@ describe('readDiff scope range is limited to the file (终审 I3)', () => {
     expect(await codeOf(readDiff(run, repo.root, { path: 'a.txt', origPath: '../b', scope: 'range', from: 'HEAD', to: null }))).toBe('git/invalid-payload')
   })
 })
+
+describe('readDiff options (B3b T2)', () => {
+  function whitespaceRepo(): ReturnType<typeof createTempRepo> {
+    const repo = makeRepo()
+    repo.write('ws.txt', 'alpha\nbeta\ngamma\n')
+    repo.write('mixed.txt', 'one\ntwo\nthree\n')
+    repo.commit('base')
+    repo.write('ws.txt', 'alpha  \n  beta\ngamma\n')
+    repo.write('mixed.txt', 'one \ntwo\nTHREE\n')
+    return repo
+  }
+  const changed = (value: { hunks: { lines: { type: string; text: string }[] }[] }): string[] =>
+    value.hunks.flatMap(hunk => hunk.lines.filter(line => line.type !== 'context').map(line => `${line.type}:${line.text}`))
+
+  it('ignoreWhitespace drops whitespace-only lines in every scope', async () => {
+    const repo = whitespaceRepo()
+    const { run } = makeRunner()
+    expect((await readDiff(run, repo.root, { path: 'ws.txt', scope: 'worktree', ignoreWhitespace: true })).hunks).toEqual([])
+    expect(changed(await readDiff(run, repo.root, { path: 'mixed.txt', scope: 'worktree', ignoreWhitespace: true }))).toEqual(['del:three', 'add:THREE'])
+    expect(changed(await readDiff(run, repo.root, { path: 'mixed.txt', scope: 'worktree' }))).toContain('del:one')
+    repo.git('add', '-A')
+    expect((await readDiff(run, repo.root, { path: 'ws.txt', scope: 'staged', ignoreWhitespace: true })).hunks).toEqual([])
+    const sha = repo.commit('ws')
+    expect((await readDiff(run, repo.root, { path: 'ws.txt', scope: 'commit', sha, ignoreWhitespace: true })).hunks).toEqual([])
+    expect((await readDiff(run, repo.root, { path: 'ws.txt', scope: 'range', from: 'HEAD~1', to: 'HEAD', ignoreWhitespace: true })).hunks).toEqual([])
+  })
+
+  it('context full returns the whole file as one hunk with continuous line numbers', async () => {
+    const repo = makeRepo()
+    repo.write('long.txt', Array.from({ length: 40 }, (_, index) => `line ${String(index + 1)}`).join('\n') + '\n')
+    repo.commit('base')
+    repo.write('long.txt', Array.from({ length: 40 }, (_, index) => (index === 19 ? 'changed' : `line ${String(index + 1)}`)).join('\n') + '\n')
+    const { run } = makeRunner()
+    const value = await readDiff(run, repo.root, { path: 'long.txt', scope: 'worktree', context: 'full' })
+    expect(value.hunks).toHaveLength(1)
+    const newLines = value.hunks[0]?.lines.filter(line => line.newLine !== undefined).map(line => line.newLine)
+    expect(newLines).toEqual(Array.from({ length: 40 }, (_, index) => index + 1))
+    expect((await readDiff(run, repo.root, { path: 'long.txt', scope: 'worktree' })).hunks[0]?.lines.length).toBe(8)
+  })
+
+  it('rejects malformed option values', async () => {
+    const repo = makeRepo()
+    const { run } = makeRunner()
+    expect(await codeOf(readDiff(run, repo.root, { path: 'README.md', scope: 'worktree', ignoreWhitespace: 'yes' }))).toBe('git/invalid-payload')
+    expect(await codeOf(readDiff(run, repo.root, { path: 'README.md', scope: 'worktree', context: 'all' }))).toBe('git/invalid-payload')
+  })
+})

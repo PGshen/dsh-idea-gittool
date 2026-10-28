@@ -65,6 +65,7 @@ function preview(overrides: Partial<PushPreviewValue> = {}): PushPreviewValue {
 function readyState(overrides: Partial<PushState> = {}, value: PushPreviewValue = preview()): PushState {
   return {
     view: 'push',
+    revision: null,
     previewStatus: 'ready',
     preview: value,
     previewError: null,

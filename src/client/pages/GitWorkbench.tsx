@@ -75,6 +75,7 @@ import { ActionMenu } from './ActionMenu.tsx'
 import { BlameOverlay } from './BlameView.tsx'
 import { ComparePage } from './ComparePage.tsx'
 import { InteractiveRebasePage, afterInteractiveRebase } from './InteractiveRebasePage.tsx'
+import { ApplyPatchPage, CreateTagSheet, FixupIntoSheet, PatchPage } from './CommitMenuSheets.tsx'
 import { DiffViewer } from './DiffViewer.tsx'
 import { FileHistoryPage } from './FileHistoryPage.tsx'
 import { fileActions } from './file-actions.ts'
@@ -794,6 +795,7 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
         consoleHasErrors={consoleState.failedCount > 0}
         onRefresh={() => { void refreshAll() }}
         onOpenConsole={() => { setConsoleOpen(true) }}
+        onApplyPatch={(trigger) => { overlays.open({ kind: 'applyPatch' }, trigger) }}
         onToggleBranches={() => { branchesStore.setOpen(!branches.open) }}
         onPush={() => { openPush({}) }}
         ahead={status?.ahead ?? 0}
@@ -830,7 +832,7 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
             onSelect={onSelect}
             onOpenCommit={onOpenCommit}
             renderDetail={renderDetail}
-            commitMenu={{ writable: branchContext.writable, operation: branchContext.operation, onAction: runCommitAction, rebase: rebaseEnabled, ...(status?.head === undefined || status.head === null ? {} : { headSha: status.head }) }}
+            commitMenu={{ writable: branchContext.writable, operation: branchContext.operation, onAction: runCommitAction, rebase: rebaseEnabled, checkedCount: changes.checked.size, ...(status?.head === undefined || status.head === null ? {} : { headSha: status.head }) }}
             {...(wide ? { sidebar: branchPanel } : {})}
           />
         ) : page === 'branches' ? (
@@ -972,6 +974,60 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
             onShowInLog={showCommitInLog}
           />
         ) : null}
+        {overlay?.kind === 'undoCommit' ? (
+          <ResetSheet
+            key={`undo:${overlay.sha}`}
+            sha={overlay.parent}
+            initialMode="soft"
+            loadPreview={request => client.resetPreview({ sessionId, ...request })}
+            actions={actions}
+            onOutcome={reportOutcome}
+            onClose={() => { overlays.closeIf('undoCommit') }}
+          />
+        ) : null}
+        {overlay?.kind === 'createTag' ? (
+          <CreateTagSheet
+            key={overlay.sha}
+            sha={overlay.sha}
+            shortSha={overlay.shortSha}
+            actions={actions}
+            onOutcome={reportOutcome}
+            onClose={() => { overlays.closeIf('createTag') }}
+          />
+        ) : null}
+        {overlay?.kind === 'fixupInto' ? (
+          <FixupIntoSheet
+            key={`${overlay.mode}:${overlay.sha}`}
+            sha={overlay.sha}
+            shortSha={overlay.shortSha}
+            subject={overlay.subject}
+            mode={overlay.mode}
+            paths={[...changes.checked]}
+            actions={actions}
+            onDone={(result, trigger) => {
+              afterInteractiveRebase(result, {
+                openConflicts: () => { overlays.open({ kind: 'conflicts' }, trigger) },
+                close: () => { overlays.closeIf('fixupInto') },
+                refresh: () => { void onRefresh() },
+              })
+            }}
+            onClose={() => { overlays.closeIf('fixupInto') }}
+          />
+        ) : null}
+        {overlay?.kind === 'patch' ? (
+          <PatchPage
+            shas={overlay.shas}
+            load={(shas, signal) => client.formatPatch({ sessionId, shas }, signal)}
+            onBack={() => { overlays.close() }}
+          />
+        ) : null}
+        {overlay?.kind === 'applyPatch' ? (
+          <ApplyPatchPage
+            actions={actions}
+            onBack={() => { overlays.close() }}
+            onApplied={() => { void onRefresh() }}
+          />
+        ) : null}
         {overlay?.kind === 'interactiveRebase' ? (
           <InteractiveRebasePage
             sessionId={sessionId}
@@ -996,6 +1052,7 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
             client={client}
             readOnlyReason={readOnlyReason}
             {...(push.autoSubmit === true ? { autoSubmit: true } : {})}
+            {...(push.revision === undefined ? {} : { revision: push.revision })}
             onClose={() => { overlays.closeIf('push') }}
             onPushed={() => { void onRefresh() }}
             onConflict={pushConflictWiring({

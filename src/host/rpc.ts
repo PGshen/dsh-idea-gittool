@@ -18,6 +18,7 @@ import type {
   BootstrapValue,
   CompareRequest,
   CompareValue,
+  FormatPatchValue,
   RebasePlanRequest,
   RebasePlanValue,
   FileHistoryRequest,
@@ -88,8 +89,11 @@ import { readCommit } from './git/commit.ts'
 import type { DiffQuery } from './git/diff.ts'
 import { readBlame } from './git/blame.ts'
 import { readCompare } from './git/compare.ts'
+import { fixupCommitOperation } from './git/fixup.ts'
 import { interactiveRebaseOperation } from './git/interactive-rebase.ts'
+import { applyPatchOperation, parseFormatPatchShas, readFormatPatch } from './git/patch.ts'
 import { readRebasePlan } from './git/rebase-plan.ts'
+import { createTagOperation } from './git/tag-write.ts'
 import { readFileHistory } from './git/file-history.ts'
 import { readDiff, validateRepoPath } from './git/diff.ts'
 import type { LogQuery } from './git/log.ts'
@@ -158,6 +162,9 @@ const DEFAULT_WRITE_OPERATIONS: WriteOperations = {
   mergeApply: mergeApplyOperation,
   unresolveConflict: unresolveConflictOperation,
   interactiveRebase: interactiveRebaseOperation,
+  createTag: createTagOperation,
+  fixupCommit: fixupCommitOperation,
+  applyPatch: applyPatchOperation,
 }
 
 /** Everything the handler needs; all session services are lazy and optional. */
@@ -341,16 +348,24 @@ export function createRpcRuntime(deps: RpcDeps): RpcRuntime {
             runtime,
             payload,
             signal,
-            `${DIFF_CACHE_PREFIX}:${JSON.stringify([query.scope, query.sha ?? '', query.parent ?? '', query.path, query.from ?? null, query.to ?? null, query.mergeBase ?? null, query.origPath ?? null])}`,
+            `${DIFF_CACHE_PREFIX}:${JSON.stringify([query.scope, query.sha ?? '', query.parent ?? '', query.path, query.from ?? null, query.to ?? null, query.mergeBase ?? null, query.origPath ?? null, query.ignoreWhitespace ?? false, query.context ?? 'default'])}`,
             (root) => readDiff(deps.runner, root, query, { signal }),
           )
         }
         case 'console':
           return await handleConsole(deps, payload, signal)
-        case 'pushPreview':
-          return await handleCached<PushPreviewValue>(deps, runtime, payload, signal, PUSH_PREVIEW_CACHE_KEY, (root) =>
-            readPushPreview(deps.runner, root, { signal }),
+        case 'pushPreview': {
+          // B3b: an optional revision ("push up to here") is part of the cache key.
+          const revision = (payload as { revision?: unknown }).revision
+          return await handleCached<PushPreviewValue>(
+            deps,
+            runtime,
+            payload,
+            signal,
+            revision === undefined ? PUSH_PREVIEW_CACHE_KEY : `${PUSH_PREVIEW_CACHE_KEY}:${String(revision)}`,
+            (root) => readPushPreview(deps.runner, root, { signal, ...(revision === undefined ? {} : { revision }) }),
           )
+        }
         case 'operationState':
           return await handleCached<OperationStateValue>(
             deps,
@@ -435,6 +450,18 @@ export function createRpcRuntime(deps: RpcDeps): RpcRuntime {
             signal,
             `${COMPARE_CACHE_PREFIX}:${JSON.stringify([request.left, request.right, request.cursor ?? null, request.limit ?? null])}`,
             (root) => readCompare(deps.runner, root, request, { signal }),
+          )
+        }
+        case 'formatPatch': {
+          parseSessionId(payload)
+          const shas = parseFormatPatchShas((payload as { shas?: unknown }).shas)
+          return await handleCached<FormatPatchValue>(
+            deps,
+            runtime,
+            payload,
+            signal,
+            `formatPatch:${shas.join(',')}`,
+            (root) => readFormatPatch(deps.runner, root, shas, { signal }),
           )
         }
         case 'rebasePlan': {
@@ -782,6 +809,9 @@ function parseDiffQuery(payload: unknown): DiffQuery & { path: string } {
   if (record.to !== undefined) query.to = record.to
   if (record.mergeBase !== undefined) query.mergeBase = record.mergeBase
   if (record.origPath !== undefined) query.origPath = record.origPath
+  // B3b options: readDiff validates them.
+  if (record.ignoreWhitespace !== undefined) query.ignoreWhitespace = record.ignoreWhitespace
+  if (record.context !== undefined) query.context = record.context
   return query
 }
 

@@ -10,6 +10,8 @@ export interface RepoBarProps {
   repoRoot: string | null
   onRefresh: () => void
   onOpenConsole: () => void
+  /** B3b: open the apply-patch page (absent: no menu item). */
+  onApplyPatch?: (trigger: HTMLElement | null) => void
   /** 刷新进行中：禁用刷新项。 */
   refreshing?: boolean
   /** 当前档位；非 Wide 档且传了 onToggleBranches 时显示「分支」入口。 */
@@ -169,6 +171,13 @@ export function RepoBar(props: RepoBarProps): ReactNode {
                 <button type="button" role="menuitem" className={css.menuItem} onClick={() => choose(props.onOpenConsole)}>
                   {t('console.title')}
                 </button>
+                {props.onApplyPatch === undefined
+                  ? null
+                  : (
+                      <button type="button" role="menuitem" className={css.menuItem} data-repo-apply-patch="" onClick={(event) => { const trigger = event.currentTarget; choose(() => props.onApplyPatch?.(trigger)) }}>
+                        {t('repo.applyPatch')}
+                      </button>
+                    )}
               </div>
             )
           : null}

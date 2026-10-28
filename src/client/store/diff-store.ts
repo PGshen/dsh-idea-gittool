@@ -243,6 +243,24 @@ export interface DiffViewerController {
   close(): void
   /** 处理按键；返回 true 表示已处理（调用方应 preventDefault）。 */
   handleKey(event: { key: string; defaultPrevented: boolean }): boolean
+  /** B3b：忽略空白 / 整文件上下文；重新打开当前文件，之后切换文件沿用。 */
+  setOptions(options: DiffViewOptions): Promise<void>
+}
+
+/** B3b diff options carried on every request of the viewer. */
+export interface DiffViewOptions {
+  ignoreWhitespace: boolean
+  context: 'default' | 'full'
+}
+
+/** `request` with `options` applied; defaults are left out so cache keys and requests stay as before. */
+export function withDiffOptions(request: DiffRequest, options: DiffViewOptions): DiffRequest {
+  const next: DiffRequest = { ...request }
+  delete next.ignoreWhitespace
+  delete next.context
+  if (options.ignoreWhitespace) next.ignoreWhitespace = true
+  if (options.context === 'full') next.context = 'full'
+  return next
 }
 
 /**
@@ -289,6 +307,11 @@ export function createDiffViewerController(options: DiffViewerControllerOptions)
       const last = current
       options.store.close()
       options.onClose(last)
+    },
+    setOptions: (diffOptions) => {
+      if (current === null) return Promise.resolve()
+      current = withDiffOptions(current, diffOptions)
+      return options.store.open(current)
     },
     handleKey: (event) => {
       if (event.defaultPrevented || event.key !== 'Escape') return false

@@ -182,6 +182,8 @@ export function actionErrorText(error: GitError): LocalizedText {
     case 'git/not-merged':
       return text('action.error.git/not-merged', { branch: String(details['branch'] ?? '') })
     case 'git/branch-exists':
+      // B3b: `createTag` reports a taken tag name with the same code.
+      if (details['kind'] === 'tag') return text('tag.exists', { name: String(details['branch'] ?? '') })
       return text('action.error.git/branch-exists', { branch: String(details['branch'] ?? '') })
     case 'git/dirty-worktree':
       return text('action.error.git/dirty-worktree', { count: dirtyDetails(error).count })

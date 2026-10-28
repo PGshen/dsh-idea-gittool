@@ -593,3 +593,46 @@ describe('rollback store', () => {
     expect(rollbackEscapeAction({ busy: true })).toBe('ignore')
   })
 })
+
+describe('push up to a commit (B3b)', () => {
+  it('previews and pushes the revision instead of HEAD', async () => {
+    const client = fakeClient()
+    const revision = 'c'.repeat(40)
+    const store = createPushStore({ client, sessionId: 's1', repoRoot: '/repo', storage: null, newRequestId: sequentialIds(), revision })
+    await store.load()
+    expect(client.pushPreview).toHaveBeenCalledWith('s1', expect.any(AbortSignal), revision)
+    await store.submit()
+    expect(client.push).toHaveBeenCalledWith(expect.objectContaining({ revision }))
+  })
+
+  it('leaves the revision out when pushing HEAD', async () => {
+    const client = fakeClient()
+    const { store } = await loadedStore({ client })
+    await store.submit()
+    expect(client.push.mock.calls[0]?.[0]).not.toHaveProperty('revision')
+  })
+})
+
+describe('push up to a commit — safety (B3b review I1/I2)', () => {
+  const revision = 'c'.repeat(40)
+
+  it('blocks the push when the commit is already on the remote and never sends force', async () => {
+    const client = fakeClient({ pushPreview: vi.fn(async () => ok(preview({ commits: [] }))) })
+    const store = createPushStore({ client, sessionId: 's1', repoRoot: '/repo', storage: null, newRequestId: sequentialIds(), revision })
+    await store.load()
+    expect(pushSubmitBlock(store.getState())).toBe('nothing-to-push')
+    expect((await store.submit()).kind).toBe('blocked')
+    expect(client.push).not.toHaveBeenCalled()
+  })
+
+  it('keeps a rejection on the push page instead of offering pull or force', async () => {
+    const client = fakeClient({ push: vi.fn(async () => fail('git/rejected', 'rejected', { reason: 'non-fast-forward', remote: 'origin', branch: 'feat/login', remoteCommits: [], summary: 'x' })) })
+    const store = createPushStore({ client, sessionId: 's1', repoRoot: '/repo', storage: null, newRequestId: sequentialIds(), revision })
+    await store.load()
+    store.updateForm({ forceWithLease: true, riskConfirmed: true })
+    const outcome = await store.submit()
+    expect(outcome.kind).toBe('failed')
+    expect(store.getState().view).toBe('push')
+    expect(client.push.mock.calls[0]?.[0]).toMatchObject({ forceWithLease: false, revision })
+  })
+})

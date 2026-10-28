@@ -1,0 +1,99 @@
+/* B3b 补丁页（导出 / 应用）：覆盖层铺满 Git tab 内容区。浮层沿用 BranchSheets.module.css。 */
+.root {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: var(--dsw-alias-bg-base);
+  color: var(--dsw-alias-label-primary);
+  font-size: 12px;
+  outline: none;
+}
+
+.header {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+  padding: 4px 8px;
+  border-bottom: 0.5px solid var(--dsw-alias-border-l2);
+}
+
+.title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.muted {
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.state {
+  padding: 16px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.preview,
+.input {
+  flex: 1 1 auto;
+  min-height: 120px;
+  margin: 0;
+  padding: 6px 8px;
+  overflow: auto;
+  border: 0;
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-primary);
+  font-family: var(--dsw-font-markdown-code-block-font-family);
+  font-size: 12px;
+  white-space: pre;
+  resize: none;
+}
+
+.file input {
+  max-width: 180px;
+  margin-left: 6px;
+}
+
+.footer {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 40%;
+  padding: 6px 8px;
+  overflow: auto;
+  border-top: 0.5px solid var(--dsw-alias-border-l2);
+}
+
+.files {
+  margin: 0;
+  padding-left: 16px;
+}
+
+.error {
+  margin: 0;
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.success {
+  margin: 0;
+  color: var(--dsw-alias-state-success-primary);
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.actions .muted {
+  flex: 1 1 auto;
+}

@@ -45,6 +45,8 @@ export interface PushInput {
   tags: boolean
   /** TD-10: the remote tip the user saw; only together with `forceWithLease`. */
   expectedRemoteSha?: string
+  /** B3b: push this commit (an ancestor of HEAD) instead of HEAD. */
+  revision?: string
 }
 
 /** One porcelain ref line: `<flag>\t<from>:<to>\t<summary>`. */
@@ -177,10 +179,13 @@ async function readRemoteState(
 export async function readPushPreview(
   run: GitRunner,
   repoRoot: string,
-  options: { signal?: AbortSignal | undefined } = {},
+  options: { signal?: AbortSignal | undefined; revision?: unknown } = {},
 ): Promise<Omit<PushPreviewValue, 'version'>> {
   const git = async (args: readonly string[]): Promise<GitRunResult> =>
     await run([...GIT_BASE_ARGV, ...args], { cwd: repoRoot, signal: options.signal })
+  // B3b "push up to here": the preview starts at that commit instead of HEAD.
+  const source = options.revision === undefined ? 'HEAD' : parsePushRevision(options.revision)
+  if (source !== 'HEAD') await assertAncestorOfHead(git, source)
 
   const remotesResult = await git(['remote'])
   if (remotesResult.exitCode !== 0) throw failureFromExit(remotesResult, 'git remote')
@@ -225,7 +230,7 @@ export async function readPushPreview(
         : defaultRemote !== null
           ? [`--remotes=${defaultRemote}`]
           : []
-    const log = await git(logArgv(PUSH_PREVIEW_COMMIT_LIMIT + 1, ['HEAD', '--not', ...exclusions]))
+    const log = await git(logArgv(PUSH_PREVIEW_COMMIT_LIMIT + 1, [source, '--not', ...exclusions]))
     if (log.exitCode !== 0) throw failureFromExit(log, 'git log')
     commits = parseCommitSummaries(log.stdout)
     if (commits.length > PUSH_PREVIEW_COMMIT_LIMIT) {
@@ -243,6 +248,24 @@ export async function readPushPreview(
     commits,
     truncated,
   }
+}
+
+function readRunnerGit(ctx: WriteContext): (args: readonly string[]) => Promise<GitRunResult> {
+  return async (args) => await ctx.git([...GIT_BASE_ARGV, ...args], { mode: 'read' })
+}
+
+function parsePushRevision(value: unknown): string {
+  if (typeof value !== 'string' || !OBJECT_ID_PATTERN.test(value)) {
+    throw invalidPayload('revision must be a full lowercase hexadecimal object name')
+  }
+  return value
+}
+
+/** B3b: the pushed commit must be HEAD or one of its ancestors. */
+async function assertAncestorOfHead(git: (args: readonly string[]) => Promise<GitRunResult>, revision: string): Promise<void> {
+  const result = await git(['merge-base', '--is-ancestor', revision, 'HEAD'])
+  if (result.exitCode === 1) throw invalidPayload('revision is not an ancestor of HEAD', { reason: 'not-ancestor' })
+  if (result.exitCode !== 0) throw failureFromExit(result, 'git merge-base')
 }
 
 /** `--force-with-lease`, pinned to the expected remote tip when the user saw one (TD-10). */
@@ -270,17 +293,20 @@ export const pushOperation: WriteOperation<PushInput, Omit<PushValue, 'version'>
       if (!input.forceWithLease) throw invalidPayload('expectedRemoteSha is only valid together with forceWithLease')
       input.expectedRemoteSha = expected
     }
+    if (record.revision !== undefined) input.revision = parsePushRevision(record.revision)
     return input
   },
 
   async run(ctx, input) {
     await assertPushTarget(ctx, input.remote, input.branch)
+    const source = input.revision ?? 'HEAD'
+    if (input.revision !== undefined) await assertAncestorOfHead(readRunnerGit(ctx), input.revision)
     const options = [
       ...(input.setUpstream ? ['--set-upstream'] : []),
       ...(input.forceWithLease ? [leaseOption(input)] : []),
       ...(input.tags ? ['--follow-tags'] : []),
     ]
-    const target = [input.remote, `HEAD:refs/heads/${input.branch}`]
+    const target = [input.remote, `${source}:refs/heads/${input.branch}`]
     const result = await ctx.git([...GIT_BASE_ARGV, 'push', '--porcelain', ...options, '--', ...target], {
       mode: 'network',
     })
@@ -288,7 +314,7 @@ export const pushOperation: WriteOperation<PushInput, Omit<PushValue, 'version'>
     const rejected = refs.filter((ref) => ref.flag === '!')
 
     if (result.exitCode !== 0 || rejected.length > 0) {
-      const terminalArgs = ['push', ...options, input.remote, `HEAD:refs/heads/${input.branch}`]
+      const terminalArgs = ['push', ...options, input.remote, `${source}:refs/heads/${input.branch}`]
       if (isSandboxDenial(`${result.stderr}\n${result.stdout}`) || isAuthFailure(result.stderr)) {
         throw networkFailure(result, ctx.repoRoot, terminalArgs, 'git push')
       }

@@ -26,6 +26,13 @@ export type CommitActionId =
   | 'reword'
   | 'drop'
   | 'squashSelected'
+  // B3b commit menu
+  | 'undoCommit'
+  | 'pushUpTo'
+  | 'createTag'
+  | 'fixupInto'
+  | 'squashInto'
+  | 'createPatch'
 
 export interface CommitActionItem {
   id: CommitActionId
@@ -47,6 +54,16 @@ export interface CommitActionContext {
   selection?: readonly string[]
   /** B3a: rebase items, present only when the flag is on. */
   rebase?: RebaseAvailability
+  /** B3b: where the commit stands relative to HEAD (present when HEAD is known). */
+  history?: HistoryAvailability
+}
+
+/** B3b: facts the commit-menu additions need. */
+export interface HistoryAvailability {
+  chain: RebaseAvailability['chain']
+  isHead: boolean
+  /** Files checked on the commit page (fixup / squash into take them). */
+  checkedCount: number
 }
 
 /**
@@ -93,7 +110,7 @@ export function rebaseAvailability(
 export function commitActionContext(
   commits: readonly CommitSummary[],
   commit: CommitSummary,
-  base: { writable: boolean; operation: RepoOperation; selection?: readonly string[]; rebase?: boolean; headSha?: string },
+  base: { writable: boolean; operation: RepoOperation; selection?: readonly string[]; rebase?: boolean; headSha?: string; checkedCount?: number },
 ): CommitActionContext {
   const parent = commit.parents[0]
   const context: CommitActionContext = {
@@ -103,8 +120,10 @@ export function commitActionContext(
     childLoaded: childOf(commits, commit.sha) !== null,
   }
   if (base.selection !== undefined) context.selection = base.selection
-  if (base.rebase === true && base.headSha !== undefined) {
-    context.rebase = rebaseAvailability(commits, commit, base.headSha, base.selection ?? [commit.sha])
+  if (base.headSha !== undefined) {
+    const availability = rebaseAvailability(commits, commit, base.headSha, base.selection ?? [commit.sha])
+    if (base.rebase === true) context.rebase = availability
+    context.history = { chain: availability.chain, isHead: commit.sha === base.headSha, checkedCount: base.checkedCount ?? 0 }
   }
   return context
 }
@@ -156,6 +175,27 @@ export function commitActions(commit: CommitSummary, context: CommitActionContex
     item('compareWorktree', 'commit.action.compareWorktree', 5),
     item('compareSelected', 'commit.action.compareSelected', 5, compareSelectedReason(commit.sha, context.selection ?? [])),
     ...rebaseItems(commit, context, block),
+    ...historyItems(commit, context, block),
+  ]
+}
+
+function historyItems(commit: CommitSummary, context: CommitActionContext, block: LocalizedText | undefined): CommitActionItem[] {
+  const history = context.history
+  if (history === undefined) return []
+  const merge = commit.parents.length > 1 ? text('commit.disabled.rebaseMerge') : undefined
+  const offBranch = history.chain === 'off' ? text('commit.disabled.rebaseOffBranch') : undefined
+  const undo = block
+    ?? (history.isHead ? undefined : text('commit.disabled.undoNotHead'))
+    ?? merge
+    ?? (commit.parents.length === 0 ? text('commit.disabled.noParent') : undefined)
+  const fold = block ?? merge ?? offBranch ?? (history.checkedCount > 0 ? undefined : text('commit.disabled.fixupNeedsFiles'))
+  return [
+    item('undoCommit', 'commit.action.undoCommit', 7, undo),
+    item('pushUpTo', 'commit.action.pushUpTo', 7, block ?? offBranch),
+    item('createTag', 'commit.action.createTag', 7, block),
+    item('fixupInto', 'commit.action.fixupInto', 8, fold),
+    item('squashInto', 'commit.action.squashInto', 8, fold),
+    item('createPatch', 'commit.action.createPatch', 8, merge),
   ]
 }
 
@@ -219,6 +259,27 @@ export function commitActionEffect(
             kind: 'overlay',
             overlay: { kind: 'interactiveRebase', base: oldest.parents[0] ?? null, preset: { kind: 'squash', shas: selected.map(entry => entry.sha) } },
           }
+    }
+    case 'undoCommit': {
+      const parent = commit.parents[0]
+      return parent === undefined
+        ? null
+        : { kind: 'overlay', overlay: { kind: 'undoCommit', sha: commit.sha, parent, shortSha: commit.shortSha, subject: commit.subject } }
+    }
+    case 'pushUpTo':
+      return { kind: 'overlay', overlay: { kind: 'push', revision: commit.sha } }
+    case 'createTag':
+      return { kind: 'overlay', overlay: { kind: 'createTag', sha: commit.sha, shortSha: commit.shortSha } }
+    case 'fixupInto':
+    case 'squashInto':
+      return {
+        kind: 'overlay',
+        overlay: { kind: 'fixupInto', sha: commit.sha, shortSha: commit.shortSha, subject: commit.subject, mode: id === 'fixupInto' ? 'fixup' : 'squash' },
+      }
+    case 'createPatch': {
+      // A multi-selection containing this commit exports all of it (design §14.2).
+      const shas = selected.length > 1 && selected.some(entry => entry.sha === commit.sha) ? selected.map(entry => entry.sha) : [commit.sha]
+      return { kind: 'overlay', overlay: { kind: 'patch', shas } }
     }
     case 'compareSelected': {
       // "In this commit but not in the other": the clicked commit is the left side.

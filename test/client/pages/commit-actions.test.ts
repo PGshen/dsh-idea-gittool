@@ -170,7 +170,10 @@ describe('B3a interactive rebase items', () => {
 
   it('adds the four rebase items after the P0 items when the flag is on, none when off', () => {
     const items = commitActions(at('3'), contextFor('3'))
-    expect(items.map(item => item.id).slice(-4)).toEqual(['interactiveRebaseFrom', 'reword', 'drop', 'squashSelected'])
+    const ids = items.map(item => item.id)
+    const start = ids.indexOf('interactiveRebaseFrom')
+    // B3b appends its own items after these four.
+    expect(ids.slice(start, start + 4)).toEqual(['interactiveRebaseFrom', 'reword', 'drop', 'squashSelected'])
     expect(find(items, 'drop')?.danger).toBe(true)
     expect(commitActions(at('3'), contextFor('3', { rebase: false })).map(item => item.id)).not.toContain('reword')
   })
@@ -222,5 +225,62 @@ describe('B3a interactive rebase items', () => {
     expect(commitActionEffect('squashSelected', at('3'), null, [at('3'), at('2')])).toEqual({
       kind: 'overlay', overlay: { kind: 'interactiveRebase', base: sha('1'), preset: { kind: 'squash', shas: [sha('3'), sha('2')] } },
     })
+  })
+})
+
+describe('B3b commit menu items', () => {
+  const sha = (letter: string): string => letter.repeat(40)
+  const log: CommitSummary[] = [
+    commit({ sha: sha('4'), shortSha: '4444444', parents: [sha('3')], subject: 'c4' }),
+    commit({ sha: sha('3'), shortSha: '3333333', parents: [sha('2')], subject: 'c3' }),
+    commit({ sha: sha('2'), shortSha: '2222222', parents: [sha('1')], subject: 'c2' }),
+    commit({ sha: sha('1'), shortSha: '1111111', parents: [], subject: 'root' }),
+  ]
+  const at = (letter: string): CommitSummary => log.find(entry => entry.sha === sha(letter))!
+  const contextFor = (letter: string, patch: { checkedCount?: number; writable?: boolean; selection?: string[]; headSha?: string } = {}) =>
+    commitActionContext(log, at(letter), {
+      writable: patch.writable ?? true,
+      operation: null,
+      selection: patch.selection ?? [sha(letter)],
+      headSha: patch.headSha ?? sha('4'),
+      checkedCount: patch.checkedCount ?? 0,
+    })
+  const reasonOf = (items: ReturnType<typeof commitActions>, id: string): string | undefined => {
+    const reason = find(items, id)?.disabledReason
+    return reason === undefined ? undefined : render(zhT, reason)
+  }
+
+  it('adds six items without the rebase flag', () => {
+    const ids = commitActions(at('4'), contextFor('4')).map(item => item.id)
+    expect(ids).toEqual(expect.arrayContaining(['undoCommit', 'pushUpTo', 'createTag', 'fixupInto', 'squashInto', 'createPatch']))
+    expect(ids).not.toContain('reword')
+  })
+
+  it('undo only on HEAD with a parent', () => {
+    expect(reasonOf(commitActions(at('4'), contextFor('4')), 'undoCommit')).toBeUndefined()
+    expect(reasonOf(commitActions(at('3'), contextFor('3')), 'undoCommit')).toBe('只能撤销最新的提交（HEAD）')
+    expect(reasonOf(commitActions(at('1'), contextFor('1', { headSha: sha('1') })), 'undoCommit')).toBe('这是根提交，没有父提交')
+  })
+
+  it('fixup / squash need checked files and a commit on the current branch', () => {
+    expect(reasonOf(commitActions(at('2'), contextFor('2')), 'fixupInto')).toBe('先在提交页勾选要带入的文件')
+    expect(reasonOf(commitActions(at('2'), contextFor('2', { checkedCount: 2 })), 'squashInto')).toBeUndefined()
+    expect(reasonOf(commitActions(at('2'), contextFor('2', { checkedCount: 2, headSha: sha('1') })), 'fixupInto')).toBe('这个提交不在当前分支上')
+  })
+
+  it('tags and patches are available; read-only blocks writes', () => {
+    expect(reasonOf(commitActions(at('2'), contextFor('2')), 'createTag')).toBeUndefined()
+    expect(reasonOf(commitActions(at('2'), contextFor('2')), 'createPatch')).toBeUndefined()
+    expect(reasonOf(commitActions(at('2'), contextFor('2', { writable: false })), 'createTag')).toBeDefined()
+    expect(reasonOf(commitActions(at('2'), contextFor('2', { writable: false })), 'createPatch')).toBeUndefined()
+  })
+
+  it('maps each item to its overlay', () => {
+    expect(commitActionEffect('undoCommit', at('4'), null)).toEqual({ kind: 'overlay', overlay: { kind: 'undoCommit', sha: sha('4'), parent: sha('3'), shortSha: '4444444', subject: 'c4' } })
+    expect(commitActionEffect('pushUpTo', at('3'), null)).toEqual({ kind: 'overlay', overlay: { kind: 'push', revision: sha('3') } })
+    expect(commitActionEffect('createTag', at('3'), null)).toEqual({ kind: 'overlay', overlay: { kind: 'createTag', sha: sha('3'), shortSha: '3333333' } })
+    expect(commitActionEffect('squashInto', at('3'), null)).toEqual({ kind: 'overlay', overlay: { kind: 'fixupInto', sha: sha('3'), shortSha: '3333333', subject: 'c3', mode: 'squash' } })
+    expect(commitActionEffect('createPatch', at('3'), null)).toEqual({ kind: 'overlay', overlay: { kind: 'patch', shas: [sha('3')] } })
+    expect(commitActionEffect('createPatch', at('3'), null, [at('4'), at('3')])).toEqual({ kind: 'overlay', overlay: { kind: 'patch', shas: [sha('4'), sha('3')] } })
   })
 })

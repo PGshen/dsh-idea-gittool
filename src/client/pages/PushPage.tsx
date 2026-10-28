@@ -222,6 +222,8 @@ export interface PushPageProps {
   onShowConsole?: () => void
   onCopy?: (text: string) => void
   newRequestId?: () => string
+  /** B3b "push up to here": push this commit (full sha) instead of HEAD. */
+  revision?: string
   /** Inject a prepared store (tests). */
   store?: PushStore
   /** Push immediately once the preview is ready ("commit and push" to the same-named upstream). */
@@ -288,6 +290,7 @@ export function PushPage(props: PushPageProps): ReactNode {
       storage: props.storage === undefined ? browserStorage() : props.storage,
       ...(props.newRequestId === undefined ? {} : { newRequestId: props.newRequestId }),
       ...(initialRejection === undefined ? {} : { initialRejection }),
+      ...(props.revision === undefined ? {} : { revision: props.revision }),
     }),
     // A new session/repository is a new overlay; other prop changes go through propsRef.
     [sessionId, repoRoot],

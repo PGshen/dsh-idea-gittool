@@ -256,7 +256,10 @@ export function moveFocus(rows: readonly TreeRow[], currentId: string, key: 'Arr
 
 - 静态：`FOCUS_EXEMPT` 17 条（11 个容器根、6 个有替代指示的输入/列表），其余 `outline:none` 已移除改用 DSH 全局环。
 - L4（键盘）：日志表获得焦点有内框（`.evidence/b4b/log-focus-ring-light.png`）→ ↓ 选提交 → Enter 打开 diff（`diff-focus-light.jpg`）→ Esc 后焦点回到日志表（`activeElement` = `grid LogTable_scroller`）→ 分支页树 ↓↓ 焦点环可见（`branch-tree-focus-light.jpg`）→ 提交信息框输入 + Cmd+Enter 提交成功 → 分支行 → 打开菜单（焦点在「签出」）→ End/↑ 停在不可用的「取消 upstream」→ Home + Enter 签出 `feat/ui`，焦点回到该行。
-- 未走：贮藏页恢复、合并窗口的纯键盘应用更改（需要构造冲突；合并窗口键盘由 B1 控制器单测与 B1 验收覆盖），留给负责人验收演示。
+- 验收演示补走（2026-10-28，纯键盘）：
+  - **贮藏恢复**：页签 ← → 切到「贮藏」并回车 → Tab 进入列表 → 「创建贮藏…」弹层 Esc 关闭后焦点回到按钮 → 贮藏行 Enter 预览、Esc 返回（顺带选中）→ Shift+Tab 到「应用」回车，`git status` 确认 f2.txt 已恢复（`.evidence/b4b/stash-apply-focus.png`、`stash-applied.jpg`）。
+  - **合并窗口**：终端 `git merge conflict-a` 制造冲突 → 冲突列表自动打开且焦点在内 → Tab 到 f3.txt 回车打开合并窗口 → F7 → 左栏「»」采用 main、右栏「×」忽略 conflict-a → 「已解决 1/1」→ Tab 到「应用更改」回车 → 回到冲突列表且焦点在内，f3.txt 为 main side、无 UU（`merge-window-open.jpg`、`merge-accept-left.jpg`、`merge-applied.jpg`）。
+  - **走查发现（A3/B1 既有行为，B4b 未改动，待负责人决定是否在本计划修）**：① 贮藏行获得焦点不会选中，空格无效，↑↓ 只选相邻项——只有一个贮藏时只能靠「Enter 预览再 Esc」才能选中，「应用/弹出/删除」未选中时禁用而被 Tab 跳过；② 贮藏「应用」成功后焦点落到 `body`；③ 合并窗口 gutter 的「» « ×」执行后按钮重渲染，焦点落到 `body`，此时 F7/Ctrl+Z 无效，需再按一次 Tab 才回到编辑器。
 
 ### AC3–AC6 DOM 测试
 

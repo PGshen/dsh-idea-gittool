@@ -20,8 +20,19 @@ import type { WorkbenchIntent } from './workbench-intents.ts'
 /** Implementation id, also the keyed `sidebar.right.tab.document` slot key. */
 export const BLAME_RENDERER_ID = 'dsh-idea-gittool/blame'
 
+/**
+ * Suffixes DSH shows with a dedicated `builtin` viewer (Markdown, HTML, spreadsheet, image, PDF;
+ * `ui-sidebar-documentpreview/src/client/<viewer>/index.ts`). The code table also lists some of them, and the
+ * extension band would take them over, so the renderer only claims the rest (review I1).
+ */
+export const RENDERED_BY_DSH: readonly string[] = [
+  'md', 'markdown', 'html', 'htm', 'xlsx', 'xls', 'csv', 'tsv', 'pdf',
+  'png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'ico', 'svg',
+]
+
 export function blameRendererDefinition(title: () => string): DocumentPreviewDefinition {
-  return { id: BLAME_RENDERER_ID, extensions: CODE_HIGHLIGHT_EXTENSIONS, priority: 'extension', title, loading: 'text-pages' }
+  const extensions = CODE_HIGHLIGHT_EXTENSIONS.filter(extension => !RENDERED_BY_DSH.includes(extension))
+  return { id: BLAME_RENDERER_ID, extensions, priority: 'extension', title, loading: 'text-pages' }
 }
 
 /** The registry surface used here (DSH `DocumentPreviewRegistry`). */
@@ -135,6 +146,8 @@ function BlameRendererContent({ sessionId, resourceAddress, useResource, content
         branch={bootstrap?.status?.branch ?? null}
         onShowInLog={(sha) => { openInGit(sessionId, { kind: 'showCommit', sha }) }}
         onFileHistory={(file) => { openInGit(sessionId, { kind: 'fileHistory', path: file }) }}
+        // Ignored files (and untracked ones past the status limit) only show up here (review I2).
+        renderUntracked={() => <BlameRendererFallback reason="untracked" text={text} wrap={wrap} />}
       />
     </div>
   )

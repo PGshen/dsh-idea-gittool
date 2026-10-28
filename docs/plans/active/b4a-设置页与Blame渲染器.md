@@ -9,7 +9,7 @@
 
 | 项 | 值 |
 |---|---|
-| 状态 | 执行中 |
+| 状态 | 待验收 |
 | 里程碑 | B4 打磨（第 1 份，共 4 份：B4a 设置页 + Blame 渲染器、B4b a11y 与样式变量、B4c 性能、B4d 跨平台/安装升级/文档；拆分 2026-10-28 负责人同意） |
 | 设计依据 | [产品设计 v0.2](../../design/2026-10-25-产品设计-v0.2.md) §13（设置）、§9.7（可选「Git Blame 渲染器」）、§10.1（自动打开冲突列表「设置可关，默认开」）、§16（轮询 3s）；[B1 计划](../completed/b1-三栏合并.md)「不包含」（自动打开冲突列表/自动应用非冲突更改的开关）；[B2 计划](../completed/b2-历史与Blame.md) 待确认 3（Blame 渲染器移到 B4，默认关）；[B3b 计划](../completed/b3b-Diff增强与提交菜单.md)（Diff 模式已持久化到 `dsh-idea-git.settings.v1`） |
 | 分支 | `b4a-settings-blame-renderer`（从 main 切出） |
@@ -152,13 +152,15 @@ export function useSettings(): WorkbenchSettings                         // useS
 - 2026-10-28 — T4 — `afterCommitPage`（跳到日志页，原有的刷新后 `jumpTo` 选中新提交）；`shouldAutoOpenConflicts`（跟踪器照常记录操作，设置只决定是否打开）；合并 store `autoApplyNonConflicting`（无草稿、未解决的文件首次就绪时应用一次，可撤销）
 - 2026-10-28 — T5 — `blame-renderer.tsx`：定义（`extension` 档、`CODE_HIGHLIGHT_EXTENSIONS`、`text-pages`）、`bindBlameRenderer`（随设置注册/注销，重复 id 不抛）、`blameRendererState` 与原文回退；入口用 `ctx.inject(['documentPreviews'], …)` 作可选依赖；references §16 补正文 props 与可选服务；`pnpm build && pnpm smoke` 通过
 - 2026-10-28 — T6 — L4 走查 AC1–AC8（`.evidence/b4a/`，8 张截图）；修复仓库栏 ⋯ 菜单打开的覆盖层关闭后焦点丢到 body；runbook、ARCHITECTURE、QUALITY、references §16
+- 2026-10-28 — 评审修复 — I1/I2/I3(a)，见决策记录；`make check` 绿
 
 ## 下一步
 
-- 整分支评审（独立子代理），逐条处理发现；然后交负责人验收。
+- 交负责人验收（演示按 runbook「设置与 Blame 渲染器实机验证」）；待负责人决定 I3(b)。验收通过后按收尾清单把本计划移到 `completed/`，合并到 main。
 
 ## 决策记录
 
+- 2026-10-28 — 整分支评审（独立子代理，无 Critical）。修复：I1 渲染器认领了 `CODE_HIGHLIGHT_EXTENSIONS` 里的 md/html/csv/svg 等，开启后 README 不再渲染成 Markdown → 剔除 DSH 有专用 `builtin` 查看器的后缀（`RENDERED_BY_DSH`）；I2 被忽略的文件（及 status 截断外的未跟踪文件）判为可 blame，打开后只有「未提交过」空态 → `BlameView`/`BlameOverlay` 新增可选 `renderUntracked`，渲染器用它显示原文与说明；I3(a) 只读模式下自动应用会让窗口 dirty 且无法保存 → 只读时不自动应用。三项各有先失败的单测，L4 复核 README.md 仍为 Markdown、被忽略文件显示原文。I3(b)「自动应用后算不算未保存改动」留给负责人（见 TODO）。M1–M8 进 TODO。
 - 2026-10-28 — T6 — L4 发现：从仓库栏 ⋯ 菜单打开的覆盖层（设置、远程、Worktree、应用补丁）关闭后焦点落到 body，因为传给覆盖层的触发元素是随菜单一起卸载的菜单项。改为统一传 ⋯ 按钮。B3d 起就存在，一并修掉；没有 DOM 测试环境（TD-18），由 L4 验证。
 - 2026-10-28 — T5 — Blame 读取失败不另做「显示原文」回退：复用 B2 Blame 视图自带的错误态与重试（去掉了计划里的 `blameRenderer.failed` 文案）。正文按「读完的文本长度」作 key，文件在磁盘上变化、预览重读后 Blame 重新加载。
 - 2026-10-28 — T4 — 自动应用非冲突更改放在合并 store 的 `open` 里（计划写控制器）：只有 store 知道文件是否带草稿/已解决，且应用作为一次可撤销的模型动作进历史；控制器不变。

@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { CODE_HIGHLIGHT_EXTENSIONS } from '@deepseek-ai/dsh-client-ui-primitives'
 import {
   BLAME_RENDERER_ID,
+  RENDERED_BY_DSH,
   BlameRendererFallback,
   bindBlameRenderer,
   blameRendererDefinition,
@@ -16,10 +17,18 @@ describe('blameRendererDefinition', () => {
     const definition = blameRendererDefinition(() => 'Git Blame')
     expect(definition.id).toBe(BLAME_RENDERER_ID)
     expect(BLAME_RENDERER_ID).toBe('dsh-idea-gittool/blame')
-    expect(definition.extensions).toEqual(CODE_HIGHLIGHT_EXTENSIONS)
+    expect(definition.extensions).toEqual(CODE_HIGHLIGHT_EXTENSIONS.filter(extension => !RENDERED_BY_DSH.includes(extension)))
+    expect(definition.extensions).toContain('ts')
     expect(definition.priority).toBe('extension')
     expect(definition.loading).toBe('text-pages')
     expect(definition.title()).toBe('Git Blame')
+  })
+
+  it('leaves suffixes with their own DSH viewer alone (review I1: Markdown, HTML, CSV, images)', () => {
+    const { extensions } = blameRendererDefinition(() => 'Git Blame')
+    for (const suffix of ['md', 'markdown', 'html', 'htm', 'csv', 'tsv', 'svg', 'png', 'pdf', 'xlsx']) {
+      expect(extensions, suffix).not.toContain(suffix)
+    }
   })
 })
 

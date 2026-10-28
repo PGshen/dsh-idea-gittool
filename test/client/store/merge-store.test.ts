@@ -423,6 +423,13 @@ describe('auto-apply non-conflicting changes (B4a)', () => {
     expect(restored.store.getState().dirty).toBe(false)
   })
 
+  it('skips in read-only mode (review I3: the window could not be left without discarding)', async () => {
+    const { store } = setup({ load: async () => ({ ok: true, value: mixed() }), autoApply: true, readOnly: () => text('readOnly.title') })
+    await store.open('a.txt')
+    expect(store.getState().model?.result).toBe('a\nb\nc\nd\ne\n')
+    expect(store.getState().dirty).toBe(false)
+  })
+
   it('does not touch an already resolved file', async () => {
     const { store } = setup({ load: async () => ({ ok: true, value: { ...mixed(), resolved: true, worktreeText: 'a\nb\nX\nd\ne\n' } }), autoApply: true })
     await store.open('a.txt')

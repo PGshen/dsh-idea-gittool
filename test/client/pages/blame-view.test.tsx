@@ -98,6 +98,12 @@ describe('BlameView', () => {
     expect(render(ready({ rows: [] }, { totalLines: 0 }))).toContain('空文件')
   })
 
+  it('lets the host replace the untracked notice (B4a renderer shows the file text instead)', () => {
+    const html = render(ready({ rows: [] }, { unavailable: 'untracked' }), { renderUntracked: () => <pre>RAW TEXT</pre> })
+    expect(html).toContain('RAW TEXT')
+    expect(html).not.toContain('文件还没有提交过')
+  })
+
   it('shows no line count when the file is not annotated (L4)', () => {
     expect(render(ready({ rows: [] }, { binary: true, totalLines: 0 }))).not.toContain('0 行')
     expect(render(ready({ rows: [] }, { unavailable: 'missing', totalLines: 0 }))).not.toContain('0 行')

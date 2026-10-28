@@ -6,6 +6,9 @@ import { join } from 'node:path'
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+// TD-16: real repositories + fs events under parallel workers; `until` waits up to 10s.
+vi.setConfig({ testTimeout: 30_000 })
+
 import { createRepoCache } from '../../src/host/cache.ts'
 import { createTempRepo } from './fixtures.ts'
 import type { TempRepo } from './fixtures.ts'
@@ -432,12 +435,14 @@ describe('嵌套 refs 目录监听（A3 T1，TD-5）', () => {
 
   const refsDir = (repo: TempRepo, ...parts: string[]): string => join(repo.root, '.git', 'refs', ...parts)
 
-  async function until(check: () => boolean): Promise<void> {
-    for (let attempt = 0; attempt < 200; attempt += 1) {
+  // TD-16: a fixed 200 × 10ms budget timed out under parallel load; wait on a deadline instead.
+  async function until(check: () => boolean, timeoutMs = 10_000): Promise<void> {
+    const deadline = Date.now() + timeoutMs
+    while (Date.now() < deadline) {
       if (check()) return
       await new Promise((resolve) => setTimeout(resolve, 10))
     }
-    throw new Error('condition not reached')
+    if (!check()) throw new Error(`condition not reached within ${String(timeoutMs)}ms`)
   }
 
   it('启动时给 refs/heads、refs/remotes、refs/tags 下的每个子目录挂监听', async () => {

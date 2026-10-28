@@ -113,7 +113,7 @@ export function createBenchRepo(dir: string, options?: { commits?: number /* 10_
 - **完成标准**：达到待确认 2 的目标或列出剩余大头请负责人裁定。
 - **验证命令**：`time make check`（×3）
 
-### T5：计时类假失败（待开始）
+### T5：计时类假失败（完成）
 
 - **目标**：AC7。TD-16 改轮询等待；`layout.test.ts` 阈值按待确认 3。
 - **涉及文件**：`test/host/watch.test.ts`、`test/client/graph/layout.test.ts`、`docs/quality/tech-debt.md`、`docs/plans/TODO.md`。
@@ -140,7 +140,7 @@ export function createBenchRepo(dir: string, options?: { commits?: number /* 10_
 
 ## 下一步
 
-- T5：`test/client/graph/layout.test.ts` 两个「< 50ms」断言改为「< 200ms」（待确认 3），并在 bench/harness 里保留真实预算；TD-16（`test/host/watch.test.ts` 嵌套 refs）改为轮询等待 version；在加负载（同时跑两份 `make check`）下各跑 3 次验证。
+- T6：把 A1 的日志滚动 harness（`.evidence/a1/harness/`）整理进 `scripts/bench-client/`，测 2000 行逐步渲染开销与行 DOM 数（含紧凑模式）；然后在隔离 DSH（临时 HOME、3081/3082）里做 L4：合并窗口按需加载 `client.merge.js`（Network 面板看请求与 rev）、confine 下的一次提交（`directBinary` 指向 Xcode 内的 git）、打开 Git tab 首屏时间、2000 行日志与 5 次大 diff 后的 JS 堆。
 
 ## 决策记录
 
@@ -157,6 +157,7 @@ export function createBenchRepo(dir: string, options?: { commits?: number /* 10_
 - 2026-10-28 T3 — 写了 [ADR 0013](../../decisions/0013-客户端产物拆分按需chunk与标识符后压缩.md)：产物形态变化影响后续所有用 CodeMirror 的代码与 B4d 安装验证。
 - 2026-10-28 T4 — Ruling: 提速只做「测试直接用真实 git 二进制」一项，不加 `vitest.config.ts`、不改 pool/并发、不建模板仓库 — 基线的 480s 里 CPU 只用了 238s，瓶颈是每次 spawn 经 xcrun 多付约 40ms；改掉之后测试段 23s、全量 33s，已远低于 150s 目标，其余手段收益小且有风险 — 若错：在没有 xcrun 的机器（Linux）上本来就不慢，收益只在 macOS。
 - 2026-10-28 T4 — Ruling: `GIT_BINARY` 在模块加载时用 `git --exec-path` 解析一次，找不到就退回 `git`；涉及「spawn 的程序是 git」的 6 处断言改为比较 `GIT_BINARY` — 断言的意图是「执行器把解析出的程序放在 argv[0]」，与程序名无关 — 若错：无。
+- 2026-10-28 T5 — Ruling: TD-16 的 watch 用例在 T4 之后的负载测试（12 核满载 ×3）里没有复现失败，仍按计划把 `until` 从「最多 200 次 × 10ms」改为「10s 截止」并给文件加 `testTimeout: 30_000`，没有先拿到 RED — 原失败机制（固定 2s 预算）从代码上就能看出，复现依赖 T4 之前的慢 spawn — 若错：无行为风险，只是多了一个更宽的等待上限。
 - 2026-10-28 T1 — Ruling: 本计划各任务的关口先用「针对性测试 + lint/typecheck/layers」，全量 `make check` 放在 T4（提速）之后跑 — 基线全量 8 分钟且有 8 个负载超时，在 T4 解决之前每任务跑全量既慢又不会更可信；负责人本次会话开头也要求先跳过 — 若错：T2/T3 的回归要到 T4 后才被全量发现，届时回退定位成本略高。
 
 ## 意外与发现
@@ -229,3 +230,8 @@ export function createBenchRepo(dir: string, options?: { commits?: number /* 10_
 | T4 之后 | 136 | 2242 | 23.0s（user 74s、sys 64s） | 32.3s / 33.3s / 32.9s（3 次） | 0 |
 
 单个文件 `merge-file.test.ts`：45.0s → 4.35s。逐文件墙钟 Top 3：`push` 9.4s、`commit-write` 9.2s、`rpc` 8.7s。用例增加 12 个均为本计划新增，无删除、无 skip。AC6 达成（目标 ≤ 150s 且 ≤ 基线 50%）。
+
+### T5 计时类测试（2026-10-28）
+
+- RED：12 个 `yes` 进程占满 CPU 时，`layout.test.ts`「2000 branchy rows < 50ms」3 次中 2 次失败（51.998ms、61.633ms）；watch 用例 3 次均通过。
+- GREEN：阈值改 200ms、`until` 改 10s 截止后，同样负载下 3 次 49/49 通过；6 个 `yes` 进程负载下全量 `make check` 3 次：34.98s / 35.39s / 35.57s，均 2242/2242 通过（AC7）。

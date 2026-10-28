@@ -64,6 +64,7 @@ import { FetchSheet } from './FetchSheet.tsx'
 import { MergePage } from './MergePage.tsx'
 import { PullPage } from './PullPage.tsx'
 import { ResetSheet } from './ResetSheet.tsx'
+import { SettingsSheet } from './SettingsSheet.tsx'
 import { UpdateProjectPage } from './UpdateProjectPage.tsx'
 import { commitActionEffect } from './commit-actions.ts'
 import type { CommitActionId } from './commit-actions.ts'
@@ -812,6 +813,7 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
         onOpenConsole={() => { setConsoleOpen(true) }}
         onApplyPatch={(trigger) => { overlays.open({ kind: 'applyPatch' }, trigger) }}
         onRemotes={(trigger) => { overlays.open({ kind: 'remotes' }, trigger) }}
+        onSettings={(trigger) => { overlays.open({ kind: 'settings' }, trigger) }}
         {...(worktreesEnabled ? { onWorktrees: (trigger: HTMLElement | null) => { overlays.open({ kind: 'worktrees' }, trigger) } } : {})}
         onToggleBranches={() => { branchesStore.setOpen(!branches.open) }}
         onPush={() => { openPush({}) }}
@@ -1261,6 +1263,7 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
             onClose={() => { overlays.closeIf('reset') }}
           />
         )}
+        {overlay?.kind !== 'settings' ? null : <SettingsSheet onClose={() => { overlays.closeIf('settings') }} />}
         {overlay?.kind !== 'fetch' ? null : (
           <FetchSheet
             loadRemotes={() => client.pushPreview(sessionId)}

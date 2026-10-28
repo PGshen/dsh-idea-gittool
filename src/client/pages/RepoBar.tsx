@@ -15,6 +15,8 @@ export interface RepoBarProps {
   /** B3d: the remotes page and (flag on) the worktree page. */
   onRemotes?: (trigger: HTMLElement | null) => void
   onWorktrees?: (trigger: HTMLElement | null) => void
+  /** B4a: open the settings sheet (absent: no menu item). */
+  onSettings?: (trigger: HTMLElement | null) => void
   /** 刷新进行中：禁用刷新项。 */
   refreshing?: boolean
   /** 当前档位；非 Wide 档且传了 onToggleBranches 时显示「分支」入口。 */
@@ -193,6 +195,13 @@ export function RepoBar(props: RepoBarProps): ReactNode {
                   : (
                       <button type="button" role="menuitem" className={css.menuItem} data-repo-apply-patch="" onClick={(event) => { const trigger = event.currentTarget; choose(() => props.onApplyPatch?.(trigger)) }}>
                         {t('repo.applyPatch')}
+                      </button>
+                    )}
+                {props.onSettings === undefined
+                  ? null
+                  : (
+                      <button type="button" role="menuitem" className={css.menuItem} data-repo-settings="" onClick={(event) => { const trigger = event.currentTarget; choose(() => props.onSettings?.(trigger)) }}>
+                        {t('repo.settings')}
                       </button>
                     )}
               </div>

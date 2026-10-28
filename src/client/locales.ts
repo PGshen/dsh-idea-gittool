@@ -19,6 +19,7 @@ import { enPush, zhPush } from './locales/push.ts'
 import { enRebase, zhRebase } from './locales/rebase.ts'
 import { enShelf, zhShelf } from './locales/shelf.ts'
 import { enRemotes, zhRemotes } from './locales/remotes.ts'
+import { enSettings, zhSettings } from './locales/settings.ts'
 import { enShell, zhShell } from './locales/shell.ts'
 import { enStash, zhStash } from './locales/stash.ts'
 
@@ -50,6 +51,7 @@ export const zh = {
   ...zhDiffMenu,
   ...zhShelf,
   ...zhRemotes,
+  ...zhSettings,
 }
 
 export type GitWorkbenchKey = keyof typeof zh
@@ -75,6 +77,7 @@ export const en = {
   ...enDiffMenu,
   ...enShelf,
   ...enRemotes,
+  ...enSettings,
 } satisfies Record<GitWorkbenchKey, string>
 
 /** In-progress repository operation → its display name. */

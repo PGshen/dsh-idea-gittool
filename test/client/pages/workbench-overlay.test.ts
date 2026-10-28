@@ -144,12 +144,14 @@ describe('WorkbenchOverlay kinds', () => {
     expect(Object.keys(OVERLAY_LEVEL).sort()).toEqual([
       'applyPatch', 'blame', 'branchSheet', 'commitOp', 'compare', 'conflicts', 'createTag', 'diff', 'dirtyWorktree', 'fetch', 'fileHistory', 'fixupInto',
       'interactiveRebase', 'merge', 'mergeWindow', 'patch', 'pull', 'push', 'pushRejected', 'rebase', 'remoteBranchDelete', 'remotes', 'reset',
-      'rollback', 'shelve', 'smartCheckout', 'stashCreate', 'tagSheet', 'undoCommit', 'updateProject', 'upstreamSheet', 'worktreeAdd', 'worktrees',
+      'rollback', 'settings', 'shelve', 'smartCheckout', 'stashCreate', 'tagSheet', 'undoCommit', 'updateProject', 'upstreamSheet', 'worktreeAdd', 'worktrees',
     ])
     // B2 T1: blame, file history and compare are overlay pages with "← back".
     expect([OVERLAY_LEVEL.blame, OVERLAY_LEVEL.fileHistory, OVERLAY_LEVEL.compare]).toEqual([1, 1, 1])
     // B3a T1: interactive rebase is a full-height overlay page (design §11).
     expect(OVERLAY_LEVEL.interactiveRebase).toBe(1)
+    // B4a: the settings sheet.
+    expect(OVERLAY_LEVEL.settings).toBe(2)
     // B3c: shelving is a sheet.
     expect(OVERLAY_LEVEL.shelve).toBe(2)
     // B3b: sheets for tag / undo / fixup, pages for patches.

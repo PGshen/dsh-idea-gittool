@@ -96,7 +96,7 @@ export function useSettings(): WorkbenchSettings                         // useS
 - **完成标准**：`settings.test.ts` 全绿，现有引用 `readDiffMode` 等的测试不变。
 - **验证命令**：`make check`
 
-### T2：设置弹层与入口（待开始）
+### T2：设置弹层与入口（完成）
 
 - **目标**：仓库栏 `⋯` →「设置…」打开弹层，可编辑全部设置项。
 - **涉及文件**：`src/client/pages/SettingsSheet.tsx`（+ `.module.css`，新）、`src/client/pages/RepoBar.tsx`（新菜单项 `data-repo-settings`、`onSettings?: (trigger) => void`）、`src/client/pages/GitWorkbench.tsx`（打开/关闭、焦点返还）、`src/client/locales/settings.ts`（新）与 `src/client/locales.ts`、`test/client/pages/settings-sheet.test.tsx`（新）。
@@ -147,13 +147,15 @@ export function useSettings(): WorkbenchSettings                         // useS
 ## 进度
 
 - 2026-10-28 — T1 — `settings.ts` 扩展为完整 `WorkbenchSettings`（逐字段校验、间隔钳制、未知键保留、写失败退回内存、同页订阅 + 跨标签页 `storage` 事件、`useSettings`）；DSH 无日期格式偏好，写进 references §16
+- 2026-10-28 — T2 — `SettingsSheet`（底部浮层，复用 `SheetFrame`）+ `settingsPatchFor`；仓库栏 `⋯`「设置…」；浮层种类 `settings`（Level 2）；文案分区 `locales/settings.ts`；新样式纳入 CSS 变量守卫
 
 ## 下一步
 
-- T2：先写 `test/client/pages/settings-sheet.test.tsx`（`SettingsSheetView` 静态渲染、`settingsPatchFor`、仓库栏「设置…」菜单项），再实现 `SettingsSheet.tsx` 与 `locales/settings.ts`。
+- T3：`GitBody` 自动刷新/间隔改读设置；`createLogStore` 用 `logPageSize`；`formatLogDate` 加格式参数；`LogTable`/`GraphCell` 紧凑行高。先在 `polling.test.ts`、`log-page.test.tsx` 补失败测试。
 
 ## 决策记录
 
+- 2026-10-28 — T2 — 刷新间隔用 1–10 秒的下拉而不是数字输入：不需要失焦钳制、读屏直接读出可选值；其他多选项同样用下拉（计划写「分段按钮或单选组」，下拉在窄面板下更省空间）。
 - 2026-10-28 — 计划草稿：git 路径与默认推送方式不进 B4a（理由见「不包含」）；设置仍按设计 §13 存 `localStorage` 键 `dsh-idea-git.settings.v1`，与 B3b/B3c 已写入的值共用。
 
 ## 意外与发现

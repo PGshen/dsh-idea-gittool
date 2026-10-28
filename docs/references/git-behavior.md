@@ -72,3 +72,12 @@
 | `git am --3way` 失败后 `rebase-apply/` 存在；`git am --abort` 恢复 HEAD 与工作区 | ✅ 2026-10-27 | `commit-menu-writes.test.ts`「aborts a mailbox」 |
 | `format-patch -1 <merge>` 不输出任何内容（合并提交被跳过），所以导出前要拒绝合并提交 | ✅ 2026-10-27 | 同上 |
 | 同一秒内创建的提交按 `log --no-walk=sorted` 排序不稳定；按 `rev-list --count`（祖先数）排序稳定 | ✅ 2026-10-27 | 同上（首次实现即踩到） |
+
+## 6. 搁架用到的底层命令（B3c 终审修复，2026-10-28，git 2.50.1）
+
+| 结论 | 状态 | 证据 |
+|---|---|---|
+| `git merge-file --object-id <ours> <base> <theirs>` 把结果写成 blob 并打印 oid，退出码是冲突数（git ≥ 2.43）；不需要临时文件 | ✅ 2026-10-28 | 本机探测 + `test/host/shelf.test.ts` |
+| `git stash create` 不改工作区，但「新增后在工作区删除」（AD）的文件在它的工作区树里仍然存在——不能用它代表工作区，改为逐文件 `hash-object -w` | ✅ 2026-10-28 | B3c 修复过程 |
+| `update-index --index-info` 写入 `<mode> <oid> <stage>\t<path>` 可直接制造 1/2/3 阶段冲突；mode 为 0 的行删除该路径的条目 | ✅ 2026-10-28 | `shelf.test.ts` 三方合并 |
+| `checkout-index -f -- <path>` 按索引条目写回工作区（字节精确，含可执行位与符号链接） | ✅ 2026-10-28 | `shelf.test.ts` 非 UTF-8 / 二进制 |

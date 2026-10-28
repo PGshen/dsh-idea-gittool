@@ -76,6 +76,11 @@ import { BlameOverlay } from './BlameView.tsx'
 import { ComparePage } from './ComparePage.tsx'
 import { InteractiveRebasePage, afterInteractiveRebase } from './InteractiveRebasePage.tsx'
 import { ApplyPatchPage, CreateTagSheet, FixupIntoSheet, PatchPage } from './CommitMenuSheets.tsx'
+import { ShelfPanel, ShelveSheet, shelvePaths, useShelfStore } from './ShelfPanel.tsx'
+import { ChangelistPanel } from './ChangelistView.tsx'
+import { addList, moveTo, removeList, renameList, setActive } from '../changelists/changelist-model.ts'
+import { useChangelists } from '../changelists/use-changelists.ts'
+import { readChangelistGrouping, writeChangelistGrouping } from '../settings.ts'
 import { DiffViewer } from './DiffViewer.tsx'
 import { FileHistoryPage } from './FileHistoryPage.tsx'
 import { fileActions } from './file-actions.ts'
@@ -225,13 +230,15 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
   useEffect(() => () => { consoleStore.reset() }, [consoleStore])
 
   const repoRoot = value.repoRoot ?? ''
-  const changesStore = useMemo(() => createChangesStore(), [sessionId])
+  // B3c review I6: a new repository gets a fresh store, so changelists never sync the old paths.
+  const changesStore = useMemo(() => createChangesStore(), [sessionId, value.repoRoot])
   const commitStore = useMemo(
     () => createCommitStore({ sessionId, repoRoot, client }),
     [client, repoRoot, sessionId],
   )
   useEffect(() => { changesStore.setStatus(status) }, [changesStore, status])
   const changes = useChangesState(changesStore)
+  const changelists = useChangelists(value.repoRoot, changes.loaded ? changes.entries.map(entry => entry.path) : null)
   const commit = useCommitState(commitStore)
   const statusSawCommit = useRef(false)
   const previousPhase = useRef<CommitPhase>(commit.phase)
@@ -650,6 +657,10 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
   // B1 three-pane merge window (feature flag `mergeWindow`; off = A3 conflict list unchanged).
   const mergeEnabled = useMemo(() => isFeatureEnabled('mergeWindow'), [])
   const rebaseEnabled = useMemo(() => isFeatureEnabled('interactiveRebase'), [])
+  // B3c: the Stash page has a Stash / Shelf segment; the shelf store lives with the workbench.
+  const [stashSegment, setStashSegment] = useState<'stash' | 'shelf'>('stash')
+  const shelfStore = useShelfStore(client, sessionId)
+  const [changelistGrouped, setChangelistGrouped] = useState(() => readChangelistGrouping())
   const mergeBlock = useRef<LocalizedText | null>(null)
   const overlayOpen = overlays.open
   const review = useMemo(() => createMergeReviewWiring({
@@ -862,23 +873,41 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
             onOpenConsole={() => { setConsoleOpen(true) }}
           />
         ) : page === 'stash' ? (
-          <StashPage
-            store={stashStore}
-            sessionId={sessionId}
-            actions={actions}
-            busy={stashBusy}
-            block={integrateBlock}
-            dropBlock={fetchBlock}
-            onNotice={setNotice}
-            onOpenDiff={(request, files, source) => {
-              overlays.open({ kind: 'diff', request, files, source })
-            }}
-            onCreate={(trigger) => {
-              setNotice(null)
-              overlays.open({ kind: 'stashCreate' }, trigger)
-            }}
-            onRetry={() => { void stashStore.refresh() }}
-          />
+          <div className={css.stashSegments}>
+            <div className={css.segmentBar} role="tablist" aria-label={t('shelf.segment.label')}>
+              <button type="button" role="tab" aria-selected={stashSegment === 'stash'} onClick={() => { setStashSegment('stash') }}>{t('shelf.segment.stash')}</button>
+              <button type="button" role="tab" aria-selected={stashSegment === 'shelf'} data-shelf-tab onClick={() => { setStashSegment('shelf') }}>{t('shelf.segment.shelf')}</button>
+            </div>
+            {stashSegment === 'shelf' ? (
+              <ShelfPanel
+                store={shelfStore}
+                actions={actions}
+                busy={stashBusy}
+                blockReason={blockText(integrateBlock)}
+                version={value.version}
+                onConflicts={(trigger) => { overlays.open({ kind: 'conflicts' }, trigger) }}
+                onApplied={() => { void onRefresh() }}
+              />
+            ) : (
+              <StashPage
+                store={stashStore}
+                sessionId={sessionId}
+                actions={actions}
+                busy={stashBusy}
+                block={integrateBlock}
+                dropBlock={fetchBlock}
+                onNotice={setNotice}
+                onOpenDiff={(request, files, source) => {
+                  overlays.open({ kind: 'diff', request, files, source })
+                }}
+                onCreate={(trigger) => {
+                  setNotice(null)
+                  overlays.open({ kind: 'stashCreate' }, trigger)
+                }}
+                onRetry={() => { void stashStore.refresh() }}
+              />
+            )}
+          </div>
         ) : (
           <CommitPanel
             changesStore={changesStore}
@@ -889,6 +918,27 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
             writePolicy={value.writePolicy}
             {...(value.pendingWrites === undefined ? {} : { pendingWrites: value.pendingWrites })}
             onOpenDiff={openWorktreeDiff}
+            changelists={{
+              grouped: changelistGrouped,
+              onGrouped: (on) => { setChangelistGrouped(on); writeChangelistGrouping(on) },
+              panel: (
+                <ChangelistPanel
+                  entries={changes.entries}
+                  checked={changes.checked}
+                  state={changelists.state}
+                  writeDisabled={!branchContext.writable}
+                  onToggleFile={(path) => { changesStore.toggleFile(path) }}
+                  onSetChecked={(paths, checked) => { changesStore.setChecked(paths, checked) }}
+                  onOpenDiff={(entry) => { openWorktreeDiff(entry.path, entry.diffScope) }}
+                  onMove={(paths, id) => { changelists.update(current => moveTo(current, paths, id)) }}
+                  onSetActive={(id) => { changelists.update(current => setActive(current, id)) }}
+                  onAdd={(name) => { changelists.update(current => addList(current, name).state) }}
+                  onRename={(id, name) => { changelists.update(current => renameList(current, id, name)) }}
+                  onRemove={(id) => { changelists.update(current => removeList(current, id)) }}
+                />
+              ),
+            }}
+            onShelve={(path, trigger) => { overlays.open({ kind: 'shelve', paths: shelvePaths(path, changes.checked) }, trigger) }}
             onRollback={paths => {
               clearStaleCommitNotice()
               overlays.open({ kind: 'rollback', targets: rollbackTargetsFor(status, paths) })
@@ -1012,6 +1062,14 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
               })
             }}
             onClose={() => { overlays.closeIf('fixupInto') }}
+          />
+        ) : null}
+        {overlay?.kind === 'shelve' ? (
+          <ShelveSheet
+            paths={overlay.paths}
+            actions={actions}
+            onShelved={() => { void onRefresh(); void shelfStore.refresh() }}
+            onClose={() => { overlays.closeIf('shelve') }}
           />
         ) : null}
         {overlay?.kind === 'patch' ? (

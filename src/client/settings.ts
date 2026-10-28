@@ -37,3 +37,16 @@ export function writeDiffMode(mode: DiffMode): void {
     // Storage unavailable: the choice lasts for this page only.
   }
 }
+
+/** B3c: whether the commit page groups changes by changelist. */
+export function readChangelistGrouping(): boolean {
+  return readSettings().changelistGrouping === true
+}
+
+export function writeChangelistGrouping(on: boolean): void {
+  try {
+    storage()?.setItem(DIFF_SETTINGS_KEY, JSON.stringify({ ...readSettings(), changelistGrouping: on }))
+  } catch {
+    // Storage unavailable: the choice lasts for this page only.
+  }
+}

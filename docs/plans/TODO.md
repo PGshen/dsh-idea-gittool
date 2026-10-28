@@ -17,7 +17,7 @@
 |---|---|---|---|
 | P1 | B3a 交互式变基（从此处交互式变基、修改提交信息、丢弃/压缩提交） | [设计决策 v0.2](../design/2026-10-25-产品设计决策-v0.2.md) §4；B3 拆分由负责人 2026-10-27 选定 | 计划：[b3a-交互式变基](active/b3a-交互式变基.md)（执行中） |
 | P1 | B3b Diff 增强（并排、词级、忽略空白、折叠未改片段）+ 完整提交菜单（Fixup/Squash into、撤销提交、推送直到此提交、新建标签）+ 创建/应用补丁 | 同上 | 计划：[b3b-Diff增强与提交菜单](active/b3b-Diff增强与提交菜单.md)（执行中，从 B3a 分支切出） |
-| P1 | B3c Shelf（搁架）+ Changelist | 同上 | |
+| P1 | B3c Shelf（搁架）+ Changelist | 同上 | 计划：[b3c-搁架与Changelist](active/b3c-搁架与Changelist.md)（执行中，从 B3b 分支切出） |
 | P1 | B3d Worktree + Remotes + 标签推送/删除、远程分支删除、设/取消 upstream（A3 推迟项） | 同上；[A3 计划](completed/a3-分支贮藏冲突.md)「不包含」 | Worktree 用 feature flag |
 | P1 | B4 打磨（a11y、性能、i18n、跨平台、安装/升级验证、文档；Git Blame 渲染器与设置页） | [设计决策 v0.2](../design/2026-10-25-产品设计决策-v0.2.md) §4 | B3 全部完成后 |
 | P2 | 筛选/仓库栏/分支右键菜单改用 ui-primitives `MenuSurface`/`Menu` | A1 走查，2026-10-25 | 当前按 [ADR 0006](../decisions/0006-浮层菜单材质例外.md) 手写菜单材质，迁移后废弃该 ADR |
@@ -42,6 +42,8 @@
 | P2 | 补测试：continue 失败后的草稿、忙碌时 dispatch 被忽略、conflict/cancelled 结果文案、`dirtyWorktree` → `cancelStash` 接线、`git-client` 新端点的请求体断言 | B1 终审，2026-10-27 | B1 终审列出的缺口 |
 | P2 | A1–A3 样式引用了 DSH 中不存在的变量（--dsw-alias-state-success/warn、--dsw-font-mono、--dsw-alias-interactive-bg-selected），状态色/等宽字体实际未生效；需负责人确认后全局替换并把静态检查扩到全部样式 | B1 验收演示，2026-10-27 | B1 的 `MergeWindow*.module.css`、`ConflictsPage.module.css` 已替换，静态检查 `test/client/pages/css-tokens.test.ts` 目前只覆盖这两类文件（`GUARDED`） |
 | P2 | B3a 终审 Minor（5 条）：`--root` 下首条 drop 的提交上若有分支，`--update-refs` 会把它指到 git 的空根提交；squash 组信息清空时客户端不拦、Host 报通用错误；preset 的提交不在计划里（链未加载完）时静默打开无关列表；行动作变化后仍保留之前输入的信息；「压缩所选提交」未检查合并提交 | B3a 终审，2026-10-27 | 细节见 [b3a 计划](active/b3a-交互式变基.md)「决策记录」终审条目 |
+| P2 | B3c 终审 Minor（7 条）：版本刷新换了选中条目后「三方合并应用」作用到新条目；`shelf-store.refresh` 无序号；拖放/「移到」带上被搜索隐藏或其他列表里的勾选文件；三方合并的路径未分批；重命名后的新路径进活动列表而非原列表；内联编辑 Enter 后可能 blur 再触发一次新增；子模块 gitlink 只回滚索引 | B3c 终审，2026-10-28 | 细节见 [b3c 计划](active/b3c-搁架与Changelist.md)「决策记录」终审条目 |
+| P2 | 没有进行中操作时冲突列表固定说「这些冲突来自恢复贮藏」，搁架三方合并取回时也显示这句 | B3c L4，2026-10-28 | 文案应区分来源（贮藏 / 搁架） |
 | P2 | B3b 终审 Minor（12 条）：勾选的重命名旧路径被当成「勾选外改动」多问一次贮藏；SHA-256 仓库的 mbox 头识别不到；`patch.ts` 头注释与实现不符（写着 `--3way`）；CRLF 普通 diff `apply --check` 失败没有专门提示；`am --abort` 失败未处理；导出补丁是逐提交 `[PATCH]` 而非 `[PATCH n/m]`；带 revision 推送时「设置 upstream」无效却仍显示；推送页换 revision 不重建 store；父组件换请求时 Diff 选项丢失但开关仍亮；高亮片段与行文本长度不符时词级标记错位；整文件并排的行构建是 O(段×行)；`n`/`p` 跳过折叠的 hunk 没有提示 | B3b 终审，2026-10-28 | 细节见 [b3b 计划](active/b3b-Diff增强与提交菜单.md)「决策记录」终审条目 |
 | P2 | Fixup/Squash 到此提交的自动变基被中止后，`fixup!`/`squash!` 提交留在 HEAD；是否在中止时提示「撤销该提交」 | B3b L4，2026-10-27 | 与 IntelliJ 一致，需负责人决定 |
 | P2 | 交互式变基等改写历史的操作之后，日志详情区仍显示改写前选中的旧提交（选中项已不在日志里）；变基列表里的分支名标签与背景对比弱 | B3a L4，2026-10-27 | 前者是 A1 的既有行为：选中 sha 不在新日志里时应清空或跟随 HEAD |

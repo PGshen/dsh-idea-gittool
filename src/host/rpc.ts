@@ -19,6 +19,8 @@ import type {
   CompareRequest,
   CompareValue,
   FormatPatchValue,
+  ShelfListValue,
+  ShelfPatchValue,
   RebasePlanRequest,
   RebasePlanValue,
   FileHistoryRequest,
@@ -94,6 +96,7 @@ import { interactiveRebaseOperation } from './git/interactive-rebase.ts'
 import { applyPatchOperation, parseFormatPatchShas, readFormatPatch } from './git/patch.ts'
 import { readRebasePlan } from './git/rebase-plan.ts'
 import { createTagOperation } from './git/tag-write.ts'
+import { parseShelfId, readShelfList, readShelfPatch, shelfApplyOperation, shelfCreateOperation, shelfDropOperation } from './git/shelf.ts'
 import { readFileHistory } from './git/file-history.ts'
 import { readDiff, validateRepoPath } from './git/diff.ts'
 import type { LogQuery } from './git/log.ts'
@@ -165,6 +168,9 @@ const DEFAULT_WRITE_OPERATIONS: WriteOperations = {
   createTag: createTagOperation,
   fixupCommit: fixupCommitOperation,
   applyPatch: applyPatchOperation,
+  shelfCreate: shelfCreateOperation,
+  shelfApply: shelfApplyOperation,
+  shelfDrop: shelfDropOperation,
 }
 
 /** Everything the handler needs; all session services are lazy and optional. */
@@ -451,6 +457,17 @@ export function createRpcRuntime(deps: RpcDeps): RpcRuntime {
             `${COMPARE_CACHE_PREFIX}:${JSON.stringify([request.left, request.right, request.cursor ?? null, request.limit ?? null])}`,
             (root) => readCompare(deps.runner, root, request, { signal }),
           )
+        }
+        case 'shelfList':
+          return await handleCached<ShelfListValue>(deps, runtime, payload, signal, 'shelfList', async (root) => ({
+            shelves: await readShelfList(deps.runner, root, { signal }),
+          }))
+        case 'shelfPatch': {
+          parseSessionId(payload)
+          const id = parseShelfId((payload as { id?: unknown }).id)
+          return await handleCached<ShelfPatchValue>(deps, runtime, payload, signal, `shelfPatch:${id}`, async (root) => ({
+            patch: await readShelfPatch(deps.runner, root, id, { signal }),
+          }))
         }
         case 'formatPatch': {
           parseSessionId(payload)

@@ -10,6 +10,7 @@ import {
   MERGE_CHUNK_STATES,
   MERGE_DRAFT_VERSION,
   APPLY_PATCH_MAX_BYTES,
+  SHELF_REF_PREFIX,
   FORMAT_PATCH_MAX_COMMITS,
   REBASE_ACTIONS,
   REBASE_PLAN_MAX_COMMITS,
@@ -60,6 +61,15 @@ describe('B2 历史端点', () => {
       expect([...RPC_ENDPOINTS], endpoint).toContain(endpoint)
       expect(isWriteEndpoint(endpoint), endpoint).toBe(false)
     }
+  })
+})
+
+describe('B3c 搁架端点（T1 契约冻结）', () => {
+  it('shelfList、shelfPatch 是读端点；shelfCreate、shelfApply、shelfDrop 是写端点', () => {
+    expect([...RPC_ENDPOINTS]).toEqual(expect.arrayContaining(['shelfList', 'shelfPatch', 'shelfCreate', 'shelfApply', 'shelfDrop']))
+    for (const endpoint of ['shelfList', 'shelfPatch']) expect(isWriteEndpoint(endpoint), endpoint).toBe(false)
+    for (const endpoint of ['shelfCreate', 'shelfApply', 'shelfDrop']) expect(isWriteEndpoint(endpoint), endpoint).toBe(true)
+    expect(SHELF_REF_PREFIX).toBe('refs/worktree/dsh-git/shelf/')
   })
 })
 

@@ -63,6 +63,8 @@ export type WorkbenchOverlay =
   /** B3b patches: export commits (download / copy); apply a pasted or chosen patch. */
   | { kind: 'patch'; shas: string[] }
   | { kind: 'applyPatch' }
+  /** B3c: shelve the given changed paths under a name. */
+  | { kind: 'shelve'; paths: string[] }
 
 /** An overlay "← back" can return to; one level only, so it never carries its own `back`. */
 export type BackOverlay = DistributiveOmit<WorkbenchOverlay, 'back'>
@@ -113,6 +115,7 @@ export const OVERLAY_LEVEL: Record<WorkbenchOverlayKind, 1 | 2> = {
   fixupInto: 2,
   patch: 1,
   applyPatch: 1,
+  shelve: 2,
 }
 
 export interface OverlayRoute {

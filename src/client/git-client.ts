@@ -3,6 +3,10 @@
 // 形状错误都收敛成结构化的 GitError，调用方不需要 try/catch。
 import { RPC_CHANNEL, isRpcResult } from '../shared/protocol.ts'
 import type {
+  RpcRequest,
+  ShelfListValue,
+  ShelfPatchRequest,
+  ShelfPatchValue,
   FormatPatchRequest,
   FormatPatchValue,
   RebasePlanRequest,
@@ -121,6 +125,12 @@ export interface GitClient {
   createTag: WriteMethod<'createTag'>
   fixupCommit: WriteMethod<'fixupCommit'>
   applyPatch: WriteMethod<'applyPatch'>
+  // B3c shelf
+  shelfList(request: RpcRequest, signal?: AbortSignal): Promise<RpcResult<ShelfListValue>>
+  shelfPatch(request: ShelfPatchRequest, signal?: AbortSignal): Promise<RpcResult<ShelfPatchValue>>
+  shelfCreate: WriteMethod<'shelfCreate'>
+  shelfApply: WriteMethod<'shelfApply'>
+  shelfDrop: WriteMethod<'shelfDrop'>
 }
 
 /** Compile-time check: GitClient covers every write endpoint with the protocol's types. */
@@ -234,5 +244,10 @@ export function createGitClient(_ctx: unknown): GitClient {
     createTag: write('createTag'),
     fixupCommit: write('fixupCommit'),
     applyPatch: write('applyPatch'),
+    shelfList: (request, signal) => call<ShelfListValue>('shelfList', request, signal),
+    shelfPatch: (request, signal) => call<ShelfPatchValue>('shelfPatch', request, signal),
+    shelfCreate: write('shelfCreate'),
+    shelfApply: write('shelfApply'),
+    shelfDrop: write('shelfDrop'),
   }
 }

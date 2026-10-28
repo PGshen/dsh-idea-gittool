@@ -34,6 +34,8 @@ export interface ChangesTreeProps {
   onCommitFile?: (path: string) => void
   /** "Roll back this file…": the workbench opens the rollback sheet. */
   onRollback?: (paths: string[]) => void
+  /** B3c "Shelve…": the workbench opens the shelve sheet. */
+  onShelve?: (path: string, trigger: HTMLElement | null) => void
   /** "Add to VCS" for untracked files. */
   onAddToVcs?: (paths: string[]) => void
   onCopyPath?: (path: string) => void
@@ -118,6 +120,7 @@ export interface ChangeContextMenuProps {
   writeDisabled: boolean
   onCommitFile?: (() => void) | undefined
   onRollback?: (() => void) | undefined
+  onShelve?: (() => void) | undefined
   onAddToVcs?: (() => void) | undefined
   onCopyPath: () => void
   /** B2: open the file history / the worktree blame of this file. */
@@ -175,6 +178,7 @@ export function ChangeContextMenu(props: ChangeContextMenuProps): ReactNode {
         ? item(t('changes.menuResolveLater'), undefined, true, 'conflict')
         : item(t('changes.menuCommit'), props.onCommitFile, writeDisabled, 'commit')}
       {item(t('changes.menuRollback'), props.onRollback, writeDisabled || conflict, 'rollback')}
+      {props.onShelve === undefined ? null : item(t('changes.menuShelve'), props.onShelve, writeDisabled || conflict, 'shelve')}
       {entry.group === 'untracked' ? item(t('changes.menuAddToVcs'), props.onAddToVcs, writeDisabled, 'add') : null}
       <div role="separator" className={css.menuSeparator} />
       {item(t('changes.menuCopyPath'), props.onCopyPath, false, 'copy')}
@@ -430,6 +434,13 @@ export function ChangesTree(props: ChangesTreeProps): ReactNode {
               onAddToVcs={props.onAddToVcs === undefined
                 ? undefined
                 : () => { props.onAddToVcs?.([menu.entry.path]); setMenu(null) }}
+              onShelve={props.onShelve === undefined
+                ? undefined
+                : () => {
+                    const trigger = globalThis.document?.activeElement instanceof HTMLElement ? globalThis.document.activeElement : null
+                    props.onShelve?.(menu.entry.path, trigger)
+                    setMenu(null)
+                  }}
               onCopyPath={() => { copy(menu.entry.path); setMenu(null) }}
               onFileHistory={props.onFileHistory === undefined ? undefined : () => { props.onFileHistory?.(menu.entry.path); setMenu(null) }}
               onBlame={props.onBlame === undefined ? undefined : () => { props.onBlame?.(menu.entry.path); setMenu(null) }}

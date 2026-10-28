@@ -63,6 +63,10 @@ export interface CommitPanelProps {
   pendingWrites?: number
   onOpenDiff: (path: string, scope: DiffOpenScope) => void
   onRollback?: (paths: string[]) => void
+  /** B3c: the changelist grouping toggle and, when on, the grouped view replacing the tree. */
+  changelists?: { grouped: boolean; onGrouped: (on: boolean) => void; panel: ReactNode }
+  /** B3c: shelve the row (or the checked files when the row is checked). */
+  onShelve?: (path: string, trigger: HTMLElement | null) => void
   onAddToVcs?: (paths: string[]) => void
   onCopyPath?: (path: string) => void
   /** B2: file history / worktree blame from a change row's menu. */
@@ -250,7 +254,14 @@ function NormalCommitPanel(props: CommitPanelProps): ReactNode {
 
   return (
     <div className={css.root} data-commit-panel data-phase={commit.phase}>
+      {props.changelists === undefined ? null : (
+        <label className={css.groupToggle}>
+          <input type="checkbox" checked={props.changelists.grouped} data-changelist-grouping onChange={(event) => { props.changelists?.onGrouped(event.target.checked) }} />
+          {t('changelist.group')}
+        </label>
+      )}
       <div className={css.tree}>
+        {props.changelists?.grouped === true ? props.changelists.panel : (
         <ChangesTree
           state={changes}
           store={changesStore}
@@ -258,11 +269,13 @@ function NormalCommitPanel(props: CommitPanelProps): ReactNode {
           onOpenDiff={props.onOpenDiff}
           onCommitFile={() => { textareaRef.current?.focus() }}
           {...(props.onRollback === undefined ? {} : { onRollback: props.onRollback })}
+          {...(props.onShelve === undefined ? {} : { onShelve: props.onShelve })}
           {...(props.onAddToVcs === undefined ? {} : { onAddToVcs: props.onAddToVcs })}
           {...(props.onCopyPath === undefined ? {} : { onCopyPath: props.onCopyPath })}
           {...(props.onFileHistory === undefined ? {} : { onFileHistory: props.onFileHistory })}
           {...(props.onBlame === undefined ? {} : { onBlame: props.onBlame })}
         />
+        )}
       </div>
       <div className={css.bottom}>
         <CommitMessage

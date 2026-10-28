@@ -72,6 +72,12 @@ export const RPC_ENDPOINTS = [
   'createTag',
   'fixupCommit',
   'applyPatch',
+  // B3c 搁架（T1 登记；T2 实现）
+  'shelfList',
+  'shelfPatch',
+  'shelfCreate',
+  'shelfApply',
+  'shelfDrop',
 ] as const
 
 export type RpcEndpoint = (typeof RPC_ENDPOINTS)[number]
@@ -113,6 +119,9 @@ export const WRITE_ENDPOINTS = [
   'createTag',
   'fixupCommit',
   'applyPatch',
+  'shelfCreate',
+  'shelfApply',
+  'shelfDrop',
 ] as const satisfies readonly RpcEndpoint[]
 
 export type WriteEndpoint = (typeof WRITE_ENDPOINTS)[number]
@@ -662,6 +671,75 @@ export interface ApplyPatchValue {
   applied: boolean
   /** mbox 时的提交数。 */
   commits?: number
+  version?: number
+}
+
+// --- B3c 搁架（T1 冻结） ----------------------------------------------------------
+
+/** 搁架条目所在的受限 ref 前缀（ADR 0011）；后接条目 id。 */
+export const SHELF_REF_PREFIX = 'refs/worktree/dsh-git/shelf/'
+
+/** 一条搁架：`files` 是搁置时的路径与状态（未跟踪文件为 `?`）。 */
+export interface ShelfEntry {
+  /** `[0-9a-z-]{1,64}`。 */
+  id: string
+  name: string
+  /** ISO 8601。 */
+  createdAt: string
+  branch: string | null
+  baseSha: string
+  files: { path: string; status: FileStatusCode }[]
+}
+
+export interface ShelfListValue {
+  shelves: ShelfEntry[]
+  version?: number
+}
+
+export interface ShelfPatchRequest extends RpcRequest {
+  id: string
+}
+
+export interface ShelfPatchValue {
+  patch: string
+  version?: number
+}
+
+/** `shelfCreate`：保存这些路径的改动，然后把它们回滚到 HEAD（未跟踪文件删除）。 */
+export interface ShelfCreateRequest extends WriteRequest {
+  name: string
+  paths: string[]
+}
+
+export interface ShelfCreateValue {
+  entry: ShelfEntry
+  version?: number
+}
+
+/**
+ * `shelfApply`：默认只做干净应用（不能干净应用 → `git/conflict`，`details.reason: 'shelf-not-clean'`，不改动文件）；
+ * `threeWay` 时用 `apply --3way`，冲突文件留在索引里。`keep` 为 false 时成功后删除条目。
+ */
+export interface ShelfApplyRequest extends WriteRequest {
+  id: string
+  keep?: boolean
+  threeWay?: boolean
+}
+
+export interface ShelfApplyValue {
+  applied: boolean
+  /** 三方合并后仍有冲突的路径。 */
+  conflicts: string[]
+  kept: boolean
+  version?: number
+}
+
+export interface ShelfDropRequest extends WriteRequest {
+  id: string
+}
+
+export interface ShelfDropValue {
+  id: string
   version?: number
 }
 
@@ -1611,6 +1689,11 @@ export interface RpcEndpointTypes {
   createTag: { request: CreateTagRequest; value: CreateTagValue }
   fixupCommit: { request: FixupCommitRequest; value: InteractiveRebaseValue }
   applyPatch: { request: ApplyPatchRequest; value: ApplyPatchValue }
+  shelfList: { request: RpcRequest; value: ShelfListValue }
+  shelfPatch: { request: ShelfPatchRequest; value: ShelfPatchValue }
+  shelfCreate: { request: ShelfCreateRequest; value: ShelfCreateValue }
+  shelfApply: { request: ShelfApplyRequest; value: ShelfApplyValue }
+  shelfDrop: { request: ShelfDropRequest; value: ShelfDropValue }
 }
 
 /** 编译期检查：{@link RpcEndpointTypes} 恰好覆盖 {@link RpcEndpoint}，写端点请求都带 requestId。 */

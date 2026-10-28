@@ -78,7 +78,7 @@ export function createBenchRepo(dir: string, options?: { commits?: number /* 10_
 
 <!-- 状态：待开始 / 进行中 / 完成 / 阻塞 -->
 
-### T1：基线测量与性能基准脚本（待开始）
+### T1：基线测量与性能基准脚本（完成）
 
 - **目标**：入库可复现的 Host 基准；同时测出 `make check` 基线与逐文件耗时，作为 T4/T5 的依据。
 - **涉及文件**：`scripts/bench/fixture.mjs`、`scripts/bench/host.mjs`、`package.json`（`bench` 脚本）、`test/scripts/bench-fixture.test.ts`（只用 200 提交验证生成器确定性与形状）、`docs/runbooks/verification.md`。
@@ -136,19 +136,23 @@ export function createBenchRepo(dir: string, options?: { commits?: number /* 10_
 
 ## 进度
 
-- 无
+- 2026-10-28 — T1 — `scripts/bench/{fixture.mjs,host.ts}` 与 `pnpm bench` 入库；基线测得 `make check` 测试段 480s、8 个超时失败；定位 git 转发层（xcrun）开销（见「意外与发现」）
 
 ## 下一步
 
-- 从 T1 开始（worktree `.claude/worktrees/b4c-perf`，分支 `b4c-perf`）。
+- T2：Host 解析一次真实 git 二进制（`git --exec-path` 下的 `git`，存在才用，否则保留 `resolveExecutable` 结果），并把 bootstrap 的两次 `rev-parse` 合成一次；测试先行（`test/host/git-executor.test.ts`、`test/host/rpc.test.ts` 断言 spawn 次数/程序路径），完成后 `pnpm bench` 两种跑法（`pnpm bench` 与直接 `node --experimental-transform-types scripts/bench/host.ts`）都要达标。
 
 ## 决策记录
 
-- 无
+- 2026-10-28 T1 — Ruling: 基准脚本写成 `scripts/bench/host.ts`（契约写的是 `.mjs`），用 Node 24 的 `--experimental-transform-types` 直接运行 `src/host` 的 TypeScript — 直接复用真实处理器与 `test/host` 的 subprocess 替身，不需要先打包、也不加依赖（`tsx` 等）；`src/host` 有参数属性，strip-only 模式跑不了 — 若错：Node 升级后该 flag 变化，`bench` 脚本改一行。
+- 2026-10-28 T1 — Ruling: 每个样本用新的处理器（不吃缓存），先不计时地调一次 `bootstrap` 预热仓库解析；bootstrap 另测「同一处理器、时钟每次前进 3s」的稳态轮询（这才是 §16.8「状态轮询每次 ≤50ms」的场景），首个请求只记录 — 若错：稳态口径偏乐观，首个请求另有一行可对照。
+- 2026-10-28 T1 — Ruling: 合成仓库的合并放在每 50 个提交的第 25 个，保证最近 24 个提交不含合并，变基计划可测；变基计划项是 24 条而非计划写的 50 条 — 若错：50 条的计划没测到，但耗时与条数近似线性。
+- 2026-10-28 T1 — Ruling: 本计划各任务的关口先用「针对性测试 + lint/typecheck/layers」，全量 `make check` 放在 T4（提速）之后跑 — 基线全量 8 分钟且有 8 个负载超时，在 T4 解决之前每任务跑全量既慢又不会更可信；负责人本次会话开头也要求先跳过 — 若错：T2/T3 的回归要到 T4 后才被全量发现，届时回退定位成本略高。
 
 ## 意外与发现
 
-- 无
+- 2026-10-28 T1 — **git 转发层开销**：本机 `git` 是 `/usr/bin/git`（Xcode 命令行转发器，内部走 xcrun）。从普通 shell/node 启动一次约 8ms，直接调真实二进制（`xcrun -f git` 或 `$(git --exec-path)/git`）约 2.6ms；而**在 pnpm 启动的进程里（`pnpm exec`、`pnpm run`、vitest 都是）**，经转发器启动一次约 45ms（xcrun 慢了约 8 倍；去掉 PATH 就恢复，但同一个 PATH 在普通 node 里不慢，根因未完全查清，时间盒到此为止）。影响：(1) `make check` 的 Host 集成测试每次 spawn 多付约 40ms，是测试段 480s 的主因之一（CPU 总计只用了 238s，大部分时间在等进程启动）；(2) 开发期 `pnpm dsh web` 下 Host 每条 git 命令同样多付约 40ms，`pnpm bench` 中 bootstrap 285ms、commit 223ms、branches 188ms 全部超预算，而直接用 node 运行时只有 bootstrap 一项（50.4ms）略超。处理：T2 在 Host 里解析一次真实二进制；T4 在测试 fixtures 里同样处理。
+- 2026-10-28 T1 — 基线 `make check` 并非全绿：8 个用例在全量负载下超时（`git command exceeded 8000 ms` 或 30s 用例超时：`merge-file` 2、`merge-write` 2、`operation` 2、`pull` 1、`rpc` 1），单独跑都通过；与 TD-16 同类，T4/T5 一起解决。
 
 ## 阻塞
 
@@ -156,4 +160,24 @@ export function createBenchRepo(dir: string, options?: { commits?: number /* 10_
 
 ## 验证记录
 
-- 无
+### T1 基线（2026-10-28，负责人这台 Mac，10 核，Apple Git 2.50.1，Node 24.11.0）
+
+`make check` 各段（同时还有一个小基准在跑，影响很小）：lint 3.0s、typecheck 3.5s、layers 1.0s、**测试 480.3s**（user 133s、sys 105s）；134 个测试文件、2230 个用例，2222 通过、8 个超时失败（见「意外与发现」）。逐文件墙钟 Top 10（并发运行，单位 s）：`merge-file` 338、`operation` 311、`merge-write` 272、`rpc` 245、`push` 216、`branch-write` 211、`pull` 210、`update` 205、`smart-stash` 202、`interactive-rebase` 199，前 25 名全部是 `test/host/*`。单独跑 `merge-file.test.ts`：45s 墙钟、7.4s user，23 个用例每个 1–4s。
+
+`pnpm bench`（10k 合成仓库，7 次）——两种跑法差异来自 git 转发层：
+
+| 项 | 预算 | `pnpm bench` 中位 | 直接 node 中位 | A1（2026-10-25） |
+|---|---|---|---|---|
+| bootstrap 稳态轮询 | 50 | 285（首个请求口径） | 50.4（p95 121） | — |
+| log 首页 | 500 | 174 | 52 | 46 |
+| commit 详情 / 合并提交 | 200 | 223 / 256 | 39 / 38 | 30 / 31 |
+| 单文件 diff（工作区 / 4500 行 / >256 KiB 截断） | 300 | 141 / 237 / 236 | 28 / 48 / 47 | 39 |
+| branches | 100 | 188 | 36 | 28 |
+| blame 4500 行首页 | — | 247 | 54 | — |
+| 文件历史首页 | — | 188 | 68 | — |
+| 分支比较 | — | 290 | 65 | — |
+| 变基计划 24 条 | — | 517 | 98 | — |
+| 贮藏列表 | — | 99 | 19 | — |
+| 无命中搜索扫完 10k | — | 570 | 272 | 260 |
+
+>256 KiB 文件 diff 返回 `truncated`、响应 358 KB（< 4 MiB）。JSON 在 `.evidence/b4c/`。

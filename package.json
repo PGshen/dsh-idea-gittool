@@ -35,6 +35,7 @@
     "build": "node build.mjs",
     "dev": "node build.mjs --watch",
     "smoke": "node test/bundle.smoke.mjs",
+    "bench": "node --experimental-transform-types --no-warnings scripts/bench/host.ts",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "layers": "depcruise src --config .dependency-cruiser.cjs",

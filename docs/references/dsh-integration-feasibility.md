@@ -1081,7 +1081,7 @@ B2 L4 另外两条宿主事实（2026-10-27，3081 实测）：
 
 ## 16. B4a 设置页与 Blame 渲染器（2026-10-28，DSH checkout `687f282e86`，源码查证）
 
-- **日期格式偏好**：DSH 客户端没有公开给插件的日期/时间格式偏好；各包直接用 `Intl.DateTimeFormat(locale, …)`，locale 来自 `t('time.locale')` 或语言设置（例：`ui-schedule/src/client/schedule-format.ts`）。因此设计 §13「日期格式：跟随 DSH」落为插件自己的「绝对 / 相对」两档（[b4a 计划](../plans/active/b4a-设置页与Blame渲染器.md) 待确认 3）。
+- **日期格式偏好**：DSH 客户端没有公开给插件的日期/时间格式偏好；各包直接用 `Intl.DateTimeFormat(locale, …)`，locale 来自 `t('time.locale')` 或语言设置（例：`ui-schedule/src/client/schedule-format.ts`）。因此设计 §13「日期格式：跟随 DSH」落为插件自己的「绝对 / 相对」两档（[b4a 计划](../plans/completed/b4a-设置页与Blame渲染器.md) 待确认 3）。
 - **文档预览注册表排序**：`ui-sidebar-documentpreview/src/client/document/registry.ts` `matchingDocumentPreviews` 按「`priority !== 'builtin'`（含缺省的 `extension`）在前 → 匹配后缀更长 → 注册顺序」排序；工具栏列出全部匹配实现并按 tab 记住选择。插件以 `extension` 档注册即成为该后缀的默认查看器；内置代码查看器是 `builtin` 档（`code/index.ts`，扩展名表 `CODE_HIGHLIGHT_EXTENSIONS`）。重复 `id` 注册会抛错。
 - **文档正文 props**（`document/contract.ts`）：keyed slot `sidebar.right.tab.document` 的正文拿到 `DocumentPreviewProps = PropsRuntime<'sidebar.right.tab.document'>`，含 `sessionId`、`resourceAddress`、`content`（`text-pages` 时为 `{ kind: 'text', text, pages, eof }`，`text` 累积到 `eof`）、`wrap`、`scrollportRef` 与全局的 `useResource`。绝对路径用 `useResource<'file'>(resourceAddress).value?.absolutePath` 取（与内置 Markdown 正文相同，`markdown/MarkdownBody.tsx`）。正文组件可直接在 `ctx.slots.register` 的 `inject` 里拿插件自己的依赖。
 - **可选服务**：cordis 的 `inject` 声明只有「必需」语义（`vendor/cordis/src/registry.ts` `Inject.resolve`）；把 `documentPreviews` 写进插件顶层 `inject` 会让整个插件在没装文档预览时不启动。可选依赖用 `ctx.inject(['documentPreviews'], (sub) => …)`：服务出现时才运行回调，服务消失时卸载（本插件 `src/client/index.ts` 的 Blame 渲染器即如此）。

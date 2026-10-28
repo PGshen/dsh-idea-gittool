@@ -2,7 +2,7 @@
 
 本文件只描述**代码结构**和**依赖方向**，内容必须和代码保持一致（SOP §10）。产品与页面设计见 [产品设计 v0.2](design/2026-10-25-产品设计-v0.2.md)；技术方案见其中 §16 与 [DSH 集成可行性调研](references/dsh-integration-feasibility.md)。
 
-> 状态：2026-10-28，B3 已合并，B4a 设置页与 Blame 渲染器在分支 `b4a-settings-blame-renderer`——A1 只读（日志/提交图/详情/diff/分支/状态栏/控制台 + `.git` watch 刷新）、A2 提交闭环、A3 分支/贮藏/冲突（四个 Level 0 页、集成操作、操作控制、冲突列表、贮藏页）、B1 三栏合并（合并模型、合并 store、三栏合并窗口、冲突列表增强与审查更改；`mergeWindow` 默认开启）。B2 历史与 Blame（Host blame/fileHistory/compare 与 diff range、Blame 视图与 `git.blame` 页、文件历史页、比较页、覆盖层返回链、跨 tab 意图队列）。B3a 交互式变基（`rebasePlan`/`interactiveRebase`、共享 todo 规则、变基覆盖页、日志快捷动作；flag `interactiveRebase` 默认开启）与 B3b Diff 增强与提交菜单（并排/词级/忽略空白/完整文件、撤销提交/推送到此/新建标签/Fixup·Squash into/补丁导出与应用；`src/client/settings.ts` 记住 Diff 模式）、B3c 搁架与 Changelist（贮藏页「贮藏 | 搁架」分段、提交页按 Changelist 分组）、B3d Worktree 与远程（远程页、Worktree 页（flag `worktrees` 默认开启）、标签推送/删除、远程分支删除、upstream）。
+> 状态：2026-10-28，B3、B4a（设置页与 Blame 渲染器）已合并——A1 只读（日志/提交图/详情/diff/分支/状态栏/控制台 + `.git` watch 刷新）、A2 提交闭环、A3 分支/贮藏/冲突（四个 Level 0 页、集成操作、操作控制、冲突列表、贮藏页）、B1 三栏合并（合并模型、合并 store、三栏合并窗口、冲突列表增强与审查更改；`mergeWindow` 默认开启）。B2 历史与 Blame（Host blame/fileHistory/compare 与 diff range、Blame 视图与 `git.blame` 页、文件历史页、比较页、覆盖层返回链、跨 tab 意图队列）。B3a 交互式变基（`rebasePlan`/`interactiveRebase`、共享 todo 规则、变基覆盖页、日志快捷动作；flag `interactiveRebase` 默认开启）与 B3b Diff 增强与提交菜单（并排/词级/忽略空白/完整文件、撤销提交/推送到此/新建标签/Fixup·Squash into/补丁导出与应用；`src/client/settings.ts` 记住 Diff 模式）、B3c 搁架与 Changelist（贮藏页「贮藏 | 搁架」分段、提交页按 Changelist 分组）、B3d Worktree 与远程（远程页、Worktree 页（flag `worktrees` 默认开启）、标签推送/删除、远程分支删除、upstream）。
 > 分层规则 R1–R5 已写入 [`.dependency-cruiser.cjs`](../.dependency-cruiser.cjs)，由 `make check` 强制执行。
 
 ## 1. 仓库顶层

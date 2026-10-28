@@ -15,7 +15,7 @@
 
 | 优先级 | 事项 | 来源 | 备注 |
 |---|---|---|---|
-| P1 | B4 打磨（a11y、性能、i18n、跨平台、安装/升级验证、文档；Git Blame 渲染器与设置页） | [设计决策 v0.2](../design/2026-10-25-产品设计决策-v0.2.md) §4 | 下一个里程碑（B3 已于 2026-10-28 合并） |
+| P1 | B4 打磨，拆成 4 份按序做：B4a 设置页 + Blame 渲染器（[计划](active/b4a-设置页与Blame渲染器.md)，草稿待批准）；B4b a11y 与样式变量；B4c 性能；B4d 跨平台/安装升级/文档（含 git 路径设置） | [设计决策 v0.2](../design/2026-10-25-产品设计决策-v0.2.md) §4 | 2026-10-28 负责人同意拆分 |
 | P2 | 筛选/仓库栏/分支右键菜单改用 ui-primitives `MenuSurface`/`Menu` | A1 走查，2026-10-25 | 当前按 [ADR 0006](../decisions/0006-浮层菜单材质例外.md) 手写菜单材质，迁移后废弃该 ADR |
 | P2 | 向 DSH 反馈：`workspace-write` 的 Seatbelt profile 放行 `DARWIN_USER_CACHE_DIR`，否则 osxkeychain 凭据助手在 confine 下不可用 | A2 T1 spike，2026-10-26 | 见 [references §13](../references/dsh-integration-feasibility.md)「写执行与沙箱」；只反馈不改 DSH 仓库，由负责人决定是否提 |
 | P2 | 分支树改为单一 Tab 停靠点（roving tabindex：选中行或首行为 0，其余 -1）；菜单 ↑↓ 是否停在不可用项上以便读屏听到原因，与负责人确认 | A3 I-1 评审，2026-10-26 | 当前每个叶子行各占一个 Tab 停靠点；↑↓ 跳过不可用项 |

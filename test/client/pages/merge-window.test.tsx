@@ -192,6 +192,16 @@ describe('MergeWindowView: questions and notices', () => {
     expect(html).toContain('部分区域合成了一个大块')
   })
 
+  it('B4c T3: a failed editor chunk load says so above the panes and offers a retry', async () => {
+    const state = await loaded()
+    expect(view(state)).not.toContain('data-merge-editor-failed')
+    const html = view(state, mergeState(), { editor: { failed: true, onRetry: () => undefined } })
+    expect(html).toMatch(/<p[^>]*role="alert"[^>]*data-merge-editor-failed[^>]*>无法加载合并编辑器/)
+    expect(html).toMatch(/data-merge-editor-failed[\s\S]*<button[^>]*data-merge-editor-retry[^>]*>重试/)
+    const en = view(state, mergeState(), { editor: { failed: true, onRetry: () => undefined } }, enT)
+    expect(en).toContain('Could not load the merge editor')
+  })
+
   it('read-only: save and apply are disabled with the reason', async () => {
     const html = view(await loaded(), mergeState(), { blockReason: 'RO' })
     expect(html).toMatch(/<button[^>]*disabled=""[^>]*title="RO"[^>]*data-merge-save/)

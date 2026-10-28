@@ -95,7 +95,7 @@ export function createBenchRepo(dir: string, options?: { commits?: number /* 10_
 - **完成标准**：`pnpm bench` 全部达标；T1 无超标时本任务标「完成（无需修改）」并写明。
 - **验证命令**：`pnpm bench`、`make check`
 
-### T3：包体积达标（待开始）
+### T3：包体积达标（完成，L4 在 T6）
 
 - **目标**：AC3。先 A（标识符压缩后处理），量体积；不达标且负责人选了 B 时，先做 DSH 额外产物服务的 spike（只读宿主源码 + 隔离 DSH 实测，结论写进 references），可行再拆合并窗口产物。
 - **涉及文件**：`build.mjs`、`test/bundle.smoke.mjs`；B 另涉及 `src/client/pages/MergeWindow*.tsx` 的加载入口、`package.json` `files`。
@@ -140,7 +140,7 @@ export function createBenchRepo(dir: string, options?: { commits?: number /* 10_
 
 ## 下一步
 
-- T3：`test/bundle.smoke.mjs` 先加 gzip ≤ 250 KB 断言（RED，当前约 302 KB），再在 `build.mjs` 合成 CSS 之后对 JS 做一次 `transform({ minifyIdentifiers: true })`；注意 smoke 里「无前缀短 CSS 类名」的正则可能误报压缩后的 JS，需要核对。
+- T4：`make check` 提速。先让 `test/host/fake-subprocess.ts` 与 `test/host/fixtures.ts` 用真实 git 二进制（`$(git --exec-path)/git`，模块加载时解析一次，找不到退回 `git`），单独跑 `test/host/merge-file.test.ts` 对比 45s 的基线；再跑全量 `vitest run --reporter=json` 看逐文件耗时，决定是否需要 `vitest.config.ts`（pool/并发）。
 
 ## 决策记录
 
@@ -150,6 +150,11 @@ export function createBenchRepo(dir: string, options?: { commits?: number /* 10_
 - 2026-10-28 T2 — Ruling: 超标的根因是进程启动开销（不是 git 本身），修法是执行器可选的 `directBinary`：第一次运行时用 PATH 解析出的 git 执行 `--exec-path`，`<目录>/git`（Windows `git.exe`）经 `ctx.subprocess.resolveExecutable` 校验通过就固定用它，否则继续用 PATH 的结果；探测被中止/超时不缓存、下次重试。默认关闭、只在 `src/host/index.ts` 打开 — 默认开启会让每个测试的 spawn 列表多一条探测，几十处断言要改；生产只有一个入口 — 若错：沙箱 confine 下直接执行 Xcode 内的 git 若被 Seatbelt 拒绝，写命令会失败（T6 的 L4 必须在 confine 下做一次提交验证），且 B4d 的 git 路径设置要在这个解析结果之上叠加。
 - 2026-10-28 T2 — Ruling: 计划里预想的「两次 `rev-parse` 合一」不做 — 开启 `directBinary` 后 bootstrap 稳态 15ms，已远低于 50ms，再改仓库解析会动到每个端点的公共路径，收益不值风险 — 若错：极慢的文件系统上 bootstrap 仍可能超预算，届时再合并。
 - 2026-10-28 T2 — Ruling: `index.ts` 的接线没有单测（Host 入口没有测试替身），由执行器的 4 个单测 + `pnpm bench`（与 `index.ts` 同参数）+ T6 L4 覆盖 — 若错：有人删掉这个参数不会被 `make check` 发现，只会在基准里变慢。
+- 2026-10-28 T3 — Ruling: 方案 A（标识符后压缩）后 gzip 272 KB 仍超标，按待确认 1 推荐继续做方案 B；spike 结论为可行（DSH client-modules 原生支持包内按需 chunk，references §17），所以 B 不是新机制，而是用宿主公开契约 — 若错：DSH 升级改了 chunk 契约，合并窗口打不开（会显示加载失败 + 重试），smoke 只能校验形态、不能校验宿主行为（T6 L4 补）。
+- 2026-10-28 T3 — Ruling: 只把 `merge-editor.ts`（CodeMirror 封装，无样式）拆进 chunk，合并窗口组件、样式、store 留在主包；窗口在 effect 里异步拿到编辑器模块后创建三栏，已加载过则同步创建；渲染期要用的 `resultEditable` 移到无 CodeMirror 的 `merge-pane-state.ts`（`merge-editor.ts` 再导出，旧测试不改） — 若错：首次打开合并窗口时三栏会空一瞬（本地请求，预计几十毫秒）。
+- 2026-10-28 T3 — Ruling: 主包在 banner 之后加一行 `// client.merge.js <哈希>` 注释，而不是把哈希作为 define 常量 — 常量在压缩时被常量折叠掉了，起不到带动包版本的作用（实测）；注释在 banner 区，不经过压缩 — 若错：DSH 若改为忽略注释计算版本（目前按文件内容），只改 chunk 时浏览器会用旧 chunk，直到主包也变化。
+- 2026-10-28 T3 — Ruling: 模块体进 IIFE 后，esbuild 输出的 `"use strict"` 成为该函数的指令（以前在 banner 变量之后，不是指令），代码改在严格模式下运行 — 源码全是 TS/ES 模块、按严格模式编写，第三方依赖（CodeMirror、lezer）也是 ES 模块；smoke 在 vm 里执行两个 factory 通过 — 若错：某处依赖非严格语义（如给未声明变量赋值）会在运行时抛错，T6 L4 走查各页面兜底。
+- 2026-10-28 T3 — 写了 [ADR 0013](../../decisions/0013-客户端产物拆分按需chunk与标识符后压缩.md)：产物形态变化影响后续所有用 CodeMirror 的代码与 B4d 安装验证。
 - 2026-10-28 T1 — Ruling: 本计划各任务的关口先用「针对性测试 + lint/typecheck/layers」，全量 `make check` 放在 T4（提速）之后跑 — 基线全量 8 分钟且有 8 个负载超时，在 T4 解决之前每任务跑全量既慢又不会更可信；负责人本次会话开头也要求先跳过 — 若错：T2/T3 的回归要到 T4 后才被全量发现，届时回退定位成本略高。
 
 ## 意外与发现
@@ -202,3 +207,14 @@ export function createBenchRepo(dir: string, options?: { commits?: number /* 10_
 | 无命中搜索扫完 10k | — | 206.6 | 220.8 | 570 |
 
 全部通过（AC1、AC2 的 Host 部分）。
+
+### T3 包体积（2026-10-28）
+
+| 产物 | 原始 | gzip | 说明 |
+|---|---|---|---|
+| 改动前 `lib/client.js` | 1,294,454 B | 312,256 B | smoke 新断言 RED：「gzip 312256 字节，超出预算 256000」 |
+| 只做标识符后压缩 | 959.5 KB | 272,249 B | 仍超 |
+| 最终 `lib/client.js` | 684.6 KB（含 95.7 KB CSS） | **179,552 B（175.3 KB）** | ≤ 250 KB 预算、≤ 200 KB 首发目标 |
+| `lib/client.merge.js`（按需） | 276.8 KB | 93,018 B | 只在打开合并窗口时加载 |
+
+`pnpm smoke` 通过：包装三行、CSS 注入与 HMR 替换、无短类名、体积门槛、chunk 注册（`id` + `chunk: 'client.merge.js'`）、chunk 只 require 基线模块并导出 `createMergePane`、主包含 `require.async("./client.merge.js")` 且不含 CodeMirror、哈希行与 chunk 一致；删掉 chunk 时报「缺少 lib/client.merge.js」。`pnpm dev` 实测：给 `merge-editor.ts` 加一行代码，chunk 与主包哈希行都更新（`bcf2a4f8cccd → 659666883f1d`），改回后恢复。`vitest run test/client` 95 个文件 1502 个用例全绿；typecheck、lint、layers 通过。

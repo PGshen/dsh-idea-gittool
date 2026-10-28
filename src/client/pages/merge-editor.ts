@@ -14,7 +14,7 @@ import type { DecorationSet } from '@codemirror/view'
 import { defaultKeymap } from '@codemirror/commands'
 import { isChunkResolved, isManuallyEdited } from '../merge/merge-model.ts'
 import type { MergeModel, MergeSideName, ModelChunk, Range } from '../merge/merge-model.ts'
-import type { MergeAction, MergeStatus } from '../store/merge-store.ts'
+import type { MergeAction } from '../store/merge-store.ts'
 
 export type MergePane = 'left' | 'result' | 'right'
 
@@ -65,13 +65,7 @@ export function userEdits(tr: Transaction): TextEdit[] {
   return editsOfChanges(tr.changes)
 }
 
-/**
- * The Result accepts typing only while the store is `ready`: during save / apply `store.edit` is
- * ignored, so a keystroke the editor kept would silently diverge from the model.
- */
-export function resultEditable(status: MergeStatus): boolean {
-  return status === 'ready'
-}
+export { resultEditable } from './merge-pane-state.ts'
 
 /** Extensions that lock (read-only, not editable) or unlock the Result editor. */
 export function resultLock(editable: boolean): Extension {

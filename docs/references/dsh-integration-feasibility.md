@@ -1089,3 +1089,12 @@ B2 L4 另外两条宿主事实（2026-10-27，3081 实测）：
 - **文档预览注册表排序**：`ui-sidebar-documentpreview/src/client/document/registry.ts` `matchingDocumentPreviews` 按「`priority !== 'builtin'`（含缺省的 `extension`）在前 → 匹配后缀更长 → 注册顺序」排序；工具栏列出全部匹配实现并按 tab 记住选择。插件以 `extension` 档注册即成为该后缀的默认查看器；内置代码查看器是 `builtin` 档（`code/index.ts`，扩展名表 `CODE_HIGHLIGHT_EXTENSIONS`）。重复 `id` 注册会抛错。
 - **文档正文 props**（`document/contract.ts`）：keyed slot `sidebar.right.tab.document` 的正文拿到 `DocumentPreviewProps = PropsRuntime<'sidebar.right.tab.document'>`，含 `sessionId`、`resourceAddress`、`content`（`text-pages` 时为 `{ kind: 'text', text, pages, eof }`，`text` 累积到 `eof`）、`wrap`、`scrollportRef` 与全局的 `useResource`。绝对路径用 `useResource<'file'>(resourceAddress).value?.absolutePath` 取（与内置 Markdown 正文相同，`markdown/MarkdownBody.tsx`）。正文组件可直接在 `ctx.slots.register` 的 `inject` 里拿插件自己的依赖。
 - **可选服务**：cordis 的 `inject` 声明只有「必需」语义（`vendor/cordis/src/registry.ts` `Inject.resolve`）；把 `documentPreviews` 写进插件顶层 `inject` 会让整个插件在没装文档预览时不启动。可选依赖用 `ctx.inject(['documentPreviews'], (sub) => …)`：服务出现时才运行回调，服务消失时卸载（本插件 `src/client/index.ts` 的 Blame 渲染器即如此）。
+
+## 17. B4c 性能：按需 chunk 与 git 启动器（2026-10-28，DSH checkout `687f282e86`，源码查证）
+
+| 结论 | 状态 | 证据 |
+|---|---|---|
+| 外部插件可以带**包内按需 chunk**：文件名必须匹配 `^client\.[A-Za-z0-9][A-Za-z0-9._-]*\.js$`、与 `exports["./client"]` 指向的 `client.js` 在同一目录（`client.node.*` 除外）；路由 `/plugins/<id>/<文件名>?rev=<包版本>`，只在请求时读文件 | ✅ 源码 / ⏳ 待 B4c T6 实机 | `packages/client/modules/src/index.ts` `CLIENT_CHUNK`、`chunkUrl`、`chunkRequest`/`chunkResponse`（:192、:249、:1100–1163） |
+| chunk 用 `window.__ModuleLoader__.load({ id: <包名>, chunk: '<文件名>', factory: (require) => {…} })` 注册；主包在 factory 里用 `require.async('./<文件名>')` 加载，返回 chunk factory 的导出；同一 URL 并发请求只拉一次；chunk 的 `require` 同样只能拿基线模块 | ✅ 源码 | `packages/client/modules/src/client/system.ts` `makeRequire`/`importChunk`（:324–390）、`manifest.ts` `ClientBundleRequire`/`ClientBundleRegistration`（:348–368）；官方 preset 的写法见 `packages/client/tsdown.client.ts:446-470,664` |
+| chunk URL 带的是整个包的版本号（由 `client.js` 计算），**只改 chunk 不会让版本前进**；本插件在 `client.js` banner 之后写一行 `// client.merge.js <chunk 哈希>` 来带动版本 | ✅ 源码 | 同上 `chunkUrl(row, fileName, revision)`；`build.mjs` `emitClientBundle` |
+| macOS 的 `/usr/bin/git` 是 Xcode 命令行转发器（内部 xcrun），每次启动约 8ms；在 pnpm 启动的进程里约 45ms（原因未完全查清，去掉 PATH 即恢复）。`$(git --exec-path)/git` 是真实二进制，约 2.6ms。Host 执行器的 `directBinary` 只解析一次并直接用它 | ✅ 2026-10-28 实测 | b4c 计划「意外与发现」；`src/host/git-executor.ts` `directBinary` |

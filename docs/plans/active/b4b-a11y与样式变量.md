@@ -198,7 +198,8 @@ export function moveFocus(rows: readonly TreeRow[], currentId: string, key: 'Arr
 - 2026-10-28 — T4 完成：`tree-focus.ts` 纯模型 + `use-tree-roving.ts`；分支面板与分支页的树都是单一 Tab 停靠点，分组头改为 level-1 treeitem 参与导航；删除不再使用的 `moveTreeFocus`/`treeStepIndex`（09e54ef）
 - 2026-10-28 — T5 完成：`useMenuKeyboard` 从 `useFloatingMenu` 抽出，仓库栏 ⋯、提交 ▾、合并窗口「应用非冲突更改 ▾」、文件右键菜单、Changelist「移到」都接入（取得焦点、↑↓ 环绕、Home/End、Esc/Tab/← 关闭并还焦、外部点击关闭）；不可用项可聚焦，`MenuItemButton` 用 `aria-labelledby`/`aria-describedby` 分开名称与原因（5646681）
 - 2026-10-28 — T6 完成：`focus-trap.ts` 的 `trapTab` 接到全部 `aria-modal` 对话框（SheetFrame 及其 8 个使用方、回滚、未提交改动、智能签出、分支表单、分支抽屉）；DOM 测试覆盖设置弹层/未提交改动询问的进入焦点 + Esc + Tab 圈定、覆盖层控制器还焦、提交右键菜单 Esc 还焦（df8b24b）
-- 2026-10-28 — T7 完成：`nameViolations` 审计（2.5.3 label-in-name + 4.1.2 无名控件）覆盖仓库栏、分支面板、分支页、状态栏、设置弹层、合并窗口头部/底栏、操作菜单、日志页（中英各一遍），全部合规；干净文件状态点提示改为状态原因（「文件没有未提交的改动」/「不在仓库中」）
+- 2026-10-28 — T7 完成：`nameViolations` 审计（2.5.3 label-in-name + 4.1.2 无名控件）覆盖仓库栏、分支面板、分支页、状态栏、设置弹层、合并窗口头部/底栏、操作菜单、日志页（中英各一遍），全部合规；干净文件状态点提示改为状态原因（「文件没有未提交的改动」/「不在仓库中」）（9b23c9e）
+- 2026-10-28 — T8 完成：L4 实测两套主题对比度；成功/警告色和静态色作文字时往 `label-primary` 混 60%（浅色 2.2 → 5.3+），样式检查新增「状态/静态色不得直接作文字色」；`scripts/contrast-probe.mjs` + 单测 + runbook「对比度测量」
 
 ## 下一步
 
@@ -218,6 +219,8 @@ export function moveFocus(rows: readonly TreeRow[], currentId: string, key: 'Arr
 - 2026-10-28 T5 — `useMenuKeyboard` 的 `onClose(via)` 区分键盘关闭（还焦到触发按钮/行）与外部点击（不抢焦点）；`boundary` 参数让开关按钮所在的包裹元素不算「外部」，避免按下即关、点击又开。顺手修掉 TODO「应用非冲突更改 ▾ 点外部不关闭」。
 - 2026-10-28 T6 — 不新建 `use-overlay-focus.ts`：进入焦点（`useInitialFocus`/各自的 `focus()`）、Esc（`escapeHandler`/各自 handler + 工作台兜底 `handleOverlayEscape`）、还焦（`createOverlayController` + `rememberFocus`）已经统一且行为正确，DOM 测试直接作为回归保护；唯一缺的是模态对话框的 Tab 圈定，补成 `trapTab`。Blame、历史、比较等非模态覆盖层不圈定。合并窗口的焦点行为已有 `merge-window-controller` 单测（`focusIsLost`/`shouldRefocusAfterWrite`），不另写 DOM 测试。
 - 2026-10-28 T7 — TODO「合并窗口按钮 label-in-name」核实为误报：这些按钮没有 `aria-label`，名称取可见文字，`title` 只作描述（可访问性树里显示为 description）；审计测试把它锁住。源码粗扫所有「带 `aria-label` 的按钮」，有文字子节点的只有纯符号（▸ ✕ ▾ ⋯），不需要匹配。
+- 2026-10-28 T8 — 文字用的成功/警告/静态色统一混 60% `label-primary`（与设计 §15.3 lane 的混色思路一致，不写主题选择器、不写字面色）：浅色下成功 5.6、警告 5.35，暗色下 ≥8。只改作文字色的 `color:`，边框/背景/标记不动（非文本装饰）。
+- 2026-10-28 T8 — 走查构建在 scratchpad 的 detached worktree 里做、隔离 HOME、端口 3082：负责人的 web profile 链接到主 checkout 的 `lib/`，在主 checkout `pnpm build` 会把分支代码热更进负责人正在用的 3080；3081 被另一个会话的 DSH 占着。
 
 ## 意外与发现
 
@@ -225,6 +228,7 @@ export function moveFocus(rows: readonly TreeRow[], currentId: string, key: 'Arr
 
 - 2026-10-28 T1：BSD grep/sed 不认 `\s`，首版快照漏掉 `--dsw-radius-xs` 等名字；提取命令改用 `[[:space:]]`。日志骨架屏动画用的是 `@media (prefers-reduced-motion: no-preference)` 包裹写法，检查同时接受两种写法。
 - 2026-10-28 T2：`pnpm add -D happy-dom` 在 pnpm 11 下摘掉了 DSH link 依赖，恢复办法写进 [references/happy-dom.md](../../references/happy-dom.md) 与 dev-setup runbook。happy-dom 无布局，虚拟列表需 `stubLayout`。
+- 2026-10-28 T8：T1 的变量校正让 A1–A3 的成功/警告色第一次真正生效，随之暴露浅色主题下对比度只有 2.2:1（胶囊、状态字母、状态栏等 22 处；B1 之后本来就用对了名字的文件也一样）。不做 T1 就看不到这个问题。
 - 2026-10-28 T2：第一条 DOM 测试就抓到真实缺陷——仓库栏 ⋯ 菜单按 Esc 关闭后焦点落到 `body`（A1 起的行为），已修。
 
 ## 阻塞
@@ -237,4 +241,17 @@ export function moveFocus(rows: readonly TreeRow[], currentId: string, key: 'Arr
 
 <!-- 自验证阶段填写：每条验收标准对应的命令、输出摘要、截图路径。 -->
 
-- 无
+### AC7 对比度（2026-10-28，隔离 DSH 3082，`scripts/contrast-probe.mjs`，修正后）
+
+| 对象 | 阈值 | 浅色 | 暗色 |
+|---|---|---|---|
+| 提交图 lane 1–6 | 3 | 6.64 / 4.63 / 4.40 / 7.65 / 7.29 / 6.76 | 7.84 / 10.44 / 10.88 / 6.91 / 7.17 / 11.01 |
+| 日志主题（正文） | 4.5 | 18.9 | 17.45 |
+| 日志作者 / 日期·哈希 | 3 | 5.8 / 3.71 | 12.11 / 8.54 |
+| 胶囊 HEAD / 本地分支 / 标签 | 3 | 8.45 / 5.6 / 5.35（修正前本地 2.28、标签 2.15） | 6.97 / 9.64 / 9.93 |
+| 仓库路径 / 状态栏 | 3 | 3.71 / 5.8 | 8.54 / 12.11 |
+| 状态字母 M / ? | 3 | 5.35 / 3.71 | 11.53 / 8.54 |
+| 提交页文件名 / 分组头 / 提交信息框 | 4.5 / 3 / 4.5 | 18.9 / 18.9 / 18.9 | 17.45 / 17.45 / 15.03 |
+| 分支页分支行 / 当前分支 / 分组头 / 快捷动作 / 计数 | 4.5 / 4.5 / 3 / 4.5 / 3 | 18.9 / 18.9 / 5.8 / 18.9 / 3.71 | 17.45 / 17.45 / 12.11 / 17.45 / 8.54 |
+| 变基列表分支标签（含选中行）/ 主题 | 3 / 4.5 | 5.8 / 15.7 | 10.42 / 11.54 |
+

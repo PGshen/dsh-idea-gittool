@@ -219,3 +219,13 @@ git checkout -q feature && git rebase main   # stops at topic1; after continue, 
 | 6 | 关闭「自动打开冲突列表」，终端 `git merge` 出冲突 | 只出现横幅，不弹冲突列表；同一操作中再打开设置也不弹；`merge --abort` 后打开设置再合并 → 自动弹出 |
 | 7 | 打开「自动应用非冲突更改」，冲突文件「逐个解决」 | Result 已含两侧独有改动、冲突块仍待处理；「撤销」回到 base |
 | 8 | 打开「使用 Git Blame 渲染器」，文件页打开已跟踪文件、未跟踪文件；关掉再打开 | 已跟踪文件默认「Git Blame」带 gutter；未跟踪显示原文与「还没有被 Git 跟踪」；关闭后已开 tab 立即回到「代码」，再打开又回来；控制台无插件错误 |
+
+## 对比度测量（B4b，L4）
+
+在隔离 DSH 里打开 Git tab 后，把 `scripts/contrast-probe.mjs` 去掉 `export ` 关键字贴进页面控制台（或经 `javascript_tool` 执行），然后：
+
+- `probeContrast([{ name, selector, fg: 'color', min }])`：取首个匹配元素的计算色，叠加到逐层合成的有效背景上，按 WCAG 2 算比值。`fg` 可为 `color`/`stroke`/`fill`/`outline-color`。
+- 提交图 lane：在 `.graph_graph` 元素上临时设 `style.color = var(--git-lane-N)` 读计算色（`--git-lane-*` 只在 `.graph` 作用域内定义，放到外面的临时元素读不到）。
+- 暗色：`document.body.setAttribute('data-ds-dark-theme', '')` 后再测一遍，测完移除（DSH 的明暗切换就是这个属性）。
+- 阈值（设计 §15.5）：正文 ≥4.5，次要文字/状态字母/徽标 ≥3，图形线 ≥3。成功/警告色与 `--dsw-static-*` 直接当文字色在浅色下只有约 2.2:1，样式检查会拦，改用 `color-mix(in oklab, var(<hue>) 60%, var(--dsw-alias-label-primary))`。
+- 切换 Git tab 内的页面可用 `[...document.querySelectorAll('[role="tab"]')].find(t => t.textContent.startsWith('提交')).click()`；走查构建要在独立 worktree 里做（负责人的 web profile 链接到主 checkout 的 `lib/`，在主 checkout 构建会热更进负责人的 3080）。

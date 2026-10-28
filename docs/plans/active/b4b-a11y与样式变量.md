@@ -199,7 +199,8 @@ export function moveFocus(rows: readonly TreeRow[], currentId: string, key: 'Arr
 - 2026-10-28 — T5 完成：`useMenuKeyboard` 从 `useFloatingMenu` 抽出，仓库栏 ⋯、提交 ▾、合并窗口「应用非冲突更改 ▾」、文件右键菜单、Changelist「移到」都接入（取得焦点、↑↓ 环绕、Home/End、Esc/Tab/← 关闭并还焦、外部点击关闭）；不可用项可聚焦，`MenuItemButton` 用 `aria-labelledby`/`aria-describedby` 分开名称与原因（5646681）
 - 2026-10-28 — T6 完成：`focus-trap.ts` 的 `trapTab` 接到全部 `aria-modal` 对话框（SheetFrame 及其 8 个使用方、回滚、未提交改动、智能签出、分支表单、分支抽屉）；DOM 测试覆盖设置弹层/未提交改动询问的进入焦点 + Esc + Tab 圈定、覆盖层控制器还焦、提交右键菜单 Esc 还焦（df8b24b）
 - 2026-10-28 — T7 完成：`nameViolations` 审计（2.5.3 label-in-name + 4.1.2 无名控件）覆盖仓库栏、分支面板、分支页、状态栏、设置弹层、合并窗口头部/底栏、操作菜单、日志页（中英各一遍），全部合规；干净文件状态点提示改为状态原因（「文件没有未提交的改动」/「不在仓库中」）（9b23c9e）
-- 2026-10-28 — T8 完成：L4 实测两套主题对比度；成功/警告色和静态色作文字时往 `label-primary` 混 60%（浅色 2.2 → 5.3+），样式检查新增「状态/静态色不得直接作文字色」；`scripts/contrast-probe.mjs` + 单测 + runbook「对比度测量」
+- 2026-10-28 — T8 完成：L4 实测两套主题对比度；成功/警告色和静态色作文字时往 `label-primary` 混 60%（浅色 2.2 → 5.3+），样式检查新增「状态/静态色不得直接作文字色」；`scripts/contrast-probe.mjs` + 单测 + runbook「对比度测量」（49f3124、e1c955b、a3cebee）
+- 2026-10-28 — T9 完成：工作台内容区一处规则——挂载的页面/抽屉 120ms 淡入，`role="dialog"` 覆盖层 160ms 滑入，`prefers-reduced-motion: reduce` 时全部关闭；L4 实测 `animationName` 与 reduced-motion 规则
 
 ## 下一步
 
@@ -221,6 +222,8 @@ export function moveFocus(rows: readonly TreeRow[], currentId: string, key: 'Arr
 - 2026-10-28 T7 — TODO「合并窗口按钮 label-in-name」核实为误报：这些按钮没有 `aria-label`，名称取可见文字，`title` 只作描述（可访问性树里显示为 description）；审计测试把它锁住。源码粗扫所有「带 `aria-label` 的按钮」，有文字子节点的只有纯符号（▸ ✕ ▾ ⋯），不需要匹配。
 - 2026-10-28 T8 — 文字用的成功/警告/静态色统一混 60% `label-primary`（与设计 §15.3 lane 的混色思路一致，不写主题选择器、不写字面色）：浅色下成功 5.6、警告 5.35，暗色下 ≥8。只改作文字色的 `color:`，边框/背景/标记不动（非文本装饰）。
 - 2026-10-28 T8 — 走查构建在 scratchpad 的 detached worktree 里做、隔离 HOME、端口 3082：负责人的 web profile 链接到主 checkout 的 `lib/`，在主 checkout `pnpm build` 会把分支代码热更进负责人正在用的 3080；3081 被另一个会话的 DSH 占着。
+- 2026-10-28 T9 — 不建 `ui/motion.module.css`、不给十几个覆盖层组件逐个加 class：动效写在 `GitWorkbench.module.css` 的 `.content` 上（`> *` 淡入、`[role='dialog']` 滑入），新增覆盖层自动获得，改动只有一处。代价：内容区里任何新挂载的直接子元素（含浮动菜单）都会 120ms 淡入；数据刷新不重挂载，不受影响。4 个旧弹层自带的 `slideUp` 被这条更具体的规则覆盖，效果相近，未删（保留它们在工作台外单独渲染时的动效）。
+- 2026-10-28 T9 — 没有 DOM 测试断言动效 class（CSS-only，无 class 可断言；happy-dom 不加载样式）：由 T1 的 reduced-motion 静态规则 + L4 读 `getComputedStyle().animationName` 与样式表里的 media 规则覆盖。
 
 ## 意外与发现
 
@@ -254,4 +257,9 @@ export function moveFocus(rows: readonly TreeRow[], currentId: string, key: 'Arr
 | 提交页文件名 / 分组头 / 提交信息框 | 4.5 / 3 / 4.5 | 18.9 / 18.9 / 18.9 | 17.45 / 17.45 / 15.03 |
 | 分支页分支行 / 当前分支 / 分组头 / 快捷动作 / 计数 | 4.5 / 4.5 / 3 / 4.5 / 3 | 18.9 / 18.9 / 5.8 / 18.9 / 3.71 | 17.45 / 17.45 / 12.11 / 17.45 / 8.54 |
 | 变基列表分支标签（含选中行）/ 主题 | 3 / 4.5 | 5.8 / 15.7 | 10.42 / 11.54 |
+
+### AC8 动效（2026-10-28，L4）
+
+- 切到「分支」页后内容区子元素 `animationName = GitWorkbench_pageIn`、`0.12s`；打开交互式变基后 `[data-rebase]` 为 `GitWorkbench_overlayIn`、`0.16s`。
+- 样式表中存在 `@media (prefers-reduced-motion: reduce) { .GitWorkbench_content > *, .GitWorkbench_content [role="dialog"] { animation: none } }`；静态检查确保每个有动画的样式文件都有 reduced-motion 规则。
 

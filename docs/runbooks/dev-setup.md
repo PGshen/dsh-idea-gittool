@@ -49,6 +49,8 @@ pnpm dsh web --patch /Users/peng/Me/Ai/dsh-idea-gittool/dev.patch.yml
 - 修改 `lib/client.js` 后由 `dsh-client-hmr` 轮询热换（按内容 rev，只 `touch` 不触发；约 0.5s 生效，CSS 同步替换）；Host 改动、首次安装、`engines.dsh` 变化需要重启 `dsh web`。
 - **不要修改 DSH checkout**；需要对照实验时用临时目录或本仓库内的副本。
 
+- **pnpm 11 加依赖**：`ERR_PNPM_IGNORED_BUILDS`（esbuild）会让安装中途退出并摘掉 DSH 的 link 依赖；带 `--config.strict-dep-builds=false`，已经坏了的按 [references/happy-dom.md](../references/happy-dom.md)「安装注意」恢复。
+
 ## 在 git worktree 中开发（B2 起）
 
 - `package.json` 的 DSH 依赖是 `link:` 到本机 checkout 的路径；pnpm 写进 lockfile 的 `version` 是相对 lockfile 所在目录算的，在 `.claude/worktrees/<分支>/` 里 `pnpm install` 会把它改写成更深的相对路径（`--frozen-lockfile` 直接失败）。

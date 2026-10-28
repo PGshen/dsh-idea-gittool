@@ -164,7 +164,7 @@ export function RepoBar(props: RepoBarProps): ReactNode {
               <div
                 role="menu"
                 className={css.menu}
-                onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); setMenuOpen(false) } }}
+                onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); setMenuOpen(false); moreRef.current?.focus() } }}
               >
                 <button
                   type="button"

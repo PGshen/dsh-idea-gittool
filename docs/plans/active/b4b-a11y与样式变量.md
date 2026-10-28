@@ -191,7 +191,9 @@ export function moveFocus(rows: readonly TreeRow[], currentId: string, key: 'Arr
 
 <!-- 每完成一步追加一行：日期 — 任务 — 结果（commit 短哈希） -->
 
-- 无
+- 2026-10-28 — 基线 `make check` 绿：124 文件 / 2162 测试，耗时 480.6s（AC9 时长增幅以此为基准）
+- 2026-10-28 — T1 完成：4 个错误变量全量替换，样式检查改为按 DSH 快照（403 个名字）扫描全部 CSS Modules（3f12ad4）
+- 2026-10-28 — T2 完成：happy-dom + `test/client/dom.tsx`；日志 ↑↓、仓库栏 ⋯ Esc 还焦两条 DOM 测试；修复 ⋯ 菜单 Esc 后焦点丢失
 
 ## 下一步
 
@@ -207,7 +209,9 @@ export function moveFocus(rows: readonly TreeRow[], currentId: string, key: 'Arr
 
 <!-- 和预期不一致的事、SDK 的新发现（同时写进 references/）、临时绕过的问题（同时登记到 tech-debt）。 -->
 
-- 无
+- 2026-10-28 T1：BSD grep/sed 不认 `\s`，首版快照漏掉 `--dsw-radius-xs` 等名字；提取命令改用 `[[:space:]]`。日志骨架屏动画用的是 `@media (prefers-reduced-motion: no-preference)` 包裹写法，检查同时接受两种写法。
+- 2026-10-28 T2：`pnpm add -D happy-dom` 在 pnpm 11 下摘掉了 DSH link 依赖，恢复办法写进 [references/happy-dom.md](../../references/happy-dom.md) 与 dev-setup runbook。happy-dom 无布局，虚拟列表需 `stubLayout`。
+- 2026-10-28 T2：第一条 DOM 测试就抓到真实缺陷——仓库栏 ⋯ 菜单按 Esc 关闭后焦点落到 `body`（A1 起的行为），已修。
 
 ## 阻塞
 

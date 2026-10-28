@@ -21,6 +21,7 @@ SDK 和组件库更新很快，AI 的训练知识可能已经过时。本目录�
 |---|---|---|
 | [DSH 集成可行性调研](dsh-integration-feasibility.md) | 独立双面 bundle、`__ModuleLoader__` 产物、通用 RPC、`ctx.subprocess` + 沙箱、安装/热更、文档预览扩展点 | ✅ 已按 DSH `0.2.1-rc.2` 源码核实，并在 §13 记录 M0/A1 实测（构建、挂载、RPC、watch、HMR，2026-10-25） |
 | [Git 行为实测](git-behavior.md) | resolve-undo、`checkout -m` 还原冲突解决（合并/变基/拣选、删除类冲突）、经索引写回（`hash-object --path` → `update-index --cacheinfo` → `checkout-index -f`，autocrlf、执行位、confine 拒绝） | ✅ git 2.50.1 本机 + Seatbelt 等价复现（B1 T1，2026-10-26） |
+| [happy-dom](happy-dom.md) | DOM 测试环境：act/焦点/键盘事件、无布局与虚拟列表、pnpm 11 安装时摘掉 link 依赖的恢复办法 | ✅ happy-dom 21.0.4 实测（B4b T2，2026-10-28） |
 | [参考项目功能清单](reference-feature-inventory.md) | IdeaGitTool v0.4.2 的功能、UI 结构、可移植纯逻辑层与 VS Code 强绑定部分 | ✅ 已按参考仓库 `v0.4.2` 源码核实（2026-10-25）；移植可行性待 M0 后逐项确认 |
 | [assets/reference-ideagittool-log.jpg](assets/reference-ideagittool-log.jpg) | 参考项目日志页截图（产品设计 §8.1 引用） | 截图证据，无版本标记 |
 

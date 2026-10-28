@@ -1,0 +1,93 @@
+/* B3d 远程页与 Worktree 页：覆盖层铺满 Git tab 内容区。 */
+.root {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  background: var(--dsw-alias-bg-base);
+  color: var(--dsw-alias-label-primary);
+  font-size: 12px;
+  outline: none;
+}
+
+.header,
+.line,
+.edit {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+  padding: 4px 8px;
+}
+
+.header {
+  border-bottom: 0.5px solid var(--dsw-alias-border-l2);
+}
+
+.title,
+.grow,
+.url {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.url {
+  overflow: hidden;
+  color: var(--dsw-alias-label-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.line > :not(.url),
+.edit > button {
+  flex: none;
+  white-space: nowrap;
+}
+
+.edit > .warning {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.row {
+  border-bottom: 0.5px solid var(--dsw-alias-border-l2);
+}
+
+.badge {
+  padding: 0 4px;
+  border-radius: 4px;
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-secondary);
+}
+
+.muted,
+.message {
+  margin: 0;
+  padding: 2px 8px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.state {
+  padding: 16px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.warning {
+  color: var(--dsw-alias-state-warn-primary);
+}
+
+.error {
+  margin: 0;
+  padding: 2px 8px;
+  color: var(--dsw-alias-state-error-primary);
+}

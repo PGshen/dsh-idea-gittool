@@ -81,3 +81,14 @@
 | `git stash create` 不改工作区，但「新增后在工作区删除」（AD）的文件在它的工作区树里仍然存在——不能用它代表工作区，改为逐文件 `hash-object -w` | ✅ 2026-10-28 | B3c 修复过程 |
 | `update-index --index-info` 写入 `<mode> <oid> <stage>\t<path>` 可直接制造 1/2/3 阶段冲突；mode 为 0 的行删除该路径的条目 | ✅ 2026-10-28 | `shelf.test.ts` 三方合并 |
 | `checkout-index -f -- <path>` 按索引条目写回工作区（字节精确，含可执行位与符号链接） | ✅ 2026-10-28 | `shelf.test.ts` 非 UTF-8 / 二进制 |
+
+## 7. Worktree 与远程（B3d，2026-10-28，git 2.50.1）
+
+| 结论 | 状态 | 证据 |
+|---|---|---|
+| `git worktree list --porcelain` 第一条是主工作区，其余按 `.git/worktrees/` 下的目录名排序，不是创建顺序；目录被删后带 `prunable` 行 | ✅ 2026-10-28 | `test/host/remotes-worktrees.test.ts` |
+| `git worktree add` 遇到分支已在别处签出时失败（`is already used by worktree`）；`worktree remove` 遇到有改动或未跟踪文件时失败，需要 `--force` | ✅ 2026-10-28 | 同上 |
+| 删除远程标签用 `push <remote> :refs/tags/<name>`；删除远程分支用 `push <remote> :refs/heads/<b>`，成功后本地 `refs/remotes/<remote>/<b>` 一并消失 | ✅ 2026-10-28 | 同上 + L4 |
+| `branch --set-upstream-to=refs/remotes/<remote>/<b> <branch>`（用完整 ref 避免与同名本地分支歧义）要求远程跟踪 ref 存在；`branch --unset-upstream <branch>` 取消 | ✅ 2026-10-28 | 同上 |
+| `remote get-url` 返回带凭据的原始 URL；脱敏在 Host 做，整段 userinfo 换成 `***`（`https://***@host/...`） | ✅ 2026-10-28 | 同上 |
+| 仓库内新建的 worktree 在主工作区显示为未跟踪目录，`git add` 会提示 `adding embedded git repository` 并暂存 gitlink；用 `rev-parse --git-path info/exclude` 找到本地 exclude 文件写入 `/<路径>/` 即可隐藏 | ✅ 2026-10-28 | B3d 终审 I2 + `remotes-worktrees.test.ts` |

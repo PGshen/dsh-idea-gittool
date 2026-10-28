@@ -3,6 +3,8 @@
 // 形状错误都收敛成结构化的 GitError，调用方不需要 try/catch。
 import { RPC_CHANNEL, isRpcResult } from '../shared/protocol.ts'
 import type {
+  RemoteListValue,
+  WorktreeListValue,
   RpcRequest,
   ShelfListValue,
   ShelfPatchRequest,
@@ -131,6 +133,17 @@ export interface GitClient {
   shelfCreate: WriteMethod<'shelfCreate'>
   shelfApply: WriteMethod<'shelfApply'>
   shelfDrop: WriteMethod<'shelfDrop'>
+  // B3d
+  remoteList(request: RpcRequest, signal?: AbortSignal): Promise<RpcResult<RemoteListValue>>
+  remoteEdit: WriteMethod<'remoteEdit'>
+  tagPush: WriteMethod<'tagPush'>
+  tagDelete: WriteMethod<'tagDelete'>
+  remoteBranchDelete: WriteMethod<'remoteBranchDelete'>
+  setUpstream: WriteMethod<'setUpstream'>
+  worktreeList(request: RpcRequest, signal?: AbortSignal): Promise<RpcResult<WorktreeListValue>>
+  worktreeAdd: WriteMethod<'worktreeAdd'>
+  worktreeRemove: WriteMethod<'worktreeRemove'>
+  worktreePrune: WriteMethod<'worktreePrune'>
 }
 
 /** Compile-time check: GitClient covers every write endpoint with the protocol's types. */
@@ -249,5 +262,15 @@ export function createGitClient(_ctx: unknown): GitClient {
     shelfCreate: write('shelfCreate'),
     shelfApply: write('shelfApply'),
     shelfDrop: write('shelfDrop'),
+    remoteList: (request, signal) => call<RemoteListValue>('remoteList', request, signal),
+    remoteEdit: write('remoteEdit'),
+    tagPush: write('tagPush'),
+    tagDelete: write('tagDelete'),
+    remoteBranchDelete: write('remoteBranchDelete'),
+    setUpstream: write('setUpstream'),
+    worktreeList: (request, signal) => call<WorktreeListValue>('worktreeList', request, signal),
+    worktreeAdd: write('worktreeAdd'),
+    worktreeRemove: write('worktreeRemove'),
+    worktreePrune: write('worktreePrune'),
   }
 }

@@ -65,6 +65,13 @@ export type WorkbenchOverlay =
   | { kind: 'applyPatch' }
   /** B3c: shelve the given changed paths under a name. */
   | { kind: 'shelve'; paths: string[] }
+  /** B3d: tag push / delete, remote branch delete, upstream, new worktree (sheets); remotes and worktrees (pages). */
+  | { kind: 'tagSheet'; mode: 'push' | 'delete'; name: string }
+  | { kind: 'remoteBranchDelete'; ref: string }
+  | { kind: 'upstreamSheet'; branch: string; upstream?: string }
+  | { kind: 'worktreeAdd'; branch?: string }
+  | { kind: 'remotes' }
+  | { kind: 'worktrees' }
 
 /** An overlay "← back" can return to; one level only, so it never carries its own `back`. */
 export type BackOverlay = DistributiveOmit<WorkbenchOverlay, 'back'>
@@ -116,6 +123,12 @@ export const OVERLAY_LEVEL: Record<WorkbenchOverlayKind, 1 | 2> = {
   patch: 1,
   applyPatch: 1,
   shelve: 2,
+  tagSheet: 2,
+  remoteBranchDelete: 2,
+  upstreamSheet: 2,
+  worktreeAdd: 2,
+  remotes: 1,
+  worktrees: 1,
 }
 
 export interface OverlayRoute {

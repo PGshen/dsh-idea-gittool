@@ -73,6 +73,10 @@
   align-items: center;
 }
 
+.fieldHint {
+  grid-column: 2;
+}
+
 .label {
   color: var(--dsw-alias-label-secondary);
   font-size: 12px;

@@ -7,17 +7,24 @@ export const MERGE_WINDOW_DEFAULT = true
 /** localStorage key that overrides {@link MERGE_WINDOW_DEFAULT}. */
 export const MERGE_WINDOW_STORAGE_KEY = 'dsh-git.feature.mergeWindow'
 
-/** Interactive rebase and its log quick actions (B3a); off until owner acceptance. */
-export const INTERACTIVE_REBASE_DEFAULT = false
+/** Interactive rebase and its log quick actions (B3a); on since owner acceptance (2026-10-28). */
+export const INTERACTIVE_REBASE_DEFAULT = true
 
 /** localStorage key that overrides {@link INTERACTIVE_REBASE_DEFAULT}. */
 export const INTERACTIVE_REBASE_STORAGE_KEY = 'dsh-git.feature.interactiveRebase'
 
-export type FeatureName = 'mergeWindow' | 'interactiveRebase'
+/** Worktree page and "check out in a new worktree" (B3d); on since owner acceptance (2026-10-28). */
+export const WORKTREES_DEFAULT = true
+
+/** localStorage key that overrides {@link WORKTREES_DEFAULT}. */
+export const WORKTREES_STORAGE_KEY = 'dsh-git.feature.worktrees'
+
+export type FeatureName = 'mergeWindow' | 'interactiveRebase' | 'worktrees'
 
 const FEATURES: Readonly<Record<FeatureName, { defaultValue: boolean; storageKey: string }>> = {
   mergeWindow: { defaultValue: MERGE_WINDOW_DEFAULT, storageKey: MERGE_WINDOW_STORAGE_KEY },
   interactiveRebase: { defaultValue: INTERACTIVE_REBASE_DEFAULT, storageKey: INTERACTIVE_REBASE_STORAGE_KEY },
+  worktrees: { defaultValue: WORKTREES_DEFAULT, storageKey: WORKTREES_STORAGE_KEY },
 }
 
 function readOverride(key: string): string | null {

@@ -364,3 +364,56 @@ describe('B2 branch compare actions', () => {
     ])
   })
 })
+
+describe('B3d branch menu items', () => {
+  const b3d = (worktrees = false): Partial<BranchActionContext> => ({ remotes: { worktrees } })
+
+  it('adds push / delete for tags, delete for remote branches, upstream for local branches', () => {
+    expect(ids(branchActions(tag, ctx(b3d())))).toEqual(expect.arrayContaining(['pushTag', 'deleteTag']))
+    expect(branchActions(tag, ctx(b3d())).find(item => item.id === 'deleteTag')?.danger).toBe(true)
+    expect(ids(branchActions(remote, ctx(b3d())))).toContain('deleteRemoteBranch')
+    expect(ids(branchActions(login, ctx(b3d())))).toEqual(expect.arrayContaining(['setUpstream', 'unsetUpstream']))
+    expect(ids(branchActions(login, ctx()))).not.toContain('setUpstream')
+  })
+
+  it('explains unset upstream without one, and blocks writes when read-only', () => {
+    const items = branchActions(login, ctx(b3d()))
+    expect(items.find(item => item.id === 'unsetUpstream')?.disabledReason).toEqual(text('branch.disabled.noUpstream'))
+    expect(branchActions(ui, ctx(b3d())).find(item => item.id === 'unsetUpstream')?.disabledReason).toBeUndefined()
+    expect(branchActions(tag, ctx({ ...b3d(), writable: false })).find(item => item.id === 'pushTag')?.disabledReason).toBeDefined()
+  })
+
+  it('offers "check out in a new worktree" only with the flag, never for the current branch', () => {
+    expect(ids(branchActions(login, ctx(b3d(false))))).not.toContain('checkoutInWorktree')
+    expect(branchActions(login, ctx(b3d(true))).find(item => item.id === 'checkoutInWorktree')?.disabledReason).toBeUndefined()
+    expect(branchActions(main, ctx(b3d(true))).find(item => item.id === 'checkoutInWorktree')?.disabledReason).toEqual(text('branch.disabled.isCurrent'))
+  })
+
+  it('opens the right sheet for each item and unsets the upstream directly', async () => {
+    const opened: WorkbenchOverlay[] = []
+    const run = vi.fn(async () => ({ kind: 'done' as const, value: {} }))
+    const runner = createBranchActionRunner({
+      actions: { run } as never,
+      openOverlay: (overlay) => { opened.push(overlay) },
+      openPush: () => {},
+      copy: () => {},
+      showInLog: () => {},
+      filterLog: () => {},
+      onOutcome: () => {},
+    })
+    await runner.run('pushTag', tag, null)
+    await runner.run('deleteTag', tag, null)
+    await runner.run('deleteRemoteBranch', remote, null)
+    await runner.run('setUpstream', ui, null)
+    await runner.run('checkoutInWorktree', login, null)
+    expect(opened).toEqual([
+      { kind: 'tagSheet', mode: 'push', name: tag.name },
+      { kind: 'tagSheet', mode: 'delete', name: tag.name },
+      { kind: 'remoteBranchDelete', ref: remote.name },
+      { kind: 'upstreamSheet', branch: ui.name, upstream: ui.upstream },
+      { kind: 'worktreeAdd', branch: login.name },
+    ])
+    await runner.run('unsetUpstream', ui, null)
+    expect(run).toHaveBeenCalledWith('setUpstream', { branch: ui.name, upstream: null }, { trigger: null })
+  })
+})

@@ -1,6 +1,7 @@
 // 日志表格的一行（设计 §8.1.3）：图 ｜ 主题 + refs ｜ 作者 ｜ 日期 ｜ 短哈希。
 // 行是绝对定位的虚拟行，只负责渲染；选择与键盘由 LogTable / store 处理。
-import type { CSSProperties, MouseEvent, ReactNode } from 'react'
+import { memo } from 'react'
+import type { MouseEvent, ReactNode } from 'react'
 import { GraphCell } from '../graph/GraphCell.tsx'
 import { COMPACT_ROW_HEIGHT, ROW_HEIGHT } from '../graph/layout.ts'
 import { useT } from '../i18n.tsx'
@@ -27,7 +28,8 @@ export interface LogRowProps {
   /** 该提交是 HEAD（空心节点）。 */
   head: boolean
   currentBranch: string | null
-  style?: CSSProperties
+  /** Virtual-list offset in px (`translateY`); a number so memoized rows compare equal (B4c T6). */
+  offset?: number
   onClick?(index: number, modifiers: LogRowModifiers): void
   onDoubleClick?(index: number): void
   /** 右键（A3 T8）：由 LogTable 接成提交右键菜单。 */
@@ -56,7 +58,11 @@ export function rowModifiers(event: Pick<MouseEvent, 'shiftKey' | 'metaKey' | 'c
   return { shift: event.shiftKey, toggle: event.metaKey || event.ctrlKey }
 }
 
-export function LogRow({
+/**
+ * Memoized (B4c T6): a scroll step or a selection change re-renders only the rows whose props
+ * changed. LogTable passes stable callbacks for this reason.
+ */
+export const LogRow = memo(function LogRow({
   data,
   index,
   selected,
@@ -64,7 +70,7 @@ export function LogRow({
   active,
   head,
   currentBranch,
-  style,
+  offset,
   onClick,
   onDoubleClick,
   onContextMenu,
@@ -87,7 +93,7 @@ export function LogRow({
       role="row"
       id={`git-log-row-${commit.sha}`}
       className={classes}
-      style={style}
+      style={offset === undefined ? undefined : { transform: `translateY(${String(offset)}px)` }}
       aria-rowindex={index + 1}
       aria-selected={selected}
       data-index={index}
@@ -112,4 +118,4 @@ export function LogRow({
       {compact ? null : <span role="gridcell" className={css.hash}>{commit.shortSha}</span>}
     </div>
   )
-}
+})

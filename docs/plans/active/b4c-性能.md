@@ -158,6 +158,9 @@ export function createBenchRepo(dir: string, options?: { commits?: number /* 10_
 - 2026-10-28 T4 — Ruling: 提速只做「测试直接用真实 git 二进制」一项，不加 `vitest.config.ts`、不改 pool/并发、不建模板仓库 — 基线的 480s 里 CPU 只用了 238s，瓶颈是每次 spawn 经 xcrun 多付约 40ms；改掉之后测试段 23s、全量 33s，已远低于 150s 目标，其余手段收益小且有风险 — 若错：在没有 xcrun 的机器（Linux）上本来就不慢，收益只在 macOS。
 - 2026-10-28 T4 — Ruling: `GIT_BINARY` 在模块加载时用 `git --exec-path` 解析一次，找不到就退回 `git`；涉及「spawn 的程序是 git」的 6 处断言改为比较 `GIT_BINARY` — 断言的意图是「执行器把解析出的程序放在 argv[0]」，与程序名无关 — 若错：无。
 - 2026-10-28 T5 — Ruling: TD-16 的 watch 用例在 T4 之后的负载测试（12 核满载 ×3）里没有复现失败，仍按计划把 `until` 从「最多 200 次 × 10ms」改为「10s 截止」并给文件加 `testTimeout: 30_000`，没有先拿到 RED — 原失败机制（固定 2s 预算）从代码上就能看出，复现依赖 T4 之前的慢 spawn — 若错：无行为风险，只是多了一个更宽的等待上限。
+- 2026-10-28 T6 — Ruling: AC4 未达标（中位 5.4ms > 2ms、最大 30ms > 18ms）属于 T2 意义上的「超标项」，在本计划内修：`LogRow` 用 `memo`，`LogTable` 通过 ref 提供身份不变的点击/双击/右键回调，位移从 `style` 对象改为数字 `offset` — 根因是每步滚动都重渲染全部约 49 行（含提交图 SVG）；DOM 测试用计数的 `GraphCell` 替身证明选中变化只重渲染 ≤2 行、父组件无关重渲染 0 行 — 若错：回调读的是 ref 里的最新 props，若某处依赖「回调变化触发行重渲染」会失效（目前行内回调只转发 index，无此依赖）。
+- 2026-10-28 T6 — Ruling: 没有右键菜单配置时，行仍拿到一个稳定的 `onContextMenu`，但它直接返回、不 `preventDefault`，浏览器自己的右键菜单照常出现，行为与之前「不传 onContextMenu」一致 — 若错：无。
+- 2026-10-28 T6 — 发现：A1 的 AC3 数据（每步中位 0.6ms）很可能没测到真实滚动。本次 harness 第一版按 A1 的方式找滚动容器（grid 的父元素），该元素 `scrollHeight == clientHeight`，滚动没有发生；真正的滚动容器是 `role="grid"` 元素本身。harness 现在每一步都校验「渲染出的行覆盖当前滚动位置」（`staleSteps` 必须为 0），并用 `MessageChannel` 让出事件循环（嵌套 `setTimeout(0)` 有 4ms 下限，会把测量值钉在 4.6ms）。
 - 2026-10-28 T1 — Ruling: 本计划各任务的关口先用「针对性测试 + lint/typecheck/layers」，全量 `make check` 放在 T4（提速）之后跑 — 基线全量 8 分钟且有 8 个负载超时，在 T4 解决之前每任务跑全量既慢又不会更可信；负责人本次会话开头也要求先跳过 — 若错：T2/T3 的回归要到 T4 后才被全量发现，届时回退定位成本略高。
 
 ## 意外与发现
@@ -235,3 +238,14 @@ export function createBenchRepo(dir: string, options?: { commits?: number /* 10_
 
 - RED：12 个 `yes` 进程占满 CPU 时，`layout.test.ts`「2000 branchy rows < 50ms」3 次中 2 次失败（51.998ms、61.633ms）；watch 用例 3 次均通过。
 - GREEN：阈值改 200ms、`until` 改 10s 截止后，同样负载下 3 次 49/49 通过；6 个 `yes` 进程负载下全量 `make check` 3 次：34.98s / 35.39s / 35.57s，均 2242/2242 通过（AC7）。
+
+### T6 日志滚动渲染（AC4，2026-10-28，`pnpm bench:client`，内置浏览器前台可见页，2000 行、300 步、每步约 6.6 行）
+
+| | 中位 ms | p95 ms | 最大 ms | 行 DOM 最多 | 未跟上的步数 |
+|---|---|---|---|---|---|
+| 修复前（标准） | 5.4 | 7.9 | 30.1 | 49 | 0 |
+| 修复前（紧凑） | 4.4 | 6.5 | 22.0 | 51 | 0 |
+| 修复后（标准，两轮） | 0.4 / 0.4 | 0.7 / 0.6 | 2.5 / 1.9 | 50 | 0 |
+| 修复后（紧凑，两轮） | 0.4 / 0.4 | 0.6 / 0.6 | 1.5 / 1.6 | 52 | 0 |
+
+每步计时 = 设 `scrollTop` 并派发 scroll → 一次 `MessageChannel` 让出 → 强制布局。DOM 测试 `log-row-memo.dom.test.tsx` 先 RED（选中变化与无关重渲染都重渲染 11 行），实现后 GREEN；`vitest run test/client` 96 个文件 1504 个用例全绿。AC4 达成。

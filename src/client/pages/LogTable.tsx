@@ -1,6 +1,6 @@
 // 提交图表格（设计 §8.1.3）：@tanstack/react-virtual 虚拟化，26px 行高（紧凑 24px），接近底部自动加载下一页。
 // 键盘交给 log-store.handleKey（§14.1），这里只做事件翻译、preventDefault 与滚动跟随。
-import { useEffect, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import type { KeyboardEvent, MouseEvent, ReactNode, Ref } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import type { FocusTarget } from '../focus.ts'
@@ -133,6 +133,21 @@ export function LogTable({
   const selected = new Set(selection)
   const multi = selection.length > 1
   const activeSha = rows[activeIndex]?.commit.sha
+  // B4c T6: LogRow is memoized, so its callbacks must keep their identity across renders; they read
+  // the latest props through this ref.
+  const latest = useRef({ onRowClick, onRowOpen, onRowContextMenu })
+  latest.current = { onRowClick, onRowOpen, onRowContextMenu }
+  const rowHandlers = useMemo(() => ({
+    onClick: (index: number, modifiers: LogRowModifiers): void => { latest.current.onRowClick(index, modifiers) },
+    onDoubleClick: (index: number): void => { latest.current.onRowOpen(index) },
+    onContextMenu: (index: number, mouse: MouseEvent): void => {
+      const open = latest.current.onRowContextMenu
+      // Without a menu the browser's own context menu stays (as before B4c).
+      if (open === undefined) return
+      mouse.preventDefault()
+      open({ index, x: mouse.clientX, y: mouse.clientY, trigger: scrollRef.current })
+    },
+  }), [])
 
   useEffect(() => {
     if (shouldLoadMore(lastRendered, rows.length)) onNearEnd()
@@ -201,15 +216,10 @@ export function LogTable({
               currentBranch={currentBranch}
               compact={compact}
               dateFormat={dateFormat}
-              style={{ transform: `translateY(${item.start}px)` }}
-              onClick={onRowClick}
-              onDoubleClick={onRowOpen}
-              {...(onRowContextMenu === undefined ? {} : {
-                onContextMenu: (index: number, mouse: MouseEvent) => {
-                  mouse.preventDefault()
-                  onRowContextMenu({ index, x: mouse.clientX, y: mouse.clientY, trigger: scrollRef.current })
-                },
-              })}
+              offset={item.start}
+              onClick={rowHandlers.onClick}
+              onDoubleClick={rowHandlers.onDoubleClick}
+              onContextMenu={rowHandlers.onContextMenu}
             />
           )
         })}

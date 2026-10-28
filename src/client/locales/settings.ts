@@ -32,7 +32,6 @@ export const zhSettings = {
   'blameRenderer.title': 'Git Blame',
   'blameRenderer.outsideRepo': '这个文件不在 Git 仓库中，显示原文。',
   'blameRenderer.untracked': '这个文件还没有被 Git 跟踪，显示原文。',
-  'blameRenderer.failed': '无法读取 Blame（{message}），显示原文。',
 }
 
 export const enSettings = {
@@ -67,5 +66,4 @@ export const enSettings = {
   'blameRenderer.title': 'Git Blame',
   'blameRenderer.outsideRepo': 'This file is not in a Git repository; showing the text.',
   'blameRenderer.untracked': 'This file is not tracked by Git yet; showing the text.',
-  'blameRenderer.failed': 'Could not read blame ({message}); showing the text.',
 } satisfies Record<keyof typeof zhSettings, string>

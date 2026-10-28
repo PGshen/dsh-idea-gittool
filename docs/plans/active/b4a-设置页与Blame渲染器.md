@@ -123,7 +123,7 @@ export function useSettings(): WorkbenchSettings                         // useS
 - **完成标准**：AC5–AC7 有单测。
 - **验证命令**：`make check`
 
-### T5：Git Blame 渲染器（待开始）
+### T5：Git Blame 渲染器（完成）
 
 - **目标**：设置开启时注册「Git Blame」文档渲染器，关闭时注销。
 - **涉及文件**：`src/client/blame-renderer.tsx`（新：定义 + 正文）、`src/client/index.ts`（可选注入 `documentPreviews`；订阅设置驱动注册/注销）、`docs/references/dsh-integration-feasibility.md`（新增一节：注册表排序、`DocumentPreviewProps` 字段、`resourceAddress` → 绝对路径的换算、未装文档预览插件时的表现）、`test/client/blame-renderer.test.tsx`（新）。
@@ -150,13 +150,15 @@ export function useSettings(): WorkbenchSettings                         // useS
 - 2026-10-28 — T2 — `SettingsSheet`（底部浮层，复用 `SheetFrame`）+ `settingsPatchFor`；仓库栏 `⋯`「设置…」；浮层种类 `settings`（Level 2）；文案分区 `locales/settings.ts`；新样式纳入 CSS 变量守卫
 - 2026-10-28 — T3 — `GitBody` 自动刷新/间隔读写设置（状态栏开关写设置，刷新页面后保持）；`log-store.setPageSize`；`formatLogDate`/`commitTimeLabels` 支持相对时间；紧凑模式（`COMPACT_ROW_HEIGHT = 24`，隐藏作者/哈希，虚拟列表在行高变化时重新测量）
 - 2026-10-28 — T4 — `afterCommitPage`（跳到日志页，原有的刷新后 `jumpTo` 选中新提交）；`shouldAutoOpenConflicts`（跟踪器照常记录操作，设置只决定是否打开）；合并 store `autoApplyNonConflicting`（无草稿、未解决的文件首次就绪时应用一次，可撤销）
+- 2026-10-28 — T5 — `blame-renderer.tsx`：定义（`extension` 档、`CODE_HIGHLIGHT_EXTENSIONS`、`text-pages`）、`bindBlameRenderer`（随设置注册/注销，重复 id 不抛）、`blameRendererState` 与原文回退；入口用 `ctx.inject(['documentPreviews'], …)` 作可选依赖；references §16 补正文 props 与可选服务；`pnpm build && pnpm smoke` 通过
 
 ## 下一步
 
-- T5：先读 DSH `ui-sidebar-documentpreview/src/client/document/contract.ts` 与 cordis 可选注入写法，写进 references §16；再写 `test/client/blame-renderer.test.tsx`（假注册表：开/关/再开、缺失不抛、三种正文状态）。
+- T6：按 `docs/runbooks/verification.md` 起隔离 DSH 做 L4 走查 AC1–AC9（截图 `.evidence/b4a/`），补 runbook「设置与 Blame 渲染器实机验证」、ARCHITECTURE、QUALITY、TODO；然后整分支评审。
 
 ## 决策记录
 
+- 2026-10-28 — T5 — Blame 读取失败不另做「显示原文」回退：复用 B2 Blame 视图自带的错误态与重试（去掉了计划里的 `blameRenderer.failed` 文案）。正文按「读完的文本长度」作 key，文件在磁盘上变化、预览重读后 Blame 重新加载。
 - 2026-10-28 — T4 — 自动应用非冲突更改放在合并 store 的 `open` 里（计划写控制器）：只有 store 知道文件是否带草稿/已解决，且应用作为一次可撤销的模型动作进历史；控制器不变。
 - 2026-10-28 — T3 — 每页条数变化不重建日志 store（计划原写法），改为新增 `setPageSize`：重建会丢掉筛选；`setPageSize` 等同刷新，保留筛选与选中。PageUp/PageDown 步长固定为创建时的条数，不随设置变化。
 - 2026-10-28 — T2 — 刷新间隔用 1–10 秒的下拉而不是数字输入：不需要失焦钳制、读屏直接读出可选值；其他多选项同样用下拉（计划写「分段按钮或单选组」，下拉在窄面板下更省空间）。

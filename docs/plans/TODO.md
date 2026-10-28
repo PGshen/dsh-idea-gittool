@@ -43,6 +43,7 @@
 | P2 | B2 终审 Minor（10 条）：Blame 未提交行双击应显示 HEAD→工作区（含已暂存）；修订版 Blame「文件不存在」文案区分修订并给「文件历史」按钮；文件历史第 2 页起合并条目路径退回新名（游标带当前路径）；文档头部 bootstrap 未到时误报「不在仓库」；`openTab` 失败后意图残留在队列；分支比较传 `entry.ref` 而非 `entry.name`（同名标签）；被该提交删除的文件禁用「与工作区比较」；窄头部 `⋯` 点动作/外部/Esc 收起；`git.blame` 页无返回时不吞 Esc；GitWorkbench 卸载时 `historyStore.close()` | B2 终审，2026-10-27 | 细节见 [b2 计划](completed/b2-历史与Blame.md)「决策记录」终审条目 |
 | P2 | B4a 终审 Minor（8 条）：Blame 渲染器正文按读完的文本长度作 key（同长度改动可能不刷新、多页文件 blame 请求两次），应改用 `useResource(...).value?.version`；bootstrap 失败或无 `absolutePath` 时正文空白；定义未声明 `wrap: true` 但回退原文读 `wrap`；草稿存在但不可用时不自动应用、Host 判草稿过期时却会；PageUp/PageDown 步长取创建时条数，改设置后与刷新页面后不一致（应固定常量或视口行数）；没打开过日志也会因改条数立即拉一次日志；改刷新间隔立即触发一次刷新、`GitBody` 订阅全部设置；`settings.ts` 读存储中途失败时静默回默认且不通知、写失败后不再写回存储 | B4a 终审，2026-10-28 | 细节见 [b4a 计划](completed/b4a-设置页与Blame渲染器.md)「决策记录」评审条目 |
 | P2 | B4b 终审 Minor（6 条）：搜索中对分组头/目录按 ← 会切换被搜索强制展开的存储折叠状态；分支抽屉与推送被拒页滑入方向变为竖向；提交 ▾ 菜单开着时开关被禁用、Esc 还焦失败；菜单内 Tab 的还焦与 APG 不同；`tabbablesOf` 不认 `contenteditable`/`display:none`；reduced-motion 检查不逐个动画核对 | B4b 终审，2026-10-28 | 细节见 [b4b 计划](completed/b4b-a11y与样式变量.md)「决策记录」终审条目 |
+| P2 | 「提交后跳到日志」在 10k 仓库上偶发提示「已加载的 100 行中未找到「<新提交>」」，而新提交其实在首行：疑为提交使 version 前进、触发第二次日志重载，`logStore.refresh()` 的结果被丢弃后 `jumpTo` 先执行 | B4c T6 L4，2026-10-28 | `src/client/pages/GitWorkbench.tsx:503`；B4c 未改日志 store，非本计划回归（B4a L4 在小仓库上通过） |
 
 ## 已完成
 

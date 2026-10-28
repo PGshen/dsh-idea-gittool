@@ -121,7 +121,7 @@ export function createBenchRepo(dir: string, options?: { commits?: number /* 10_
 - **完成标准**：AC7。
 - **验证命令**：`make check` ×3
 
-### T6：客户端渲染与内存复测（L4）（待开始）
+### T6：客户端渲染与内存复测（L4）（完成）
 
 - **目标**：AC4、AC5、AC3 的 L4 部分。
 - **涉及文件**：`scripts/bench-client/`（A1 harness 整理入库：真实 `LogPage` + 合成 2000 行）、`docs/runbooks/verification.md`。
@@ -140,7 +140,7 @@ export function createBenchRepo(dir: string, options?: { commits?: number /* 10_
 
 ## 下一步
 
-- T6：把 A1 的日志滚动 harness（`.evidence/a1/harness/`）整理进 `scripts/bench-client/`，测 2000 行逐步渲染开销与行 DOM 数（含紧凑模式）；然后在隔离 DSH（临时 HOME、3081/3082）里做 L4：合并窗口按需加载 `client.merge.js`（Network 面板看请求与 rev）、confine 下的一次提交（`directBinary` 指向 Xcode 内的 git）、打开 Git tab 首屏时间、2000 行日志与 5 次大 diff 后的 JS 堆。
+- T7：更新 QUALITY（`build.mjs` 体积/chunk、Host 性能已验证、日志 memo）；生成整分支评审包，派独立评审者（最强模型）做整分支评审，按严重度处理发现；然后请负责人验收（演示 `pnpm bench`、`pnpm smoke`、`make check` 时长、合并窗口按需加载）。
 
 ## 决策记录
 
@@ -249,3 +249,16 @@ export function createBenchRepo(dir: string, options?: { commits?: number /* 10_
 | 修复后（紧凑，两轮） | 0.4 / 0.4 | 0.6 / 0.6 | 1.5 / 1.6 | 52 | 0 |
 
 每步计时 = 设 `scrollTop` 并派发 scroll → 一次 `MessageChannel` 让出 → 强制布局。DOM 测试 `log-row-memo.dom.test.tsx` 先 RED（选中变化与无关重渲染都重渲染 11 行），实现后 GREEN；`vitest run test/client` 96 个文件 1504 个用例全绿。AC4 达成。
+
+### T6 L4（2026-10-28，隔离 DSH `0.2.1-rc.2-687f282`，3082，临时 HOME，插件 link 到 b4c worktree，工作区为 10k 合成仓库；截图 `.evidence/b4c/01–03`）
+
+| 项 | 结果 | 结论 |
+|---|---|---|
+| Git tab 在 10k 仓库上正常显示（日志首页、25 个修改、状态栏 Git 2.50.1） | `01-git-tab-10k.jpg` | 通过 |
+| 合并窗口打开前不请求 chunk；打开后 1 次 `/plugins/dsh-idea-gittool/client.merge.js?rev=f3c3d143c151`（传输 107,040 B，解码 283,523 B，6ms）；三栏 CodeMirror 挂载、宿主全屏；gutter「采用 main」生效；返回（丢弃）后再打开不再请求 chunk、编辑器同步挂载；控制台无错误 | `02-merge-window-chunk.jpg` | 通过（AC3 L4） |
+| chunk 加载失败的提示与重试 | 移走 `lib/client.merge.js` 后刷新页面，chunk 仍 200（带 rev 的 URL 被缓存） | **未在 L4 验证**：由 `merge-window.test.tsx`（提示与重试按钮）与 `merge-editor-loader.test.ts`（失败后可重试）覆盖 |
+| confine 下的写命令（`directBinary` 指向 `/Applications/Xcode.app/.../libexec/git-core/git`）：提交页勾选 20 个文件提交 | 提交「b4c L4: commit under confine」出现在日志首行 | 通过 |
+| bootstrap 轮询（浏览器端往返，含 HTTP 与鉴权） | 首个 326ms（含版本/`--exec-path` 探测与 watch 建立），之后 39–50ms | 通过（Host 侧稳态 15ms 见 T2） |
+| 打开 Git tab（已有缓存）：Cmd+Shift+G → 仓库栏 / 第一页日志 | 70 / 77ms；67 / 74ms | 通过（≤150 / ≤500ms，AC5） |
+| 内存（整页 `usedJSHeapSize`，含 DSH 自身）：Git 标签关闭基线 46MB；加载满 2000 行 50MB（行 DOM 47 个）；5 次打开 >256 KiB diff（「文件过大，仅显示前 2473 行（上限 256KiB）」，DOM 约 43 行）打开时 47MB、关闭后 45MB | `03-huge-diff-truncated.jpg` | 通过（面板增量为个位数 MB，远低于 80MB；关闭后回落，AC5） |
+| 发现 | 「提交后跳到日志」提示「已加载的 100 行中未找到「6669bc8…」」，新提交其实在首行 | 记入 TODO（P2），非本计划改动引起 |

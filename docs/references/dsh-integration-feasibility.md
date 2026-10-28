@@ -1078,3 +1078,8 @@ B2 L4 另外两条宿主事实（2026-10-27，3081 实测）：
 |---|---|---|
 | 文档预览头部的 slot 内容外面包着一层 `display: contents` 的 `div`（`clientWidth` 为 0），实际排版的是宿主的 `…_header`（flex）。量「头部宽度」要跳过 `contents` 祖先 | ✅ 实测 | DOM：`.git-document-actions` → `div(display: contents, w=0)` → `I8TdXa_header(flex, w=647)` |
 | 菜单材质 `--dsw-specific-menu` 是半透明填充，必须配 `backdrop-filter: var(--dsw-menu-backdrop-filter)` 才不透出下层文字（提交菜单就是这样配的） | ✅ 实测 | Blame hover card 补上前后的截图 `.evidence/b2/08-blame-hover-card.jpg`、`23-hover-card-solid.jpg` |
+
+## 16. B4a 设置页与 Blame 渲染器（2026-10-28，DSH checkout `687f282e86`，源码查证）
+
+- **日期格式偏好**：DSH 客户端没有公开给插件的日期/时间格式偏好；各包直接用 `Intl.DateTimeFormat(locale, …)`，locale 来自 `t('time.locale')` 或语言设置（例：`ui-schedule/src/client/schedule-format.ts`）。因此设计 §13「日期格式：跟随 DSH」落为插件自己的「绝对 / 相对」两档（[b4a 计划](../plans/active/b4a-设置页与Blame渲染器.md) 待确认 3）。
+- **文档预览注册表排序**：`ui-sidebar-documentpreview/src/client/document/registry.ts` `matchingDocumentPreviews` 按「`priority !== 'builtin'`（含缺省的 `extension`）在前 → 匹配后缀更长 → 注册顺序」排序；工具栏列出全部匹配实现并按 tab 记住选择。插件以 `extension` 档注册即成为该后缀的默认查看器；内置代码查看器是 `builtin` 档（`code/index.ts`，扩展名表 `CODE_HIGHLIGHT_EXTENSIONS`）。重复 `id` 注册会抛错。

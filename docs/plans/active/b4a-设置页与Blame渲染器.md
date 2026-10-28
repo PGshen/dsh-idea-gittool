@@ -9,11 +9,11 @@
 
 | 项 | 值 |
 |---|---|
-| 状态 | 草稿 |
+| 状态 | 执行中 |
 | 里程碑 | B4 打磨（第 1 份，共 4 份：B4a 设置页 + Blame 渲染器、B4b a11y 与样式变量、B4c 性能、B4d 跨平台/安装升级/文档；拆分 2026-10-28 负责人同意） |
 | 设计依据 | [产品设计 v0.2](../../design/2026-10-25-产品设计-v0.2.md) §13（设置）、§9.7（可选「Git Blame 渲染器」）、§10.1（自动打开冲突列表「设置可关，默认开」）、§16（轮询 3s）；[B1 计划](../completed/b1-三栏合并.md)「不包含」（自动打开冲突列表/自动应用非冲突更改的开关）；[B2 计划](../completed/b2-历史与Blame.md) 待确认 3（Blame 渲染器移到 B4，默认关）；[B3b 计划](../completed/b3b-Diff增强与提交菜单.md)（Diff 模式已持久化到 `dsh-idea-git.settings.v1`） |
 | 分支 | `b4a-settings-blame-renderer`（从 main 切出） |
-| 批准记录 | — |
+| 批准记录 | 2026-10-28 负责人批准计划，待确认 1–5 按推荐；执行方式：当前会话内联执行，最后做一次整分支评审 |
 
 ## 目标
 
@@ -87,7 +87,7 @@ export function useSettings(): WorkbenchSettings                         // useS
 
 ## 任务
 
-### T1：设置模型（待开始）
+### T1：设置模型（完成）
 
 - **目标**：完整的设置读写、校验与订阅，旧值兼容。
 - **涉及文件**：`src/client/settings.ts`、`test/client/settings.test.ts`（新）；核实 DSH 是否有日期格式偏好，结论写进 `docs/references/dsh-integration-feasibility.md`。
@@ -146,11 +146,11 @@ export function useSettings(): WorkbenchSettings                         // useS
 
 ## 进度
 
-- 无
+- 2026-10-28 — T1 — `settings.ts` 扩展为完整 `WorkbenchSettings`（逐字段校验、间隔钳制、未知键保留、写失败退回内存、同页订阅 + 跨标签页 `storage` 事件、`useSettings`）；DSH 无日期格式偏好，写进 references §16
 
 ## 下一步
 
-- 等负责人批准计划（含「待负责人确认」1–5 与执行方式）后，从 `main` 切出 `b4a-settings-blame-renderer`，从 T1 开始：先写 `test/client/settings.test.ts`。
+- T2：先写 `test/client/pages/settings-sheet.test.tsx`（`SettingsSheetView` 静态渲染、`settingsPatchFor`、仓库栏「设置…」菜单项），再实现 `SettingsSheet.tsx` 与 `locales/settings.ts`。
 
 ## 决策记录
 

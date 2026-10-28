@@ -1,10 +1,10 @@
 // 统一模式 diff 主体（设计 §9.2/§9.5）：hunk 头可折叠、旧/新行号列、+/- 标记、
 // 增删行用 --dsw-alias-file-diff-* token；行按固定行高虚拟化，只渲染可视区附近的行。
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import type { CodeHighlighter, HighlightSpan } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { KeyboardEvent } from 'react'
+import type { KeyboardEvent, WheelEvent } from 'react'
 import type { DiffHunk, DiffLine } from '../../shared/protocol.ts'
 import { changeAnchors, foldContext, pairChanges, splitRows } from '../diff/diff-views.ts'
 import type { SplitRow } from '../diff/diff-views.ts'
@@ -16,6 +16,48 @@ import css from './DiffHunks.module.css'
 export const DIFF_ROW_HEIGHT = 20
 /** 可视区上下额外渲染的行数。 */
 const OVERSCAN = 20
+
+/** Fixed widths around the code text: two line-number gutters + marker + code end padding (unified), one gutter + marker + padding (split half). */
+const UNIFIED_CHROME_PX = 48 * 2 + 16 + 12
+const SPLIT_CHROME_PX = 48 + 16 + 12
+
+/**
+ * Monospace columns a line occupies under `white-space: pre`: tabs advance to the next stop of 8,
+ * East Asian wide / fullwidth characters and emoji count as two. Used to size the scroll width
+ * without measuring rows that the virtualizer has not rendered.
+ * @param text - one diff line.
+ * @returns the column count.
+ */
+export function displayColumns(text: string): number {
+  let columns = 0
+  for (const char of text) {
+    if (char === '\t') columns += 8 - (columns % 8)
+    else columns += /[\u1100-\u115f\u2e80-\ua4cf\uac00-\ud7a3\uf900-\ufaff\ufe30-\ufe4f\uff00-\uff60\uffe0-\uffe6]|\p{Extended_Pictographic}/u.test(char) ? 2 : 1
+  }
+  return columns
+}
+
+/** How many of the widest-looking lines are measured in the real font after mount. */
+const MEASURED_LINES = 20
+
+/**
+ * The lines most likely to be the widest, tabs expanded to spaces so they measure as rendered.
+ * @param texts - every line of the diff.
+ * @param count - how many to keep.
+ * @returns up to `count` lines, widest first by {@link displayColumns}.
+ */
+export function widestLines(texts: readonly string[], count: number): string[] {
+  const expand = (text: string): string => {
+    let out = ''
+    for (const char of text) out += char === '\t' ? ' '.repeat(8 - (displayColumns(out) % 8)) : char
+    return out
+  }
+  return texts
+    .map(text => ({ text, columns: displayColumns(text) }))
+    .sort((a, b) => b.columns - a.columns)
+    .slice(0, count)
+    .map(entry => expand(entry.text))
+}
 
 export interface DiffHunkRow {
   kind: 'hunk'
@@ -230,7 +272,9 @@ function SplitHalf({ line, number, spans, words }: { line: DiffLine | undefined;
     <span className={typeClass === undefined ? css.half : `${css.half} ${typeClass}`} data-line-type={line.type}>
       <span className={css.gutter}>{number ?? ''}</span>
       <span className={css.marker}>{MARKER[line.type]}</span>
-      <LineCode text={line.text} spans={spans} words={words} />
+      <span className={css.clip} data-code-clip>
+        <LineCode text={line.text} spans={spans} words={words} />
+      </span>
     </span>
   )
 }
@@ -270,6 +314,34 @@ export function DiffHunks({
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const rows = useMemo(() => buildDiffRows(hunks, collapsed, { mode, expandedFolds }), [hunks, collapsed, mode, expandedFolds])
   const anchors = useMemo(() => anchorRows(rows, hunks), [rows, hunks])
+  const maxColumns = useMemo(() => Math.max(0, ...hunks.flatMap(hunk => hunk.lines.map(line => displayColumns(line.text)))), [hunks])
+  // Columns over-count proportional CJK glyphs, so once mounted the widest candidates are measured in the
+  // scroller's own font; the column estimate stays for server rendering and as the fallback.
+  const [measuredWidth, setMeasuredWidth] = useState<number | null>(null)
+  useEffect(() => {
+    const scroller = scrollRef.current
+    if (scroller === null) return
+    const probe = document.createElement('span')
+    probe.style.cssText = 'position:absolute;visibility:hidden;white-space:pre;left:0;top:0'
+    scroller.append(probe)
+    let widest = 0
+    for (const text of widestLines(hunks.flatMap(hunk => hunk.lines.map(line => line.text)), MEASURED_LINES)) {
+      probe.textContent = text
+      widest = Math.max(widest, probe.getBoundingClientRect().width)
+    }
+    probe.remove()
+    setMeasuredWidth(widest > 0 ? Math.ceil(widest) : null)
+  }, [hunks])
+  const codeWidth = measuredWidth === null ? `${String(maxColumns)}ch` : `${String(measuredWidth)}px`
+  // Split mode scrolls both halves together through its own bar: the rows stay put and only the
+  // code inside each half shifts by `--diff-sx`, so the line numbers never scroll away.
+  const hscrollRef = useRef<HTMLDivElement | null>(null)
+  useEffect(() => { scrollRef.current?.style.setProperty('--diff-sx', '0px') }, [mode])
+  const onHorizontalScroll = (left: number): void => { scrollRef.current?.style.setProperty('--diff-sx', `${String(left)}px`) }
+  const onWheel = (event: WheelEvent<HTMLDivElement>): void => {
+    const delta = event.deltaX !== 0 ? event.deltaX : event.shiftKey ? event.deltaY : 0
+    if (mode === 'split' && delta !== 0 && hscrollRef.current !== null) hscrollRef.current.scrollLeft += delta
+  }
 
   // 每个 hunk 作为一个片段整体高亮（保留跨行语法状态），按需计算并缓存。
   const highlightCache = useMemo(() => new Map<number, HighlightSpan[][] | undefined>(), [hunks, highlighter])
@@ -313,15 +385,23 @@ export function DiffHunks({
   return (
     <div
       ref={scrollRef}
-      className={css.scroller}
+      className={mode === 'split' ? `${css.scroller} ${css.splitScroller}` : css.scroller}
       data-diff-hunks
       data-row-count={rows.length}
       data-mode={mode}
       tabIndex={0}
       onKeyDown={onKeyDown}
+      onWheel={onWheel}
       onScroll={onScrollTopChange === undefined ? undefined : event => onScrollTopChange(event.currentTarget.scrollTop)}
     >
-      <div className={css.canvas} style={{ height: virtualizer.getTotalSize() }}>
+      <div
+        className={css.canvas}
+        style={mode === 'split'
+          ? { height: virtualizer.getTotalSize() }
+          // Rows are absolutely positioned, so the canvas cannot size itself: give it the longest line's width
+          // so every row (each at least 100% of the canvas) paints its background to the end.
+          : { height: virtualizer.getTotalSize(), minWidth: `calc(${String(UNIFIED_CHROME_PX)}px + ${codeWidth})` }}
+      >
         {virtualizer.getVirtualItems().map((item) => {
           const row = rows[item.index]
           if (row === undefined) return null
@@ -375,6 +455,14 @@ export function DiffHunks({
           )
         })}
       </div>
+      {mode === 'split'
+        ? (
+            <div ref={hscrollRef} className={css.hscroll} data-diff-hscroll onScroll={event => { onHorizontalScroll(event.currentTarget.scrollLeft) }}>
+              {/* Scroll range = longest code width minus one half's code area (half the width minus its gutter). */}
+              <div style={{ width: `calc(50% + ${codeWidth} + ${String(SPLIT_CHROME_PX)}px)`, height: 1 }} />
+            </div>
+          )
+        : null}
     </div>
   )
 }

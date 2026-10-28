@@ -2,7 +2,7 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { DiffHunks, buildDiffRows, nextAnchorRow } from '../../../src/client/pages/DiffHunks.tsx'
+import { DiffHunks, buildDiffRows, displayColumns, nextAnchorRow, widestLines } from '../../../src/client/pages/DiffHunks.tsx'
 import { DiffViewerHeader, diffContentKey } from '../../../src/client/pages/DiffViewer.tsx'
 import { DIFF_SETTINGS_KEY, readDiffMode, writeDiffMode } from '../../../src/client/settings.ts'
 import { createDiffStore, createDiffViewerController } from '../../../src/client/store/diff-store.ts'
@@ -123,5 +123,38 @@ describe('diff content identity (B3b review I5)', () => {
     expect(diffContentKey(base)).not.toBe(diffContentKey({ ...base, ignoreWhitespace: true }))
     expect(diffContentKey(base)).not.toBe(diffContentKey({ ...base, context: 'full' }))
     expect(diffContentKey(base)).toBe(diffContentKey({ ...base }))
+  })
+})
+
+describe('horizontal scrolling', () => {
+  const wide = (): DiffHunk => ({
+    header: '@@ -1,2 +1,2 @@', oldStart: 1, oldLines: 2, newStart: 1, newLines: 2,
+    lines: [{ type: 'del', text: 'x', oldLine: 1 }, { type: 'add', text: `${'a'.repeat(200)}中文`, newLine: 1 }, ctx('y', 2, 2)],
+  })
+
+  it('counts display columns: tabs to the next stop of 8, wide characters as two', () => {
+    expect(displayColumns('abc')).toBe(3)
+    expect(displayColumns('中文')).toBe(4)
+    expect(displayColumns('\tx')).toBe(9)
+    expect(displayColumns('ab\tc')).toBe(9)
+    expect(displayColumns('')).toBe(0)
+  })
+
+  it('picks the lines worth measuring: the widest by columns, tabs expanded to spaces', () => {
+    expect(widestLines(['a', '\tb', 'ccc', '中文中'], 2)).toEqual(['        b', '中文中'])
+    expect(widestLines([], 3)).toEqual([])
+  })
+
+  it('makes the unified canvas as wide as the longest line, so every row background reaches the end', () => {
+    const html = renderToStaticMarkup(withLocale(<DiffHunks hunks={[wide()]} viewportHeight={600} />))
+    expect(html).toContain('min-width:calc(124px + 204ch)')
+    expect(html).not.toContain('data-diff-hscroll')
+  })
+
+  it('gives split mode its own horizontal scrollbar sized to the longest line, with code clipped per half', () => {
+    const html = renderToStaticMarkup(withLocale(<DiffHunks hunks={[wide()]} viewportHeight={600} mode="split" />))
+    expect(html).toContain('data-diff-hscroll')
+    expect(html).toContain('width:calc(50% + 204ch + 76px)')
+    expect(html).toContain('data-code-clip')
   })
 })

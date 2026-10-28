@@ -12,7 +12,7 @@
 | 模块 | 评级 | 已知缺口 | 更新日期 |
 |---|---|---|---|
 | `src/host/` | B | A1 只读端点全部真实临时仓库测试，10k 仓库实测均在预算内；A2 写执行层与提交/回滚/推送/拉取端点用真实仓库 + bare 远程测试，3081 端到端确认写命令经 `sandbox.confine`。A3 新增智能贮藏/操作控制/分支写/冲突解决/集成操作/更新项目/贮藏模块，均用真实临时仓库与 bare 远程测试（含 UU/AA/DU/UD、变基进度、被强推的上游、贮藏按 sha 定位），每个任务经独立评审并修复；嵌套 refs 监听（TD-5）、回滚确认（TD-8）、大批量路径（TD-9）、lease 期望值（TD-10）已收掉。缺口：正则 ReDoS 与 >4MiB patch（TD-7）；删除分支竞态、重置到远程的文件/目录冲突、`logs/refs/stash` 未监听、标记 `update-ref` 无旧值检查、冲突标记长度（TD-11–TD-15）；`watch.test.ts` 高负载超时（TD-16）；osxkeychain 在 confine 下不可用（references §13，TODO 反馈 DSH） | 2026-10-26 |
-| `src/client/` | B | 提交图布局、各 store、页面静态渲染与纯函数有单测；A3 新增写动作框架（`action-store`）、单覆盖层路由、分支/贮藏/冲突/集成操作各页，store 与动作可用性矩阵有单测，中英双语由 CJK 静态扫描与英文渲染测试守护。A1/A2 三档宽度/筛选/详情/diff/控制台实机走查；A3 已在 3081 走查并通过负责人验收演示。缺口：没有 DOM 交互测试（焦点返回、Esc、双击、右键、Delete 键只有纯函数测试，TD-18）、菜单未用 `MenuSurface`（TODO）、build.mjs 缺 `lib/` 时失败（TD-17） | 2026-10-26 |
+| `src/client/` | B | 提交图布局、各 store、页面静态渲染与纯函数有单测；A3 新增写动作框架（`action-store`）、单覆盖层路由、分支/贮藏/冲突/集成操作各页，store 与动作可用性矩阵有单测，中英双语由 CJK 静态扫描与英文渲染测试守护。A1/A2 三档宽度/筛选/详情/diff/控制台实机走查；A3 已在 3081 走查并通过负责人验收演示。缺口：B4b 起有 DOM 测试（TD-18 已处理），双击、拖放、Delete 键仍只有纯函数测试；菜单未用 `MenuSurface`（TODO）、build.mjs 缺 `lib/` 时失败（TD-17） | 2026-10-26 |
 | `src/shared/` | B | 协议常量/类型与 isRpcResult 有单测；A3 在 T1 冻结全部端点类型（`RpcEndpointTypes` 逐端点编译期穷举、`WRITE_ENDPOINTS`），之后只追加；`git/hook-failed`、`git/would-overwrite`、`git/dirty-worktree` 等错误的 `details` 键已有类型，其余少数键仍只在 Host 实现里约定 | 2026-10-26 |
 | `build.mjs` | B | 双面产物 + smoke（含 HMR 重跑时样式替换）；契约漂移风险见 TD-1 | 2026-10-25 |
 | 文档与 harness | B | 计划/ADR 校验已机器化；references §13 已回写 M0/A1 实测（watch、HMR、fs）；升级 DSH 后需重跑（TD-2） | 2026-10-25 |
@@ -31,4 +31,5 @@
 | `src/client/{changelists/*,store/shelf-store.ts}`、`ShelfPanel`、`ChangelistView`（B3c） | B | 模型（增删改、活动、移动、同步、持久化与损坏回退）与 store、静态渲染有单测；拖放只有处理函数共用、未经 L4 | 2026-10-28 |
 | `src/host/git/{remote-write,worktree}.ts`、`tag-write.ts` 推送/删除（B3d） | A | 真实临时仓库 + 本地 bare 远程测试覆盖：标签推送与删除（只本地/本地+远程/不存在）、远程分支删除与跟踪 ref、upstream 设置与取消、远程增改删重命名与凭据脱敏、以 `-` 开头的名字与 URL 被拒；worktree 列表/从已有或新分支新增/重复签出拒绝/有改动需 force/清理/不能删当前/仓库外路径被拒 | 2026-10-28 |
 | `RemoteSheets`、`RemotesPages`、`branch-actions` 新项（B3d） | B | 菜单可用性、flag 关闭时入口消失、静态渲染有单测；表单交互与布局由 L4 覆盖 | 2026-10-28 |
+| 客户端样式与可访问性（B4b：`css-tokens` 检查、`tree-focus`/`use-tree-roving`、`useMenuKeyboard`/`MenuItemButton`、`focus-trap`、内容区动效） | B | 样式检查全量扫描（DSH 变量快照、无字面色、reduced-motion、`outline:none` 例外登记、状态/静态色不得直接作文字色）；DOM 测试覆盖分支树、全部手写菜单、模态对话框 Tab 圈定、覆盖层还焦、可访问名称审计（9 个界面，中英）；L4 两套主题对比度全部达标、键盘提交/签出走查。缺口：读屏软件未实测；贮藏恢复与合并窗口的纯键盘流程未在本轮 L4 走；DSH 升级后变量快照需重新提取（TD-2） | 2026-10-28 |
 | `src/client/{settings.ts,blame-renderer.tsx}`、`SettingsSheet`（B4a） | B | 设置模型（默认值、逐字段回退、钳制、未知键保留、写失败退回内存、同页与跨标签页订阅）、控件到补丁的映射、渲染器注册绑定（开/关/再开/重复 id）、正文状态判定与回退视图有单测；L4（隔离 DSH 3082）走查 AC1–AC8：弹层、紧凑/相对日期、刷新间隔与持久化、提交后跳日志、自动打开冲突列表开关、合并自动应用与撤销、Blame 渲染器开关与跨标签页同步。缺口：未装文档预览插件时的跳过只按 cordis 语义推断、未实机验证；并排 Diff 默认值未在 ≥900px 面板实机看 | 2026-10-28 |

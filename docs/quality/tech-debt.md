@@ -15,7 +15,6 @@
 | TD-15 | 2026-10-26 | `src/host/git/conflict.ts` | 冲突标记检测只认 7 字符的 `<<<<<<<`，忽略 `conflict-marker-size` 属性 | 自定义标记长度的文件在「标记已解决」时不会触发二次确认 | 读取 `git check-attr conflict-marker-size` 后按长度检测 | A3 T3 评审 |
 | TD-16 | 2026-10-26 | `test/host/watch.test.ts`、`make check` | 并行车道/高负载下嵌套 refs 监听用例偶发超时；长路径测试使全量 `make check` 约 100s | 偶发假失败，拉长反馈时间 | 放宽超时并改为轮询等待 version；长路径用例缩小规模或拆出 | A3 T1/T2/T6 报告 |
 | TD-17 | 2026-10-26 | `build.mjs` | `lib/` 目录不存在时构建失败（首次 `pnpm build` 需要先建目录） | 干净 checkout 上 `pnpm build` 报错 | 构建前 `mkdir -p lib` | A3 T6 报告 |
-| TD-18 | 2026-10-26 | `test/client/` | 没有 DOM 测试环境（未引入 jsdom）：焦点返回、Esc 退一级、双击签出、右键菜单、`Delete` 键等只有纯函数与静态渲染测试，交互靠人工走查 | 交互回归只能靠实机发现 | 评估引入 jsdom/happy-dom 或浏览器级测试（需新依赖，另行批准） | A3 T6–T11 报告 |
 | TD-19 | 2026-10-27 | `src/host/git/merge-file.ts`、`src/host/git/status.ts` | 冲突类型有两份映射：`kindFromStages`（按索引 stage 1/2/3 是否存在）与 status 的 `CONFLICT_KINDS`（按 porcelain XY） | 两处规则若改一处忘另一处，冲突列表与合并窗口对同一文件给出不同类型 | 统一为按 stage 推导，或加一条两者一致的表驱动测试 | B1 终审 |
 | TD-20 | 2026-10-27 | `src/host/git/merge-file.ts` `hashWorktree` | 「工作区文件不存在」靠匹配 `git hash-object` 的 stderr 英文文本判断 | git 改措辞或本地化 stderr 时会把缺失文件当成错误抛出，`mergeFile` 失败 | 先 `lstat` 判断存在性，或用 `ls-files`/`diff-files` 判定 | B1 终审 |
 
@@ -23,6 +22,7 @@
 
 | # | 处理日期 | 说明 |
 |---|---|---|
+| TD-18 | 2026-10-28 | B4b T2：引入 `happy-dom`（devDependency），`*.dom.test.tsx` 按文件开启，辅助函数在 `test/client/dom.tsx`（render/press/click/pointerDown/byRole/stubLayout/nameViolations）；已覆盖日志 ↑↓、分支树漫游、菜单键盘与不可用项、覆盖层进入焦点/Esc/还焦/Tab 圈定、可访问名称审计。已验证行为见 [references/happy-dom.md](../references/happy-dom.md)；拖放、CodeMirror、真实布局仍靠 L4 |
 | TD-8 | 2026-10-26 | A3 T5/T11：`RollbackRequest.confirmedUntracked`，Host 只删除「执行时未跟踪 ∩ 确认列表」，其余进 `skipped`；不传视为空集；客户端发送确认框里的路径，`skipped` 非空时提示 |
 | TD-9 | 2026-10-26 | A3 T1/T11：路径走 stdin `--pathspec-from-file`（`clean`/`status` 每批 ≤200），2000 个 600 字节路径实测通过；客户端勾选超过 `WRITE_PATHS_MAX` 时提交按钮禁用并提示 |
 | TD-10 | 2026-10-26 | A3 T4/T11：`PushRequest.expectedRemoteSha` → `--force-with-lease=refs/heads/<b>:<sha>`，`PushRejectedDetails.remoteSha` 来自被拒时的远程 tip；客户端强推带用户看到的 sha，缺失时与 A2 行为相同 |

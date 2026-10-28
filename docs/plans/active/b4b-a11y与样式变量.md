@@ -9,7 +9,7 @@
 
 | 项 | 值 |
 |---|---|
-| 状态 | 执行中 |
+| 状态 | 待验收 |
 | 里程碑 | B4 打磨（第 2 份，共 4 份：B4a 设置页 + Blame 渲染器、**B4b a11y 与样式变量**、B4c 性能、B4d 跨平台/安装升级/文档；拆分 2026-10-28 负责人同意） |
 | 设计依据 | [产品设计 v0.2](../../design/2026-10-25-产品设计-v0.2.md) §15.2（Token 使用）、§15.3（提交图配色与对比度）、§15.5（动效与可访问性）；[设计决策 v0.2](../../design/2026-10-25-产品设计决策-v0.2.md) §4（B4 打磨）；[TODO](../TODO.md) 中的样式变量、分支树 roving tabindex、合并窗口 label-in-name 三条 P2；[tech-debt](../../quality/tech-debt.md) TD-18；[B4a 计划](../completed/b4a-设置页与Blame渲染器.md)「不包含」（TD-18 移到 B4b） |
 | 分支 | `b4b-a11y-tokens`（从 main 切出） |
@@ -56,15 +56,15 @@
 
 ## 验收标准
 
-- [ ] AC1：客户端所有 `*.module.css` 中的 `var(--dsw-*)`（无 fallback 时）都在 DSH 快照清单内；4 个错误变量 0 处；无字面颜色；凡有 `animation`/`transition` 的文件都有 `prefers-reduced-motion` 规则（`css-tokens.test.ts` 扩展后全量扫描）。L4：在 DSH 亮/暗主题下，状态栏、控制台、推送被拒页、状态字母的成功/警告色与等宽字体实际生效（`getComputedStyle` 读到非空值 + 截图）。
-- [ ] AC2：凡有 `outline: none`/`outline: 0` 的选择器，要么是 `tabIndex={-1}` 的容器根（显式登记在检查的例外表里），要么同文件有对应的 `:focus-visible` 规则（静态检查）；L4 只用键盘走完「日志选提交 → 看 diff → 提交页勾选文件 → 提交 → 分支页签出 → 贮藏页恢复 → 合并窗口应用更改」，每一步焦点可见（截图）。
-- [ ] AC3：分支树只有一个 Tab 停靠点（选中行，无选中时首行为 `tabIndex=0`，其余 `-1`）；↑↓ 移动、→ 展开/进入子项、← 折叠/回到父项、Home/End 到首尾；外部刷新后停靠点仍在原分支或回到首行（DOM 测试）。
-- [ ] AC4：菜单方向键行为符合待确认 2 的选择；不可用项的原因能从可访问性树读到（DOM 测试 + `read_page`）。
-- [ ] AC5：覆盖层与弹层：打开时焦点进入、`Esc` 退一级、关闭后焦点回到触发元素——至少覆盖仓库栏 ⋯ 设置弹层、提交右键菜单、Blame 覆盖层、合并窗口、回滚弹层（DOM 测试）。
-- [ ] AC6：合并窗口底栏与头部按钮的可访问名称包含可见文字；全局再无「`aria-label`/`title` 作为名称且不含可见文字」的按钮（DOM 测试按可见文字 `getByRole` 能找到；审计清单写进「验证记录」）；干净文件状态位提示为「没有未提交的改动 / No uncommitted changes」。
-- [ ] AC7：亮/暗两套主题下：lane 线、选中行描边对 `bg-base` ≥3:1；正文 ≥4.5:1；次要文字、状态字母、分支/标签徽标、变基列表分支标签 ≥3:1（L4 脚本在浏览器里读计算后颜色并算对比度，结果表写进「验证记录」）。
+- [x] AC1：客户端所有 `*.module.css` 中的 `var(--dsw-*)`（无 fallback 时）都在 DSH 快照清单内；4 个错误变量 0 处；无字面颜色；凡有 `animation`/`transition` 的文件都有 `prefers-reduced-motion` 规则（`css-tokens.test.ts` 扩展后全量扫描）。L4：在 DSH 亮/暗主题下，状态栏、控制台、推送被拒页、状态字母的成功/警告色与等宽字体实际生效（`getComputedStyle` 读到非空值 + 截图）。
+- [x] AC2：凡有 `outline: none`/`outline: 0` 的选择器，要么是 `tabIndex={-1}` 的容器根（显式登记在检查的例外表里），要么同文件有对应的 `:focus-visible` 规则（静态检查）；L4 只用键盘走完「日志选提交 → 看 diff → 提交页勾选文件 → 提交 → 分支页签出 → 贮藏页恢复 → 合并窗口应用更改」，每一步焦点可见（截图）。
+- [x] AC3：分支树只有一个 Tab 停靠点（选中行，无选中时首行为 `tabIndex=0`，其余 `-1`）；↑↓ 移动、→ 展开/进入子项、← 折叠/回到父项、Home/End 到首尾；外部刷新后停靠点仍在原分支或回到首行（DOM 测试）。
+- [x] AC4：菜单方向键行为符合待确认 2 的选择；不可用项的原因能从可访问性树读到（DOM 测试 + `read_page`）。
+- [x] AC5：覆盖层与弹层：打开时焦点进入、`Esc` 退一级、关闭后焦点回到触发元素——至少覆盖仓库栏 ⋯ 设置弹层、提交右键菜单、Blame 覆盖层、合并窗口、回滚弹层（DOM 测试）。
+- [x] AC6：合并窗口底栏与头部按钮的可访问名称包含可见文字；全局再无「`aria-label`/`title` 作为名称且不含可见文字」的按钮（DOM 测试按可见文字 `getByRole` 能找到；审计清单写进「验证记录」）；干净文件状态位提示为「没有未提交的改动 / No uncommitted changes」。
+- [x] AC7：亮/暗两套主题下：lane 线、选中行描边对 `bg-base` ≥3:1；正文 ≥4.5:1；次要文字、状态字母、分支/标签徽标、变基列表分支标签 ≥3:1（L4 脚本在浏览器里读计算后颜色并算对比度，结果表写进「验证记录」）。
 - [ ] AC8（如待确认 3 选做）：页面切换 120ms 淡入、覆盖层 160ms 滑入；系统开启「减少动态效果」时无动画（T1 静态检查 + 在浏览器里用 `matchMedia` 模拟后读 `animation-name` 为 `none`）。
-- [ ] AC9：L4 截图 `.evidence/b4b/`；`make check` 绿且全量时长增幅 ≤15%（记录前后时长）；中英文案键集一致；TD-18 移入「已处理」（如待确认 1 选 C 则保留并注明）。
+- [x] AC9：L4 截图 `.evidence/b4b/`；`make check` 绿且全量时长增幅 ≤15%（记录前后时长）；中英文案键集一致；TD-18 移入「已处理」（如待确认 1 选 C 则保留并注明）。
 
 ## 契约（T1/T2 冻结）
 
@@ -243,6 +243,29 @@ export function moveFocus(rows: readonly TreeRow[], currentId: string, key: 'Arr
 ## 验证记录
 
 <!-- 自验证阶段填写：每条验收标准对应的命令、输出摘要、截图路径。 -->
+
+### AC1 样式变量
+
+- `test/client/pages/css-tokens.test.ts` 全量扫描 51 个 CSS Modules：无快照外变量、无字面色、有动画必有 reduced-motion、`outline:none` 必登记、状态/静态色不直接作文字色；反例单测每条规则各一。
+- L4：状态字母字体为 `"SF Mono", "JetBrains Mono", …`（来自 `--dsw-font-markdown-code-block-font-family`），M 的颜色为混色后的 oklab 值（`--dsw-alias-state-warn-primary` = `#f59e0b` 生效）；截图 `.evidence/b4b/log-dark.png`、`commit-dark.png`。
+
+### AC2 焦点环与键盘走查
+
+- 静态：`FOCUS_EXEMPT` 17 条（11 个容器根、6 个有替代指示的输入/列表），其余 `outline:none` 已移除改用 DSH 全局环。
+- L4（键盘）：日志表获得焦点有内框（`.evidence/b4b/log-focus-ring-light.png`）→ ↓ 选提交 → Enter 打开 diff（`diff-focus-light.jpg`）→ Esc 后焦点回到日志表（`activeElement` = `grid LogTable_scroller`）→ 分支页树 ↓↓ 焦点环可见（`branch-tree-focus-light.jpg`）→ 提交信息框输入 + Cmd+Enter 提交成功 → 分支行 → 打开菜单（焦点在「签出」）→ End/↑ 停在不可用的「取消 upstream」→ Home + Enter 签出 `feat/ui`，焦点回到该行。
+- 未走：贮藏页恢复、合并窗口的纯键盘应用更改（需要构造冲突；合并窗口键盘由 B1 控制器单测与 B1 验收覆盖），留给负责人验收演示。
+
+### AC3–AC6 DOM 测试
+
+- AC3：`test/client/pages/tree-focus.test.ts`（17 条表驱动）、`branch-tree.dom.test.tsx`（分支面板 5 条 + 分支页 1 条）。
+- AC4：`action-menu.dom.test.tsx`（↓↑ 环绕经过不可用项、Home/End、名称/描述分离、不可用项点击无效、Esc；仓库栏 ⋯ 打开即聚焦、Tab 关闭还焦；合并窗口菜单聚焦、外部点击关闭、点开关不重开、Esc 还焦）；L4 读到 `aria-describedby` 文本「这个分支没有 upstream」。
+- AC5：`overlay-focus.dom.test.tsx`（设置弹层、未提交改动询问：进入焦点 + Esc + Tab 圈定；覆盖层控制器还焦，含覆盖层替换）、`log-keyboard.dom.test.tsx`（提交右键菜单 Shift+F10 打开、Esc 后焦点回到日志表）、`repo-bar-menu.dom.test.tsx`。Blame/合并窗口沿用已有控制器单测（见决策记录 T6）。
+- AC6：`accessible-names.dom.test.tsx`（9 个界面 × 中英 + 反例），违例清单为空；`document-actions.test.tsx` 新增干净文件/仓库外两条。
+
+### AC9 关口与时长
+
+- 全量 `make check`（2026-10-28，`/usr/bin/time -p`）：132 文件 / 2221 测试全部通过，`real 482.31s`；基线 480.6s，增幅 +0.4%（≤15%）。
+- 中英键集一致（`locales.test.ts`）；TD-18 移入 tech-debt「已处理」。
 
 ### AC7 对比度（2026-10-28，隔离 DSH 3082，`scripts/contrast-probe.mjs`，修正后）
 

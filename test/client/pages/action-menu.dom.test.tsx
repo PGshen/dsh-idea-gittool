@@ -119,3 +119,16 @@ describe('merge window "apply non-conflicting ▾" menu (DOM)', () => {
     expect(view.container.querySelector('[role="menu"]')).toBeNull()
   })
 })
+
+describe('changes tree file menu (DOM)', () => {
+  it('an unavailable file history item keeps the dimmed menu style (B4b review I1)', async () => {
+    const { ChangeContextMenu } = await import('../../../src/client/pages/ChangesTree.tsx')
+    const { default: css } = await import('../../../src/client/pages/ChangesTree.module.css')
+    const entry = { path: 'new.txt', group: 'untracked', status: '?' }
+    view = render(withLocale(<ChangeContextMenu entry={entry as never} writeDisabled={false} onCopyPath={() => {}} onFileHistory={() => {}} onBlame={() => {}} />) as ReactElement)
+    const history = view.container.querySelector('[data-menu="fileHistory"]') as HTMLElement
+    expect(history.getAttribute('aria-disabled')).toBe('true')
+    expect(css.menuItemDisabled).toBeTruthy()
+    expect(history.classList.contains(css.menuItemDisabled as string)).toBe(true)
+  })
+})

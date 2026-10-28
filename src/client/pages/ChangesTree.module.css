@@ -215,13 +215,15 @@
   cursor: pointer;
 }
 
-.menuItem:hover:not(:disabled),
+.menuItem:hover:not(:disabled, .menuItemDisabled),
 .menuItem:focus-visible {
   background: var(--dsw-alias-interactive-bg-hover);
   outline-offset: calc(-1 * var(--dsw-focus-ring-width));
 }
 
-.menuItem:disabled {
+/* B4b: unavailable items with a reason stay focusable (aria-disabled), so they carry a class instead of :disabled. */
+.menuItem:disabled,
+.menuItemDisabled {
   color: var(--dsw-alias-label-tertiary);
   cursor: not-allowed;
 }

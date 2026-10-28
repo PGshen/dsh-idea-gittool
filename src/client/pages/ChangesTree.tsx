@@ -192,7 +192,7 @@ export function ChangeContextMenu(props: ChangeContextMenuProps): ReactNode {
                   label={t(action.label.key)}
                   reason={reason}
                   className={css.menuItem}
-                  disabledClassName={undefined}
+                  disabledClassName={css.menuItemDisabled}
                   reasonClassName={css.menuReason}
                   data={{ 'data-menu': action.id }}
                   onSelect={() => {}}

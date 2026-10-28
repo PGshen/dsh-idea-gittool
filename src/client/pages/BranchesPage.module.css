@@ -73,7 +73,7 @@
 .quickItem:hover,
 .quickItem:focus-visible {
   background: var(--dsw-alias-interactive-bg-hover);
-  outline: none;
+  outline-offset: calc(-1 * var(--dsw-focus-ring-width));
 }
 
 .quickItem[data-danger] {
@@ -161,12 +161,12 @@
 .row:hover,
 .row:focus-visible {
   background: var(--dsw-alias-interactive-bg-hover);
-  outline: none;
+  outline-offset: calc(-1 * var(--dsw-focus-ring-width));
 }
 
 .selected,
 .selected:hover {
-  background: var(--dsw-alias-interactive-bg-selected, var(--dsw-alias-interactive-bg-hover));
+  background: var(--dsw-alias-interactive-bg-active, var(--dsw-alias-interactive-bg-hover));
 }
 
 .current .name {
@@ -199,7 +199,7 @@
 }
 
 .aheadBehind {
-  font-family: var(--dsw-font-mono);
+  font-family: var(--dsw-font-markdown-code-block-font-family);
 }
 
 .rowMenu {
@@ -220,7 +220,7 @@
 .rowMenu:hover,
 .rowMenu:focus-visible {
   background: var(--dsw-alias-interactive-bg-hover);
-  outline: none;
+  outline-offset: calc(-1 * var(--dsw-focus-ring-width));
 }
 
 .footnote {

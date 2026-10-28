@@ -1,7 +1,8 @@
 // Commit page changes tree (design §8.2.2): grouped tri-state tree, search, keyboard and context menu.
 // State lives in the injected ChangesStore; write actions are delegated to the workbench via callbacks.
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import type { CSSProperties, KeyboardEvent, MouseEvent, ReactNode } from 'react'
+import { activeFocusTarget, restoreFocus } from '../focus.ts'
 import { StatusLetter } from '../ui/StatusLetter.tsx'
 import { useT } from '../i18n.tsx'
 import { buildChangeGroups } from '../store/changes-store.ts'
@@ -17,6 +18,8 @@ import type {
 import { copyText } from './BranchPanel.tsx'
 import css from './ChangesTree.module.css'
 import { fileActions } from './file-actions.ts'
+import { MenuItemButton } from './MenuItemButton.tsx'
+import { useMenuKeyboard } from './menu-position.ts'
 
 
 export type DiffOpenScope = 'worktree' | 'staged'
@@ -136,16 +139,14 @@ export function ChangeContextMenu(props: ChangeContextMenuProps): ReactNode {
   const t = useT()
   const { entry, writeDisabled, onClose, position } = props
   const ref = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    if (onClose === undefined) return
-    const onPointerDown = (event: PointerEvent): void => {
-      if (ref.current !== null && event.target instanceof Node && ref.current.contains(event.target)) return
-      onClose()
-    }
-    document.addEventListener('pointerdown', onPointerDown, true)
-    ref.current?.querySelector<HTMLElement>('[role="menuitem"]:not(:disabled)')?.focus()
-    return () => document.removeEventListener('pointerdown', onPointerDown, true)
-  }, [onClose])
+  // The row (or whatever had focus) when the menu opened: keyboard closing returns focus there.
+  const [trigger] = useState(activeFocusTarget)
+  const onKeyDown = useMenuKeyboard(ref, onClose === undefined
+    ? undefined
+    : (via) => {
+        onClose()
+        if (via === 'key') restoreFocus(trigger)
+      })
   const conflict = entry.group === 'conflicts'
   const style = position === undefined ? undefined : { left: `${position.x}px`, top: `${position.y}px` }
   const item = (label: string, action: (() => void) | undefined, disabled: boolean, name: string): ReactNode => (
@@ -167,12 +168,7 @@ export function ChangeContextMenu(props: ChangeContextMenuProps): ReactNode {
       aria-label={t('changes.menuLabel', { path: entry.path })}
       className={position === undefined ? css.menu : `${css.menu} ${css.menuFloating}`}
       style={style}
-      onKeyDown={(event) => {
-        if (event.key === 'Escape') {
-          event.stopPropagation()
-          onClose?.()
-        }
-      }}
+      onKeyDown={onKeyDown}
     >
       {conflict
         ? item(t('changes.menuResolveLater'), undefined, true, 'conflict')
@@ -188,19 +184,32 @@ export function ChangeContextMenu(props: ChangeContextMenuProps): ReactNode {
           {fileActions({ kind: 'change', status: entry.status }).map((action) => {
             const run = action.id === 'fileHistory' ? props.onFileHistory : props.onBlame
             const reason = action.disabledReason === undefined ? null : t(action.disabledReason.key)
+            // B4b T5: an unavailable item stays focusable so its reason can be read.
+            if (reason !== null) {
+              return (
+                <MenuItemButton
+                  key={action.id}
+                  label={t(action.label.key)}
+                  reason={reason}
+                  className={css.menuItem}
+                  disabledClassName={css.menuItemDisabled}
+                  reasonClassName={css.menuReason}
+                  data={{ 'data-menu': action.id }}
+                  onSelect={() => {}}
+                />
+              )
+            }
             return (
               <button
                 key={action.id}
                 type="button"
                 role="menuitem"
                 className={css.menuItem}
-                disabled={reason !== null || run === undefined}
+                disabled={run === undefined}
                 data-menu={action.id}
-                {...(reason === null ? {} : { title: reason })}
                 onClick={run}
               >
                 {t(action.label.key)}
-                {reason === null ? null : <span className={css.menuReason}>{reason}</span>}
               </button>
             )
           })}

@@ -15,6 +15,7 @@ import type { BranchActionRunner } from './branch-actions.ts'
 import { shortSha } from './branch-store.ts'
 import css from './BranchSheets.module.css'
 import type { WorkbenchOverlay } from './workbench-overlay.ts'
+import { trapTab } from './focus-trap.ts'
 
 export type BranchSheetOverlay = Extract<WorkbenchOverlay, { kind: 'branchSheet' }>
 
@@ -163,7 +164,7 @@ export function BranchSheetView(props: BranchSheetViewProps): ReactNode {
         aria-modal="true"
         aria-label={t(TITLE[overlay.mode])}
         tabIndex={-1}
-        onKeyDown={props.onKeyDown}
+        onKeyDown={(event) => { props.onKeyDown?.(event); trapTab(event, event.currentTarget) }}
       >
         <header className={css.header}>
           <strong>{t(TITLE[overlay.mode])}</strong>

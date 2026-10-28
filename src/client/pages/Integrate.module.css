@@ -73,7 +73,7 @@
 .note {
   margin: 0;
   padding: 8px;
-  border-left: 2px solid var(--dsw-alias-state-warn);
+  border-left: 2px solid var(--dsw-alias-state-warn-primary);
   background: var(--dsw-alias-bg-layer-1);
 }
 

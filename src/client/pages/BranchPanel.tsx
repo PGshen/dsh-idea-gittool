@@ -20,9 +20,12 @@ import {
 } from './branch-store.ts'
 import type { BranchGroup, BranchGroupKind, BranchRow, CollapsedGroups, PanelMode } from './branch-store.ts'
 import css from './BranchPanel.module.css'
-import { finishRowMenu, moveTreeFocus, rowMenuAnchor, rowOf, treeRowKeyAction } from './menu-focus.ts'
+import { finishRowMenu, rowMenuAnchor, rowOf, treeRowKeyAction } from './menu-focus.ts'
+import { MenuItemButton } from './MenuItemButton.tsx'
 import { useFloatingMenu } from './menu-position.ts'
 import type { MenuAnchor } from './menu-position.ts'
+import { useTreeRoving } from './use-tree-roving.ts'
+import { trapTab } from './focus-trap.ts'
 
 export interface BranchPanelProps {
   value: BranchesValue | null
@@ -134,7 +137,7 @@ export function BranchPanel(props: BranchPanelProps): ReactNode {
         aria-modal="true"
         aria-label={t('branch.panel')}
         className={`${css.panel} ${mode === 'compact' ? css.compact : css.drawer}`}
-        onKeyDown={onKeyDown}
+        onKeyDown={(event) => { onKeyDown(event); trapTab(event, event.currentTarget) }}
       >
         <BranchPanelBody {...props} />
       </div>
@@ -176,6 +179,10 @@ function BranchPanelBody(props: BranchPanelProps): ReactNode {
   const copy = props.onCopy ?? copyText
   const searching = search.trim() !== ''
   const noMatch = searching && groups.length > 0 && groups.every(group => group.total === 0)
+  const visibleGroups = groups.filter(group => !(searching && group.total === 0))
+  const treeIds = visibleGroups.flatMap(group => [groupTreeId(group.kind), ...group.rows.map(row => row.key)])
+  const selectedKey = selectedRowKey(visibleGroups, props.selectedRef ?? null)
+  const roving = useTreeRoving(treeIds, selectedKey)
 
   let content: ReactNode
   if (value === null && error !== null) {
@@ -193,12 +200,12 @@ function BranchPanelBody(props: BranchPanelProps): ReactNode {
     content = <EmptyState title={t('branch.noMatch')} hint={t('branch.noMatch.hint', { query: search.trim() })} />
   } else {
     content = (
-      <div role="tree" aria-label={t('branch.panel')} className={css.tree}>
-        {groups.map(group => (
+      <div role="tree" aria-label={t('branch.panel')} className={css.tree} onFocus={roving.onFocus} onKeyDown={roving.onKeyDown}>
+        {visibleGroups.map(group => (
           <BranchGroupView
             key={group.kind}
             group={group}
-            searching={searching}
+            tabIndexOf={roving.tabIndexOf}
             selectedRef={props.selectedRef ?? null}
             onToggleGroup={props.onToggleGroup}
             onToggleDirectory={props.onToggleDirectory}
@@ -294,9 +301,24 @@ function BranchPanelBody(props: BranchPanelProps): ReactNode {
   )
 }
 
+/** Roving-tabindex id of a group header row (rows use `BranchRow.key`). */
+export function groupTreeId(kind: BranchGroupKind): string {
+  return `group:${kind}`
+}
+
+/** Key of the first visible row showing `selectedRef` (the same branch can appear under HEAD and Local). */
+export function selectedRowKey(groups: readonly BranchGroup[], selectedRef: string | null): string | null {
+  if (selectedRef === null) return null
+  for (const group of groups) {
+    const row = group.rows.find(item => item.entry?.ref === selectedRef)
+    if (row !== undefined) return row.key
+  }
+  return null
+}
+
 interface BranchGroupViewProps {
   group: BranchGroup
-  searching: boolean
+  tabIndexOf: (id: string) => 0 | -1
   selectedRef: string | null
   onToggleGroup: ((kind: BranchGroupKind) => void) | undefined
   onToggleDirectory: ((path: string) => void) | undefined
@@ -306,13 +328,16 @@ interface BranchGroupViewProps {
   onOpenMenu: (entry: BranchEntry, anchor: MenuAnchor, row: FocusTarget | null) => void
 }
 
-function BranchGroupView({ group, searching, selectedRef, ...handlers }: BranchGroupViewProps): ReactNode {
-  // 搜索时隐藏没有命中的分组，减少噪音。
-  if (searching && group.total === 0) return null
+// 搜索时隐藏没有命中的分组（调用方先过滤），减少噪音。
+function BranchGroupView({ group, tabIndexOf, selectedRef, ...handlers }: BranchGroupViewProps): ReactNode {
   return (
     <div role="group" aria-label={group.label} data-group={group.kind} className={css.group}>
       <button
         type="button"
+        role="treeitem"
+        aria-level={1}
+        data-tree-id={groupTreeId(group.kind)}
+        tabIndex={tabIndexOf(groupTreeId(group.kind))}
         className={css.groupHeader}
         data-group-toggle={group.kind}
         aria-expanded={!group.collapsed}
@@ -323,19 +348,20 @@ function BranchGroupView({ group, searching, selectedRef, ...handlers }: BranchG
         <span className={css.count}>{group.total}</span>
       </button>
       {group.rows.map(row => (
-        <BranchRowView key={row.key} group={group.kind} row={row} selected={selectedRef !== null && row.entry?.ref === selectedRef} {...handlers} />
+        <BranchRowView key={row.key} group={group.kind} row={row} tabIndex={tabIndexOf(row.key)} selected={selectedRef !== null && row.entry?.ref === selectedRef} {...handlers} />
       ))}
     </div>
   )
 }
 
-interface BranchRowViewProps extends Omit<BranchGroupViewProps, 'group' | 'searching' | 'selectedRef' | 'onToggleGroup'> {
+interface BranchRowViewProps extends Omit<BranchGroupViewProps, 'group' | 'tabIndexOf' | 'selectedRef' | 'onToggleGroup'> {
   group: BranchGroupKind
   row: BranchRow
+  tabIndex: 0 | -1
   selected: boolean
 }
 
-function BranchRowView({ group, row, selected, onToggleDirectory, onClickEntry, onDoubleClickEntry, onOpenMenu }: BranchRowViewProps): ReactNode {
+function BranchRowView({ group, row, tabIndex, selected, onToggleDirectory, onClickEntry, onDoubleClickEntry, onOpenMenu }: BranchRowViewProps): ReactNode {
   const t = useT()
   const indent = { '--git-tree-depth': row.depth } as CSSProperties
   if (row.kind === 'directory') {
@@ -344,7 +370,8 @@ function BranchRowView({ group, row, selected, onToggleDirectory, onClickEntry, 
     return (
       <div
         role="treeitem"
-        tabIndex={-1}
+        tabIndex={tabIndex}
+        data-tree-id={row.key}
         aria-level={row.depth + 2}
         aria-expanded={expanded}
         data-kind="directory"
@@ -352,7 +379,7 @@ function BranchRowView({ group, row, selected, onToggleDirectory, onClickEntry, 
         className={css.row}
         style={indent}
         onClick={toggle}
-        onKeyDown={event => directoryRowKey(event, expanded, toggle)}
+        onKeyDown={event => directoryRowKey(event, toggle)}
       >
         <span className={css.chevron} aria-hidden="true">{expanded ? '▾' : '▸'}</span>
         <span className={css.name}>{row.label}</span>
@@ -367,7 +394,8 @@ function BranchRowView({ group, row, selected, onToggleDirectory, onClickEntry, 
   return (
     <div
       role="treeitem"
-      tabIndex={0}
+      tabIndex={tabIndex}
+      data-tree-id={row.key}
       aria-level={row.depth + 2}
       aria-selected={selected}
       data-kind="branch"
@@ -397,11 +425,10 @@ function BranchRowView({ group, row, selected, onToggleDirectory, onClickEntry, 
           else onClickEntry(entry)
           return
         }
-        const action = treeRowKeyAction({ kind: 'branch', hasMenu: entry !== undefined }, event)
-        if (action === null) return
+        // ↑↓ ← Home End are the tree's (useTreeRoving); a branch row only claims its menu keys.
+        if (entry === undefined || treeRowKeyAction({ kind: 'branch', hasMenu: true }, event) !== 'open-menu') return
         event.preventDefault()
-        if (action === 'open-menu' && entry !== undefined) onOpenMenu(entry, rowMenuAnchor(event.currentTarget), event.currentTarget)
-        else if (action === 'next-row' || action === 'previous-row') moveTreeFocus(event.currentTarget, action === 'next-row' ? 1 : -1)
+        onOpenMenu(entry, rowMenuAnchor(event.currentTarget), event.currentTarget)
       }}
     >
       <span className={css.icon} aria-hidden="true">{rowIcon(group, row)}</span>
@@ -415,21 +442,15 @@ function BranchRowView({ group, row, selected, onToggleDirectory, onClickEntry, 
 }
 
 /**
- * Keys on a directory row (shared with the Branches page): Enter / Space toggle, ArrowRight expands,
- * ArrowLeft collapses, ArrowUp / ArrowDown move between rows. Directory rows never open a menu.
+ * Keys on a directory row (shared with the Branches page): Enter / Space toggle. Arrow keys belong
+ * to the tree (`useTreeRoving`: → expands, ← collapses). Directory rows never open a menu.
  */
-export function directoryRowKey(event: KeyboardEvent<HTMLElement>, expanded: boolean, toggle: () => void): void {
+export function directoryRowKey(event: KeyboardEvent<HTMLElement>, toggle: () => void): void {
   if (event.target !== event.currentTarget) return
   if (event.key === 'Enter' || event.key === ' ') {
     event.preventDefault()
     toggle()
-    return
   }
-  const action = treeRowKeyAction({ kind: 'directory', expanded, hasMenu: false }, event)
-  if (action === null) return
-  event.preventDefault()
-  if (action === 'expand' || action === 'collapse') toggle()
-  else if (action === 'next-row' || action === 'previous-row') moveTreeFocus(event.currentTarget, action === 'next-row' ? 1 : -1)
 }
 
 export interface BranchContextMenuProps {
@@ -457,19 +478,17 @@ export function BranchContextMenu({ entry, items, onSelect, onClose, anchor }: B
     previousSection = item.section
     const reason = item.disabledReason === undefined ? null : t(item.disabledReason.key, item.disabledReason.params)
     nodes.push(
-      <button
+      <MenuItemButton
         key={item.id}
-        type="button"
-        role="menuitem"
-        className={`${css.menuItem} ${reason === null ? '' : css.menuItemDisabled}`}
-        data-action={item.id}
-        {...(item.danger === true ? { 'data-danger': true } : {})}
-        {...(reason === null ? {} : { 'aria-disabled': true, title: reason })}
-        onClick={() => { if (reason === null) onSelect(item.id) }}
-      >
-        <span>{t(item.label.key, item.label.params)}</span>
-        {reason === null ? null : <span className={css.menuReason}>{reason}</span>}
-      </button>,
+        label={t(item.label.key, item.label.params)}
+        reason={reason}
+        {...(item.danger === true ? { danger: true } : {})}
+        className={css.menuItem}
+        disabledClassName={css.menuItemDisabled}
+        reasonClassName={css.menuReason}
+        data={{ 'data-action': item.id }}
+        onSelect={() => onSelect(item.id)}
+      />,
     )
   }
   return (

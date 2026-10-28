@@ -186,7 +186,7 @@
 
 .check {
   flex: none;
-  color: var(--dsw-alias-state-success);
+  color: color-mix(in oklab, var(--dsw-alias-state-success-primary) 60%, var(--dsw-alias-label-primary));
 }
 
 .detachedNote {
@@ -210,7 +210,7 @@
   flex: none;
   margin-left: auto;
   color: var(--dsw-alias-label-secondary);
-  font-family: var(--dsw-font-mono);
+  font-family: var(--dsw-font-markdown-code-block-font-family);
   font-size: 11px;
 }
 
@@ -277,7 +277,7 @@
 .menuItem:hover,
 .menuItem:focus-visible {
   background: var(--dsw-alias-interactive-bg-hover);
-  outline: none;
+  outline-offset: calc(-1 * var(--dsw-focus-ring-width));
 }
 
 .menuSeparator {

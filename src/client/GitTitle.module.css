@@ -17,5 +17,5 @@
 }
 
 .warning {
-  background: var(--dsw-alias-state-warn);
+  background: var(--dsw-alias-state-warn-primary);
 }

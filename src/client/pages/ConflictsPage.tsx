@@ -33,6 +33,7 @@ import { Button } from '../ui/Button.tsx'
 import { isContextMenuKey } from './commit-actions.ts'
 import menuCss from './CommitContextMenu.module.css'
 import { finishRowMenu, rowMenuAnchor } from './menu-focus.ts'
+import { MenuItemButton } from './MenuItemButton.tsx'
 import { useFloatingMenu } from './menu-position.ts'
 import type { MenuAnchor } from './menu-position.ts'
 import { finishOperation, mergeMessageOf, resolveConflictFile, runSimpleAll, unresolveConflictFile } from './operation-actions.ts'
@@ -102,17 +103,15 @@ function ResolvedRowMenu(props: { t: Translate; path: string; anchor?: MenuAncho
       style={style}
       onKeyDown={onKeyDown}
     >
-      <button
-        type="button"
-        role="menuitem"
-        className={`${menuCss.item ?? ''} ${reason === null ? '' : (menuCss.itemDisabled ?? '')}`}
-        data-unresolve={props.path}
-        {...(reason === null ? {} : { 'aria-disabled': true, title: reason })}
-        onClick={() => { if (reason === null) props.onUnresolve() }}
-      >
-        <span>{props.t('conflict.unresolve')}</span>
-        {reason === null ? null : <span className={menuCss.reason}>{reason}</span>}
-      </button>
+      <MenuItemButton
+        label={props.t('conflict.unresolve')}
+        reason={reason}
+        className={menuCss.item}
+        disabledClassName={menuCss.itemDisabled}
+        reasonClassName={menuCss.reason}
+        data={{ 'data-unresolve': props.path }}
+        onSelect={props.onUnresolve}
+      />
     </div>
   )
 }

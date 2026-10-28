@@ -2,15 +2,17 @@
 // a tri-state check over its files, collapse, active mark, rename / delete / set active, drag rows onto
 // a header to move them, and a row menu "move to …". The view is hook-free; the container keeps the
 // small UI state (collapsed, editing, menu).
-import { useEffect, useState } from 'react'
+import { useRef, useState } from 'react'
 import type { DragEvent, ReactNode } from 'react'
 import type { ChangelistSection, ChangelistState } from '../changelists/changelist-model.ts'
 import { DEFAULT_LIST, changelistSections } from '../changelists/changelist-model.ts'
 import { useT } from '../i18n.tsx'
 import type { Translate } from '../i18n.tsx'
 import type { ChangeEntry } from '../store/changes-store.ts'
+import { activeFocusTarget, restoreFocus } from '../focus.ts'
 import { StatusLetter } from '../ui/StatusLetter.tsx'
 import css from './ChangelistView.module.css'
+import { useMenuKeyboard } from './menu-position.ts'
 
 /** Drag payload type for moving changed files between lists. */
 const DRAG_TYPE = 'application/x-dsh-git-paths'
@@ -137,7 +139,7 @@ export function ChangelistView(props: ChangelistViewProps): ReactNode {
         ? <div className={css.newRow}><EditBox t={t} value={props.editing.value} id={null} onEdit={props.onEdit} onCommit={props.onCommitEdit} /></div>
         : <button type="button" className={css.newButton} data-changelist-new onClick={() => { props.onEdit({ id: null, value: '' }) }}>{t('changelist.new')}</button>}
       {props.menu === null ? null : (
-        <div role="menu" className={css.menu} style={{ left: `${String(props.menu.x)}px`, top: `${String(props.menu.y)}px` }} aria-label={t('changelist.moveTo')}>
+        <MoveToMenu label={t('changelist.moveTo')} x={props.menu.x} y={props.menu.y} onClose={() => { props.onRowMenu(null) }}>
           <div className={css.menuTitle}>{t('changelist.moveTo')}</div>
           {props.sections.map(section => (
             <button
@@ -155,7 +157,7 @@ export function ChangelistView(props: ChangelistViewProps): ReactNode {
               {listName(t, section)}
             </button>
           ))}
-        </div>
+        </MoveToMenu>
       )}
     </div>
   )
@@ -183,20 +185,6 @@ export function ChangelistPanel(props: ChangelistPanelProps): ReactNode {
   const [menu, setMenu] = useState<{ path: string; x: number; y: number } | null>(null)
   // B3c review I7: the grouped view has no search box, so it shows every change.
   const visible = props.entries
-  useEffect(() => {
-    if (menu === null) return undefined
-    const close = (event: PointerEvent): void => {
-      if (event.target instanceof Element && event.target.closest('[role="menu"]') !== null) return
-      setMenu(null)
-    }
-    const escape = (event: KeyboardEvent): void => { if (event.key === 'Escape') setMenu(null) }
-    document.addEventListener('pointerdown', close, true)
-    document.addEventListener('keydown', escape, true)
-    return () => {
-      document.removeEventListener('pointerdown', close, true)
-      document.removeEventListener('keydown', escape, true)
-    }
-  }, [menu])
   return (
     <ChangelistView
       t={t}
@@ -232,5 +220,28 @@ export function ChangelistPanel(props: ChangelistPanelProps): ReactNode {
       onRemove={props.onRemove}
       onRowMenu={setMenu}
     />
+  )
+}
+
+interface MoveToMenuProps {
+  label: string
+  x: number
+  y: number
+  onClose: () => void
+  children: ReactNode
+}
+
+/** "Move to changelist" (B4b T5): takes focus, arrow keys, Esc / Tab / outside click close it. */
+function MoveToMenu({ label, x, y, onClose, children }: MoveToMenuProps): ReactNode {
+  const ref = useRef<HTMLDivElement>(null)
+  const [trigger] = useState(activeFocusTarget)
+  const onKeyDown = useMenuKeyboard(ref, (via) => {
+    onClose()
+    if (via === 'key') restoreFocus(trigger)
+  })
+  return (
+    <div ref={ref} role="menu" className={css.menu} style={{ left: `${String(x)}px`, top: `${String(y)}px` }} aria-label={label} onKeyDown={onKeyDown}>
+      {children}
+    </div>
   )
 }

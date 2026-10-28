@@ -1,9 +1,10 @@
 // 仓库栏（设计 §7.1）：仓库名 + 截断路径 + 非 Wide 档的「分支」入口 + `⋯` 菜单（刷新 / Git 控制台）。
 // 获取/拉取/推送各自打开自己的表单（A3 T8 起获取与拉取在此）；只读或操作进行中时禁用并说明原因。
-import { useEffect, useRef, useState } from 'react'
-import type { ReactNode } from 'react'
+import { useRef, useState } from 'react'
+import type { ReactNode, RefObject } from 'react'
 import { useT } from '../i18n.tsx'
 import type { PanelMode } from './branch-store.ts'
+import { useMenuKeyboard } from './menu-position.ts'
 import css from './RepoBar.module.css'
 
 export interface RepoBarProps {
@@ -68,16 +69,6 @@ export function RepoBar(props: RepoBarProps): ReactNode {
   const menuRef = useRef<HTMLDivElement>(null)
   // Focus returns here when an overlay opened from the menu closes: the menu item itself unmounts.
   const moreRef = useRef<HTMLButtonElement>(null)
-
-  useEffect(() => {
-    if (!menuOpen) return
-    const onPointerDown = (event: PointerEvent): void => {
-      if (menuRef.current !== null && event.target instanceof Node && menuRef.current.contains(event.target)) return
-      setMenuOpen(false)
-    }
-    document.addEventListener('pointerdown', onPointerDown, true)
-    return () => document.removeEventListener('pointerdown', onPointerDown, true)
-  }, [menuOpen])
 
   const choose = (action: () => void): void => {
     setMenuOpen(false)
@@ -161,10 +152,12 @@ export function RepoBar(props: RepoBarProps): ReactNode {
         </button>
         {menuOpen
           ? (
-              <div
-                role="menu"
-                className={css.menu}
-                onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); setMenuOpen(false) } }}
+              <RepoMenu
+                boundary={menuRef}
+                onClose={(via) => {
+                  setMenuOpen(false)
+                  if (via === 'key') moreRef.current?.focus()
+                }}
               >
                 <button
                   type="button"
@@ -207,10 +200,24 @@ export function RepoBar(props: RepoBarProps): ReactNode {
                         {t('repo.settings')}
                       </button>
                     )}
-              </div>
+              </RepoMenu>
             )
           : null}
       </div>
     </div>
   )
+}
+
+interface RepoMenuProps {
+  /** The ⋯ wrapper: pointer-downs inside it (the toggle) do not close the menu. */
+  boundary: RefObject<HTMLElement>
+  onClose: (via: 'key' | 'pointer') => void
+  children: ReactNode
+}
+
+/** The ⋯ dropdown: takes focus on open, arrow keys between items, Esc / Tab / outside click close it. */
+function RepoMenu({ boundary, onClose, children }: RepoMenuProps): ReactNode {
+  const ref = useRef<HTMLDivElement>(null)
+  const onKeyDown = useMenuKeyboard(ref, onClose, true, boundary)
+  return <div ref={ref} role="menu" className={css.menu} onKeyDown={onKeyDown}>{children}</div>
 }

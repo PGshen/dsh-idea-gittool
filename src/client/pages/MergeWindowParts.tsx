@@ -1,7 +1,8 @@
 // B1 T6 pieces of the merge window (split from MergeWindow.tsx by responsibility): header,
 // footer (with the "apply non-conflicting changes" menu), the apply / leave questions and the
 // two-choice fallback for binary, too large and delete-kind conflicts.
-import type { MouseEvent, ReactNode } from 'react'
+import { useRef } from 'react'
+import type { MouseEvent, ReactNode, RefObject } from 'react'
 import type { ConflictResolution } from '../../shared/protocol.ts'
 import type { FocusTarget } from '../focus.ts'
 import type { Translate } from '../i18n.tsx'
@@ -14,6 +15,7 @@ import { Button } from '../ui/Button.tsx'
 import menuCss from './CommitContextMenu.module.css'
 import type { LeaveAnswer, MergeConfirm } from './merge-window-controller.ts'
 import css from './MergeWindow.module.css'
+import { useMenuKeyboard } from './menu-position.ts'
 
 /** Names of both sides as the user knows them (design §10.1), plus Git's technical meaning. */
 export interface MergeSideLabel {
@@ -91,8 +93,28 @@ export interface MergeFooterProps {
   onApply: () => void
 }
 
+interface NonConflictingMenuProps {
+  label: string
+  /** The menu's anchor (with its toggle): pointer-downs inside it do not close the menu. */
+  boundary: RefObject<HTMLElement>
+  onClose: (via: 'key' | 'pointer') => void
+  children: ReactNode
+}
+
+/** "Apply non-conflicting changes ▾": takes focus, arrow keys, Esc / Tab / outside click close it (B4b T5). */
+function NonConflictingMenu({ label, boundary, onClose, children }: NonConflictingMenuProps): ReactNode {
+  const ref = useRef<HTMLSpanElement>(null)
+  const onKeyDown = useMenuKeyboard(ref, onClose, true, boundary)
+  return (
+    <span ref={ref} className={`${menuCss.menu ?? ''} ${css.menu ?? ''}`} role="menu" aria-label={label} onKeyDown={onKeyDown}>
+      {children}
+    </span>
+  )
+}
+
 export function MergeFooter(props: MergeFooterProps): ReactNode {
   const { t, sides, busy, blockReason } = props
+  const anchorRef = useRef<HTMLSpanElement>(null)
   const fileButton = (side: MergeSideName): ReactNode => {
     const label = sides[side]
     return (
@@ -124,7 +146,7 @@ export function MergeFooter(props: MergeFooterProps): ReactNode {
     <footer className={css.footer}>
       {fileButton('left')}
       {fileButton('right')}
-      <span className={css.menuAnchor}>
+      <span className={css.menuAnchor} ref={anchorRef}>
         <Button
           disabled={busy}
           title={t('merge.nonConflicting.title')}
@@ -137,11 +159,18 @@ export function MergeFooter(props: MergeFooterProps): ReactNode {
         </Button>
         {props.nonConflictingOpen
           ? (
-              <span className={`${menuCss.menu ?? ''} ${css.menu ?? ''}`} role="menu" aria-label={t('merge.nonConflicting')}>
+              <NonConflictingMenu
+                label={t('merge.nonConflicting')}
+                boundary={anchorRef}
+                onClose={(via) => {
+                  props.onToggleNonConflicting()
+                  if (via === 'key') anchorRef.current?.querySelector<HTMLElement>('[data-merge-non-conflicting]')?.focus()
+                }}
+              >
                 {menuItem('left', t('merge.nonConflicting.left', { label: sides.left.label }))}
                 {menuItem('all', t('merge.nonConflicting.all'))}
                 {menuItem('right', t('merge.nonConflicting.right', { label: sides.right.label }))}
-              </span>
+              </NonConflictingMenu>
             )
           : null}
       </span>

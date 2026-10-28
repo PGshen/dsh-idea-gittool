@@ -60,7 +60,7 @@
 }
 
 .control[aria-invalid='true'] {
-  border-color: var(--dsw-alias-state-warn);
+  border-color: var(--dsw-alias-state-warn-primary);
 }
 
 .hint {

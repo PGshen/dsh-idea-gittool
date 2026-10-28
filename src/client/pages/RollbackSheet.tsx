@@ -21,6 +21,7 @@ import { Button } from '../ui/Button.tsx'
 import { writePathsLimitReason } from '../store/commit-store.ts'
 import { submitHandler, WriteErrorNotice } from './PushRejectedPage.tsx'
 import css from './RollbackSheet.module.css'
+import { trapTab } from './focus-trap.ts'
 
 /** Every visible string of this file (moved into locales by T7). */
 
@@ -138,7 +139,7 @@ export function RollbackSheetView({
         aria-label={t('rollback.dialogLabel', { count: counts.total })}
         aria-busy={state.busy ? true : undefined}
         tabIndex={-1}
-        onKeyDown={onKeyDown}
+        onKeyDown={(event) => { onKeyDown?.(event); trapTab(event, event.currentTarget) }}
       >
         <header className={css.header}>
           <strong>{t('rollback.title')}</strong>

@@ -13,6 +13,7 @@ import type { ActionNotice } from './branch-actions.ts'
 import type { IntegrateResult } from './integrate-actions.ts'
 import sheetCss from './BranchSheets.module.css'
 import css from './Integrate.module.css'
+import { trapTab } from './focus-trap.ts'
 
 /** The control that submitted the form (the clicked button, or the focused field after Enter). */
 export function submitTriggerOf(event: FormEvent): FocusTarget | null {
@@ -109,7 +110,7 @@ export function SheetFrame({ title, subtitle, label, rootRef, onCancel, onKeyDow
   return (
     <div className={sheetCss.layer} data-integrate-sheet={dataKind}>
       <div className={sheetCss.scrim} aria-hidden="true" onClick={onCancel} />
-      <div ref={rootRef} className={sheetCss.sheet} role="dialog" aria-modal="true" aria-label={label} tabIndex={-1} onKeyDown={onKeyDown}>
+      <div ref={rootRef} className={sheetCss.sheet} role="dialog" aria-modal="true" aria-label={label} tabIndex={-1} onKeyDown={(event) => { onKeyDown?.(event); trapTab(event, event.currentTarget) }}>
         <header className={sheetCss.header}>
           <strong>{title}</strong>
           {subtitle === undefined ? null : <span className={sheetCss.muted}>{subtitle}</span>}

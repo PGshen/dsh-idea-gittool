@@ -26,7 +26,7 @@
 }
 
 .mono {
-  font-family: var(--dsw-font-mono, monospace);
+  font-family: var(--dsw-font-markdown-code-block-font-family, monospace);
   font-size: 11px;
   color: var(--dsw-alias-label-secondary);
   overflow-wrap: anywhere;

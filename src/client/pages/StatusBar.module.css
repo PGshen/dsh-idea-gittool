@@ -32,7 +32,7 @@
 }
 
 .warn {
-  color: var(--dsw-alias-state-warn);
+  color: color-mix(in oklab, var(--dsw-alias-state-warn-primary) 60%, var(--dsw-alias-label-primary));
 }
 
 .clean {
@@ -48,7 +48,7 @@
 }
 
 .mono {
-  font-family: var(--dsw-font-mono);
+  font-family: var(--dsw-font-markdown-code-block-font-family);
 }
 
 .link {
@@ -81,7 +81,7 @@
 }
 
 .toggle[aria-pressed='true'] {
-  color: var(--dsw-alias-state-success);
+  color: color-mix(in oklab, var(--dsw-alias-state-success-primary) 60%, var(--dsw-alias-label-primary));
 }
 
 .toggle:hover {

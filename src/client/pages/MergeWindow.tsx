@@ -25,7 +25,7 @@ import { createMergePane, createScrollLock, gutterAction, mapLine, resultEditabl
 import type { MergePane, MergePaneClasses, MergePaneHandle } from './merge-editor.ts'
 import { useMergeFullscreen } from './merge-fullscreen.ts'
 import type { SidebarFullscreen } from './merge-fullscreen.ts'
-import { adjacentPath, createMergeWindowController, focusIsLost, isStrayEscape, mergeKeyCommand, shouldRefocusAfterWrite } from './merge-window-controller.ts'
+import { adjacentPath, createMergeWindowController, focusIsLost, isStrayEscape, mergeKeyCommand, refocusAfterGutter, shouldRefocusAfterWrite } from './merge-window-controller.ts'
 import type { LeaveAnswer, MergeWindowUi } from './merge-window-controller.ts'
 import css from './MergeWindow.module.css'
 import { MergeConfirmBar, MergeFallback, MergeFooter, MergeHeader } from './MergeWindowParts.tsx'
@@ -341,6 +341,8 @@ function MergeFileSession(props: MergeWindowProps): ReactNode {
   const resultRef = useRef<HTMLDivElement | null>(null)
   const rightRef = useRef<HTMLDivElement | null>(null)
   const panes = useRef<Partial<Record<MergePane, MergePaneHandle>> | null>(null)
+  // B4b: a gutter button pressed from the keyboard; its pane re-renders and focus must not stay lost.
+  const gutterFocus = useRef<{ pane: MergePane; chunk: number; kind: 'accept' | 'ignore' } | null>(null)
   const sides = mergeSideLabels(t, props.operation)
   const file = state.file
   const hasModel = state.model !== null
@@ -366,6 +368,11 @@ function MergeFileSession(props: MergeWindowProps): ReactNode {
       }
     }
     const onGutter = (kind: 'accept' | 'ignore', chunk: { id: number; side: 'left' | 'right' }, modifier: boolean): void => {
+      // Mouse presses keep the editor's focus (mousedown is prevented); only a focused button needs a successor.
+      const active = globalThis.document?.activeElement
+      gutterFocus.current = active instanceof HTMLElement && active.dataset['chunkAction'] !== undefined
+        ? { pane: chunk.side, chunk: chunk.id, kind }
+        : null
       controller.run(gutterAction(kind, chunk.id, chunk.side, modifier))
     }
     handles.left = createMergePane({
@@ -408,6 +415,17 @@ function MergeFileSession(props: MergeWindowProps): ReactNode {
     const handles = panes.current
     if (model === null || handles === null) return
     for (const handle of Object.values(handles)) handle.update(model, currentChunk)
+    const pressed = gutterFocus.current
+    if (pressed === null) return
+    // One frame later the gutters have re-rendered and the pressed button is gone. The request stays in
+    // the ref until the frame runs, so a re-run of this effect (the window moving to the next chunk)
+    // cancels the frame but schedules it again.
+    const frame = requestAnimationFrame(() => {
+      gutterFocus.current = null
+      const pane = handles[pressed.pane]
+      if (pane !== undefined) refocusAfterGutter(pane.view.dom, handles.result?.view.contentDOM ?? null, pressed)
+    })
+    return () => { cancelAnimationFrame(frame) }
   }, [currentChunk, model])
 
   const editable = resultEditable(state.status)

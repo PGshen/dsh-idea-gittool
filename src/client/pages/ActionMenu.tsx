@@ -6,6 +6,7 @@ import type { ReactNode } from 'react'
 import { useT } from '../i18n.tsx'
 import type { LocalizedText } from '../localized-text.ts'
 import css from './CommitContextMenu.module.css'
+import { MenuItemButton } from './MenuItemButton.tsx'
 import { useFloatingMenu } from './menu-position.ts'
 import type { MenuAnchor } from './menu-position.ts'
 
@@ -42,19 +43,17 @@ export function ActionMenu<Id extends string>({ label, items, onSelect, onClose,
     previousSection = item.section
     const reason = item.disabledReason === undefined ? null : t(item.disabledReason.key, item.disabledReason.params)
     nodes.push(
-      <button
+      <MenuItemButton
         key={item.id}
-        type="button"
-        role="menuitem"
-        className={`${css.item} ${reason === null ? '' : css.itemDisabled}`}
-        data-action={item.id}
-        {...(item.danger === true ? { 'data-danger': true } : {})}
-        {...(reason === null ? {} : { 'aria-disabled': true, title: reason })}
-        onClick={() => { if (reason === null) onSelect(item.id) }}
-      >
-        <span>{t(item.label.key, item.label.params)}</span>
-        {reason === null ? null : <span className={css.reason}>{reason}</span>}
-      </button>,
+        label={t(item.label.key, item.label.params)}
+        reason={reason}
+        {...(item.danger === true ? { danger: true } : {})}
+        className={css.item}
+        disabledClassName={css.itemDisabled}
+        reasonClassName={css.reason}
+        data={{ 'data-action': item.id }}
+        onSelect={() => onSelect(item.id)}
+      />,
     )
   }
   return (

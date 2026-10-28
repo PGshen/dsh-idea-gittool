@@ -1,8 +1,8 @@
 // Commit page (design §8.2): changes tree + message + actions, with disabled reasons,
 // rewrite-history warning, success feedback and actionable errors.
 // The workbench owns both stores and passes their states; Host calls go through the commit store.
-import { useEffect, useRef, useState } from 'react'
-import type { ReactNode } from 'react'
+import { useRef, useState } from 'react'
+import type { ReactNode, RefObject } from 'react'
 import type { CommitResultValue, StatusValue, WritePolicyValue } from '../../shared/protocol.ts'
 import { activeFocusTarget } from '../focus.ts'
 import type { FocusTarget } from '../focus.ts'
@@ -15,7 +15,7 @@ import { ChangesTree } from './ChangesTree.tsx'
 import type { DiffOpenScope } from './ChangesTree.tsx'
 import { CommitMessage } from './CommitMessage.tsx'
 import css from './CommitPanel.module.css'
-
+import { useMenuKeyboard } from './menu-position.ts'
 
 export interface CommittedInfo {
   mode: CommitMode
@@ -225,16 +225,6 @@ function NormalCommitPanel(props: CommitPanelProps): ReactNode {
     phase: commit.phase,
   }, t)
 
-  useEffect(() => {
-    if (!pushMenuOpen) return
-    const onPointerDown = (event: PointerEvent): void => {
-      if (pushMenuRef.current !== null && event.target instanceof Node && pushMenuRef.current.contains(event.target)) return
-      setPushMenuOpen(false)
-    }
-    document.addEventListener('pointerdown', onPointerDown, true)
-    return () => document.removeEventListener('pointerdown', onPointerDown, true)
-  }, [pushMenuOpen])
-
   const submit = (push = false, openPushPage = false): void => {
     void runCommit({
       commitStore,
@@ -336,7 +326,14 @@ function NormalCommitPanel(props: CommitPanelProps): ReactNode {
             </Button>
             {pushMenuOpen
               ? (
-                  <div role="menu" className={css.menu}>
+                  <PushMenu
+                    label={t('commit.pushMenu')}
+                    boundary={pushMenuRef}
+                    onClose={(via) => {
+                      setPushMenuOpen(false)
+                      if (via === 'key') pushMenuRef.current?.querySelector<HTMLElement>('[aria-haspopup="menu"]')?.focus()
+                    }}
+                  >
                     <button
                       type="button"
                       role="menuitem"
@@ -345,7 +342,7 @@ function NormalCommitPanel(props: CommitPanelProps): ReactNode {
                     >
                       {t('commit.commitAndOpenPush')}
                     </button>
-                  </div>
+                  </PushMenu>
                 )
               : null}
           </div>
@@ -363,4 +360,19 @@ function NormalCommitPanel(props: CommitPanelProps): ReactNode {
       </div>
     </div>
   )
+}
+
+interface PushMenuProps {
+  label: string
+  /** The split button: pointer-downs inside it (the ▾ toggle) do not close the menu. */
+  boundary: RefObject<HTMLElement>
+  onClose: (via: 'key' | 'pointer') => void
+  children: ReactNode
+}
+
+/** The commit button's ▾ menu (B4b T5): takes focus, arrow keys, Esc / Tab / outside click close it. */
+function PushMenu({ label, boundary, onClose, children }: PushMenuProps): ReactNode {
+  const ref = useRef<HTMLDivElement>(null)
+  const onKeyDown = useMenuKeyboard(ref, onClose, true, boundary)
+  return <div ref={ref} role="menu" aria-label={label} className={css.menu} onKeyDown={onKeyDown}>{children}</div>
 }

@@ -220,6 +220,8 @@ export function stashRowKeyDecision(
 ): StashRowKeyDecision {
   const move = adjacentStash(entries, current, key)
   if (move !== null) return { kind: 'move', sha: move }
+  // B4b: Space selects the focused row (WAI-ARIA listbox).
+  if (key === ' ' && entries.some(item => item.sha === current)) return { kind: 'move', sha: current }
   const action = stashKeyAction(key)
   if (action === 'preview') return { kind: 'preview' }
   if (action === 'delete' && canDrop) return { kind: 'askDrop' }

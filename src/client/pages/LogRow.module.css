@@ -86,7 +86,7 @@
   flex: none;
   width: 64px;
   color: var(--dsw-alias-label-tertiary);
-  font-family: var(--dsw-font-mono, monospace);
+  font-family: var(--dsw-font-markdown-code-block-font-family, monospace);
   font-size: 11px;
   white-space: nowrap;
 }

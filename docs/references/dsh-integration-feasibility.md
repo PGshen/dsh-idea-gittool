@@ -284,10 +284,14 @@ DSH Web 没有独立的"命令面板"，**快捷命令目录就是命令注册�
 | 正文/次级/说明 | `--dsw-alias-label-` 的 `primary` / `secondary` / `tertiary` / `caption`（`:222-225,214`） |
 | 边框 | `--dsw-alias-border-` 的 `l1` / `l2` / `l3` / `l4`（`:185-189`，中性实线用 **0.5px**，见样式文档 `:29`） |
 | 交互反馈 | `--dsw-alias-interactive-bg-hover`、`-active`（`:213,209`） |
-| 状态色 | `--dsw-alias-state-` 的 `success` / `warn` / `error-primary`（`:250-258`） |
+| 状态色 | `--dsw-alias-state-success-primary` / `-warn-primary` / `-error-primary`（`:250-258`；**没有**不带 `-primary` 的 `success`/`warn`，2026-10-28 B4b 核实） |
+| 等宽字体 | `--dsw-font-markdown-code-block-font-family`（`gradient-shadow-text.css`；**没有** `--dsw-font-mono`） |
+| 选中背景 | 用 `--dsw-alias-interactive-bg-active`（**没有** `-bg-selected`） |
 | 行内 diff 背景 | `--dsw-alias-code-diff-added`、`-deleted`（明 `:242-243`，暗 `:360-361`） |
 | 文件级 diff | `--dsw-alias-file-diff-{added,deleted}-{bg,gutter,marker}`（明 `:244-249`，暗 `:362-367`） |
 | 链接 | `--dsw-alias-link` |
+
+插件可用的全部 `--dsw-*` 名字以 `test/client/dsh-tokens.ts` 的快照为准（DSH `0.2.1-rc.2`，2026-10-28 从 `packages/client/ui-theme/src` 提取，共 403 个；提取命令写在文件头），`test/client/pages/css-tokens.test.ts` 据此检查全部样式。DSH 升级后按 TD-2 重新提取。
 
 `ui-deliverables/src/client/FileDiff.module.css:24-25` 是这些 token 的标准用法（**.add/.del 只换 token 不改结构**）。
 

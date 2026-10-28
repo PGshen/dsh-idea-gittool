@@ -92,6 +92,19 @@ describe('DocumentActions', () => {
     expect(html).toContain('Blame')
   })
 
+  it('B4b: a clean file of the repository explains its "·" status as "no uncommitted changes"', () => {
+    const html = renderActions({ absolutePath: '/repo/src/a.ts', statusFor: () => null, repoRootFor: () => '/repo', openInGit: () => null, openBlame: () => null })
+    const dot = html.match(/<span[^>]*data-status="unknown"[^>]*>/u)?.[0] ?? ''
+    expect(dot).toContain('title="文件没有未提交的改动"')
+    expect(html).not.toContain('Git 状态待接入')
+  })
+
+  it('B4b: outside the repository the "·" says so', () => {
+    const html = renderActions({ absolutePath: '/elsewhere/a.ts', statusFor: () => null, repoRootFor: () => null, openInGit: () => null, openBlame: () => null })
+    const dot = html.match(/<span[^>]*data-status="unknown"[^>]*>/u)?.[0] ?? ''
+    expect(dot).toContain('title="文件不在当前会话的 Git 仓库中"')
+  })
+
   it('B2: history and diff go to the Git tab for a file of the repository', () => {
     const html = renderActions({ absolutePath: '/repo/src/a.ts', statusFor: () => 'M', repoRootFor: () => '/repo', openInGit: () => null, openBlame: () => null })
     const history = html.match(/<button[^>]*>历史<\/button>/u)?.[0]

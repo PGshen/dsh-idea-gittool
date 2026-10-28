@@ -82,7 +82,7 @@
 .menuItem:hover,
 .menuItem:focus-visible {
   background: var(--dsw-alias-interactive-bg-hover);
-  outline: none;
+  outline-offset: calc(-1 * var(--dsw-focus-ring-width));
 }
 
 .notes {
@@ -100,7 +100,7 @@
 }
 
 .warning {
-  color: var(--dsw-alias-state-warn);
+  color: color-mix(in oklab, var(--dsw-alias-state-warn-primary) 60%, var(--dsw-alias-label-primary));
 }
 
 .hint {
@@ -111,7 +111,7 @@
   display: flex;
   gap: 6px;
   align-items: center;
-  color: var(--dsw-alias-state-success);
+  color: color-mix(in oklab, var(--dsw-alias-state-success-primary) 60%, var(--dsw-alias-label-primary));
   font-size: 12px;
 }
 

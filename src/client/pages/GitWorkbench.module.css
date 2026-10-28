@@ -24,6 +24,36 @@
   min-width: 0;
 }
 
+/*
+ * B4b T9 (design §15.5): whatever mounts in the content area — a page after a tab switch, the branch
+ * drawer — fades in over 120ms; overlays (every role="dialog" in it: Blame, history, rebase, merge
+ * window, sheets) slide in over 160ms. Data refreshes do not remount, so they do not animate.
+ */
+.content > * {
+  animation: pageIn 120ms ease-out;
+}
+
+.content [role='dialog'] {
+  animation: overlayIn 160ms ease-out;
+}
+
+@keyframes pageIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes overlayIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .content > *,
+  .content [role='dialog'] {
+    animation: none;
+  }
+}
+
 /* B3c：贮藏页顶部「贮藏 | 搁架」分段。 */
 .stashSegments {
   display: flex;

@@ -82,7 +82,10 @@ describe('BranchesPage layout', () => {
       expect(button).toContain('tabindex="-1"')
       expect(button).toContain(`aria-label="${zh['branch.rowMenu']}"`)
     }
-    expect(html).toMatch(/role="treeitem" tabindex="0"[^>]*data-kind="branch"/)
+    // B4b T4: the whole tree is one Tab stop (roving tabindex); without a selection it is the first group header.
+    const tree = html.slice(html.indexOf('role="tree"'))
+    expect(tree.match(/tabindex="0"/g)).toHaveLength(1)
+    expect(tree).toMatch(/role="treeitem" aria-level="1" data-tree-id="group:[a-z]+" tabindex="0"/)
   })
 
   it('shows a detached row in the HEAD group when HEAD is detached', () => {

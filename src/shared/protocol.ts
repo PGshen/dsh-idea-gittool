@@ -182,9 +182,30 @@ export const GIT_ERROR_CODES = [
   'git/stale-target',
   /** 新建/重命名的目标分支已存在：{@link BranchExistsDetails}。 */
   'git/branch-exists',
+  // B4d（设计 §16.7）
+  /** 解析不到 git 可执行文件（PATH 中没有，或设置的路径失效）；客户端显示「未找到 git 命令」。 */
+  'git/not-found',
+  /** git 低于最低版本：{@link UnsupportedVersionDetails}；客户端显示升级提示。 */
+  'git/unsupported-version',
 ] as const
 
 export type GitErrorCode = (typeof GIT_ERROR_CODES)[number]
+
+/** `git/unsupported-version` 的 details（B4d）：版本号都是 `major.minor.patch`。 */
+export interface UnsupportedVersionDetails {
+  current: string
+  minimum: string
+}
+
+/** Host 实际使用的 git（B4d）：`source` 说明路径来自 PATH 解析还是用户设置。 */
+export interface GitExecutableInfo {
+  path: string
+  /** `major.minor.patch`，如 `2.50.1`。 */
+  version: string
+  /** 原始 `git --version` 输出（去掉末尾换行）。 */
+  raw: string
+  source: 'path' | 'setting'
+}
 
 export interface GitError {
   code: GitErrorCode

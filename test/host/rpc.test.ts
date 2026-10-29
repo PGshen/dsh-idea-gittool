@@ -196,6 +196,23 @@ describe('createRpcHandler / bootstrap', () => {
     expect(bootstrap.gitVersion).toBeUndefined()
   })
 
+  it('fails bootstrap with git/unsupported-version below 2.25 (B4d T1)', async () => {
+    const repo = makeRepo()
+    const real = createGitRunner(createFakeSubprocess())
+    const handler = createRpcHandler({
+      runner: async (argv, options) => {
+        if (argv.includes('--version')) return { exitCode: 0, stdout: 'git version 2.24.1\n', stderr: '' }
+        return real(argv, options)
+      },
+      sandboxPolicy: () => policySource(repo.root),
+    })
+
+    const failure = errorOf(await handler('bootstrap', { sessionId: 'session-1' }, SIGNAL))
+
+    expect(failure.code).toBe('git/unsupported-version')
+    expect(failure.details).toEqual({ current: '2.24.1', minimum: '2.25.0' })
+  })
+
   it('defaults the write policy to fail-closed read-only', async () => {
     const { handler } = makeHandler()
 

@@ -10,11 +10,11 @@ B4c 合并到 main 之后再开工（同一时间只执行一份计划）。
 
 | 项 | 值 |
 |---|---|
-| 状态 | 已批准（B4c 合并后开工） |
+| 状态 | 进行中 |
 | 里程碑 | B4 打磨（第 4 份，共 4 份：B4a 设置页 + Blame 渲染器、B4b a11y 与样式变量、B4c 性能、**B4d 跨平台/安装升级/文档**；拆分 2026-10-28 负责人同意） |
 | 设计依据 | [产品设计 v0.2](../../design/2026-10-25-产品设计-v0.2.md) §7.2（「找不到 git」空状态）、设置表「git 路径（P1）」、§16.2（插件形态与安装）、§16.7 错误分类（`git/not-found`、`git/unsupported-version`）、§16.9「兼容」；[设计决策 v0.2](../../design/2026-10-25-产品设计决策-v0.2.md) §4、§5 S3/S4/S5；[references](../../references/dsh-integration-feasibility.md) R1、§13；tech-debt TD-1、TD-2、TD-17 |
 | 分支 | `b4d-platform-install`（B4c 合并后从 main 切出） |
-| 批准记录 | 2026-10-28 负责人：待确认 1–4 按推荐，B4c 合并后再开工；执行方式开工时确认 |
+| 批准记录 | 2026-10-28 负责人：待确认 1–4 按推荐，B4c 合并后再开工；2026-10-29 执行方式：当前会话内联执行，最后做一次整分支评审 |
 
 ## 目标
 
@@ -89,7 +89,7 @@ export function gitSupports(version: ParsedGitVersion, feature: 'updateRefs' | '
 
 <!-- 状态：待开始 / 进行中 / 完成 / 阻塞 -->
 
-### T1：git 版本解析与特性门控（待开始）
+### T1：git 版本解析与特性门控（完成）
 
 - **目标**：AC3 的 Host 部分；冻结契约。
 - **涉及文件**：`src/host/git-version.ts`（新）、`src/shared/protocol.ts`、`src/host/git/interactive-rebase.ts`（`--update-refs` 门控）、`test/host/git-version.test.ts`。
@@ -150,15 +150,19 @@ export function gitSupports(version: ParsedGitVersion, feature: 'updateRefs' | '
 
 ## 进度
 
-- 无
+- 2026-10-29 — T1 — `src/host/git-version.ts`（解析、最低 2.25.0、`updateRefs` 门控）；协议加 `git/not-found`、`git/unsupported-version`、`GitExecutableInfo`；仓库 bootstrap 在 git < 2.25 时返回 `git/unsupported-version`；交互式变基在 git < 2.38 时不传 `--update-refs`
 
 ## 下一步
 
-- B4c 合并到 main 后从 `main` 切 `b4d-platform-install`，从 T1 开始。
+- T2：`git/not-found` 与 git 路径（Host），`gitExecutable` 端点与 bootstrap `git` 字段。
 
 ## 决策记录
 
-- 无
+- T1 Ruling：契约里的 `pathspecFromFileStash` 特性不做——`stash push` 从不传 pathspec，`add`/`commit`/`reset`/`restore` 的 `--pathspec-from-file` 在 2.25 已有，被最低版本覆盖；`GitFeature` 只有 `updateRefs`。代价：若 T5 实测发现 2.25 上某命令缺该选项，再加特性项。
+- T1 Ruling：`gitExecutable` 端点与 `BootstrapValue.git` 在 T2 与实现一起加进协议（端点表是穷举映射，先加类型会让处理器表不完整）；T1 只冻结 `GitExecutableInfo`、`UnsupportedVersionDetails` 与两个错误码。代价：无，T2 按契约补。
+- T1 Ruling：交互式变基在操作内自己跑一次 `git --version` 决定是否传 `--update-refs`，不接 runtime 的版本缓存（`WriteContext` 不带 runtime）；不符合时静默不传，而不是报错（页面本就隐藏该选项）。代价：每次变基多一次约 3ms 的进程；T2 把版本缓存移进执行器后可复用。
+- T1 Ruling：版本门控只在「是仓库」的 bootstrap 上做；不在仓库时照旧返回只读空状态。代价：非仓库目录里 git 过旧不提示，但那里也不跑任何 git 操作。
+- T1 Ruling：保留已有的 `BootstrapValue.gitVersion`（状态栏用），不改名。
 
 ## 意外与发现
 

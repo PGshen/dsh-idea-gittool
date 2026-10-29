@@ -16,6 +16,7 @@ import type {
   BlameRequest,
   BlameValue,
   BootstrapValue,
+  UnsupportedVersionDetails,
   CompareRequest,
   CompareValue,
   FormatPatchValue,
@@ -55,6 +56,7 @@ import { isAbsolute, resolve as resolvePath } from 'node:path'
 
 import type { GitRunner, WriteOperation } from './git-executor.ts'
 import { GIT_BASE_ARGV, GitCommandFailure, bindWriteContext, messageOf } from './git-executor.ts'
+import { GIT_MIN_VERSION, formatGitVersion, isSupportedGitVersion, parseGitVersion } from './git-version.ts'
 import {
   checkoutOperation,
   createBranchOperation,
@@ -242,9 +244,10 @@ interface HandlerRuntime {
   gitDirs: (repoRoot: string, signal: AbortSignal) => Promise<string[] | undefined>
 }
 
-/** `git version 2.50.1 (Apple Git-155)` → `2.50.1`. */
-export function parseGitVersion(stdout: string): string | undefined {
-  return /git version (\d+(?:\.\d+)+)/.exec(stdout)?.[1]
+/** `git version 2.50.1 (Apple Git-155)` → `2.50.1`; not a git version line → undefined. */
+function versionNumber(stdout: string): string | undefined {
+  const parsed = parseGitVersion(stdout)
+  return parsed === null ? undefined : formatGitVersion(parsed)
 }
 
 /** Build the handler registered on {@link RPC_CHANNEL}; the runtime stays undisposed. */
@@ -290,7 +293,7 @@ export function createRpcRuntime(deps: RpcDeps): RpcRuntime {
   let gitVersionProbe: Promise<string | undefined> | undefined
   const gitVersion = async (cwd: string, signal: AbortSignal): Promise<string | undefined> => {
     gitVersionProbe ??= deps.runner(['--version'], { cwd, signal })
-      .then(result => (result.exitCode === 0 ? parseGitVersion(result.stdout) : undefined))
+      .then(result => (result.exitCode === 0 ? versionNumber(result.stdout) : undefined))
       .catch(() => undefined)
     const version = await gitVersionProbe
     if (version === undefined) gitVersionProbe = undefined
@@ -571,6 +574,11 @@ async function handleBootstrap(
   const status = await cachedStatus(deps, runtime, resolution.root, signal, version)
   const writePolicy = await resolveWritePolicy(deps, runtime, resolution.root, sessionId, signal)
   const gitVersion = await runtime.gitVersion(resolution.root, signal)
+  const parsedVersion = gitVersion === undefined ? null : parseGitVersion(gitVersion)
+  if (parsedVersion !== null && !isSupportedGitVersion(parsedVersion)) {
+    const details: UnsupportedVersionDetails = { current: gitVersion ?? '', minimum: GIT_MIN_VERSION }
+    throw new GitCommandFailure('git/unsupported-version', `git ${details.current} is older than ${GIT_MIN_VERSION}`, { ...details })
+  }
   const pendingWrites = runtime.writes.pending(resolution.root)
   return ok<BootstrapValue>({
     sessionId,

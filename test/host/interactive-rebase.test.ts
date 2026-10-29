@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { RebaseEntry } from '../../src/shared/protocol.ts'
 import { GitCommandFailure, createGitRunner } from '../../src/host/git-executor.ts'
+import type { WriteContext } from '../../src/host/git-executor.ts'
 import { interactiveRebaseOperation } from '../../src/host/git/interactive-rebase.ts'
 import { commitFilesOperation } from '../../src/host/git/commit-write.ts'
 import { readOperationState } from '../../src/host/git/operation.ts'
@@ -211,6 +212,31 @@ describe('interactiveRebaseOperation.run', () => {
     const [d1, d2] = repo.git('rev-list', '--reverse', `${base}..HEAD`).trim().split('\n')
     await rebase(repo, base, [{ sha: d1 ?? '', action: 'reword', message: 'c1 newer' }, { sha: d2 ?? '', action: 'pick' }])
     expect(repo.git('log', '-1', '--format=%s', 'mid').trim()).toBe('c1 new')
+  })
+
+  it('drops --update-refs on a git older than 2.38 (B4d T1)', async () => {
+    const repo = makeRepo()
+    const [c1, c2] = linear(repo, 2)
+    repo.git('branch', 'mid', c1 ?? '')
+    const base = repo.git('rev-parse', 'HEAD~2').trim()
+    const real = contextFor(repo)
+    const rebaseArgv: string[][] = []
+    const ctx: WriteContext = {
+      ...real,
+      git: async (argv, options) => {
+        if (argv.includes('--version')) return { exitCode: 0, stdout: 'git version 2.37.0\n', stderr: '' }
+        if (argv.includes('rebase')) rebaseArgv.push([...argv])
+        return await real.git(argv, options)
+      },
+    }
+    const head = repo.git('rev-parse', 'HEAD').trim()
+    const input = interactiveRebaseOperation.parse({
+      sessionId: 's', requestId: 'r', base, head, updateRefs: true,
+      entries: [{ sha: c1 ?? '', action: 'reword', message: 'c1 new' }, { sha: c2 ?? '', action: 'pick' }],
+    })
+    await interactiveRebaseOperation.run(ctx, input)
+    expect(rebaseArgv.flat()).not.toContain('--update-refs')
+    expect(repo.git('log', '-1', '--format=%s', 'mid').trim()).toBe('c1')
   })
 
   it('stops at an edit (git exits 0), reports rebaseStop, then finishes on continue with later execs', async () => {

@@ -87,7 +87,11 @@ export const interactiveRebaseOperation: WriteOperation<
 
   async run(ctx, input) {
     await assertNoOperation(ctx)
-    const plan = await readRebasePlan(readRunner(ctx), ctx.repoRoot, { sessionId: '', base: input.base })
+    // An older git has no `--update-refs`: drop it rather than fail (B4d T1; the page hides the option).
+    const probe = await ctx.git(['--version'], { mode: 'read' })
+    const gitVersion = probe.exitCode === 0 ? probe.stdout : undefined
+    const plan = await readRebasePlan(readRunner(ctx), ctx.repoRoot, { sessionId: '', base: input.base }, { gitVersion })
+    const updateRefs = input.updateRefs && plan.supportsUpdateRefs
     if (plan.head !== input.head) {
       throw new GitCommandFailure('git/stale-target', 'HEAD moved since the rebase list was opened', {
         target: 'head',
@@ -105,7 +109,7 @@ export const interactiveRebaseOperation: WriteOperation<
       const blobs = await storeMessages(ctx, input.entries)
       const todo = buildTodo(input.entries, {
         messageBlob: index => blobs.get(index) ?? '',
-        branches: input.updateRefs ? sha => branches.get(sha) ?? [] : undefined,
+        branches: updateRefs ? sha => branches.get(sha) ?? [] : undefined,
       })
       const result = await ctx.git(
         [
@@ -114,7 +118,7 @@ export const interactiveRebaseOperation: WriteOperation<
           '-i',
           // Pin git-behavior §4 regardless of `rebase.rescheduleFailedExec` (review I3).
           '--no-reschedule-failed-exec',
-          ...(input.updateRefs ? ['--update-refs'] : []),
+          ...(updateRefs ? ['--update-refs'] : []),
           ...(input.base === null ? ['--root'] : ['--end-of-options', input.base]),
         ],
         { stdin: todo, todoFromStdin: true, timeoutMs: INTERACTIVE_REBASE_TIMEOUT_MS },

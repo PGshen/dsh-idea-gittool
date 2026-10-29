@@ -277,6 +277,11 @@ export function createMergeWindowController(deps: MergeWindowControllerDeps): Me
     requestLeave,
     guardLeave: (go, cancel) => {
       if (!store.getState().dirty) return false
+      // Review M5: a save is already answering an earlier prompt; refuse this one instead of leaving it open.
+      if (savingTarget !== null) {
+        cancel?.()
+        return true
+      }
       if (ui.confirm !== null) dropConfirm()
       set({ confirm: { kind: 'leave', target: cancel === undefined ? { kind: 'external', go } : { kind: 'external', go, cancel } } })
       return true

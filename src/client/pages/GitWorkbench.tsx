@@ -70,7 +70,7 @@ import { applyGitPath } from '../git-path.ts'
 import { UpdateProjectPage } from './UpdateProjectPage.tsx'
 import { commitActionEffect } from './commit-actions.ts'
 import type { CommitActionId } from './commit-actions.ts'
-import { FETCH_ALL, branchActionContext, createBranchActionRunner, outcomeNotice, pathsLimitNotice, writeBlock } from './branch-actions.ts'
+import { FETCH_ALL, branchActionContext, createBranchActionRunner, outcomeNotice, pathsLimitNotice, relayBranchRunnerDeps, writeBlock } from './branch-actions.ts'
 import type { ActionNotice as ActionNoticeValue, BranchActionRunnerDeps, QuickActionId } from './branch-actions.ts'
 import { createBranchesStore, useBranchesState } from './branch-store.ts'
 import { CommitDetail } from './CommitDetail.tsx'
@@ -653,16 +653,7 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
     onOutcome: (outcome, success) => { setNotice(outcomeNotice(outcome, success)) },
     currentBranch: () => (status === null || status.detached ? null : status.branch),
   }
-  const branchRunner = useMemo(() => createBranchActionRunner({
-    actions,
-    openOverlay: (overlay, trigger) => { runnerDeps.current?.openOverlay(overlay, trigger) },
-    copy: (text) => { runnerDeps.current?.copy(text) },
-    showInLog: (entry) => { runnerDeps.current?.showInLog(entry) },
-    filterLog: (entry) => { runnerDeps.current?.filterLog(entry) },
-    openPush: () => { runnerDeps.current?.openPush() },
-    onOutcome: (outcome) => { runnerDeps.current?.onOutcome(outcome) },
-    currentBranch: () => runnerDeps.current?.currentBranch?.() ?? null,
-  }), [actions])
+  const branchRunner = useMemo(() => createBranchActionRunner(relayBranchRunnerDeps(actions, () => runnerDeps.current)), [actions])
   const reportOutcome = useCallback((outcome: ActionOutcome<unknown>, success?: LocalizedText) => { setNotice(outcomeNotice(outcome, success)) }, [])
   const runQuickAction = useCallback((id: QuickActionId, trigger: FocusTarget | null) => {
     setNotice(null)

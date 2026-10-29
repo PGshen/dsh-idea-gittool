@@ -512,6 +512,24 @@ describe('T2: a held outside prompt survives a failed save and is cancelled when
     expect(controller.getState().confirm).toBeNull()
   })
 
+  it('an outside navigation while a save is running is cancelled, not left hanging (review M5)', async () => {
+    let finish: (outcome: ActionOutcome<never>) => void = () => {}
+    const { controller } = await setup({ run: () => new Promise<ActionOutcome<never>>((resolve) => { finish = resolve }) })
+    controller.run({ type: 'accept', id: 0, side: 'left' })
+    const go = vi.fn()
+    controller.guardLeave(go, vi.fn())
+    controller.answerLeave('save')
+    const laterGo = vi.fn()
+    const laterCancel = vi.fn()
+    expect(controller.guardLeave(laterGo, laterCancel)).toBe(true)
+    expect(laterCancel).toHaveBeenCalledTimes(1)
+    expect(controller.getState().confirm).toBeNull()
+    finish({ kind: 'done', value: { path: 'a.txt' } } as unknown as ActionOutcome<never>)
+    await flush()
+    expect(go).toHaveBeenCalledTimes(1)
+    expect(laterGo).not.toHaveBeenCalled()
+  })
+
   it('dispose without a held prompt does nothing', async () => {
     const { controller, onClose } = await setup()
     controller.dispose()

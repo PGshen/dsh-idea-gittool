@@ -75,10 +75,11 @@
 - 2026-10-29 — T3 日志、历史、补丁 — 完成（61b1ba1、4f94aa9、e9ae332、ea9a53a）
 - 2026-10-29 — T4 控制台、贮藏、B4d 测试 — 完成（8285570、1ccb732、24f86ff、e90775d）
 - 2026-10-29 — 四个分支合并到 `t1-todo-fixes`（无冲突），合并后 `make check` 全绿（146 文件 / 2378 测试）；TODO 已更新
+- 2026-10-29 — 整分支评审（独立子代理，无 Critical，结论「修复后可合并」）；I1、I2、M3–M7 已修，`make check` 全绿（2381 测试）
 
 ## 下一步
 
-- 等负责人验收：确认下方「需负责人确认」的两处公共接口新增；验收后按 SOP §8 合并到 main 并把本计划移入 completed。
+- 等负责人验收（可选：浏览器 L4 走查 `beforeunload`、成功提示、worktree 禁删）；验收后按 SOP §8 rebase 到 main、`make check`、`--no-ff` 合并，并把本计划移入 completed。
 
 ## 决策记录
 
@@ -89,13 +90,14 @@
 - 2026-10-29 — T2 冲突来源由客户端 `conflict-store` 记录 `origin`（Host 搁架三方合并不留标记）；块计数失败缓存按「本轮 + 路径」而非 stages（失败时拿不到 stages），新轮次或文件改动时失效。
 - 2026-10-29 — T3 「选中提交已消失」不额外请求：刷新到历史末尾，或已加载行数大于「原位置 + 新出现行数」时才判定消失并清空详情；否则保持 A1 I3 行为。分支比较改传完整 ref（`refs/heads/x`），git 解析短名时标签优先。
 - 2026-10-29 — T4 贮藏文件数把 `-u` 贮藏的未跟踪文件直接计入「N 个文件」，与详情两个列表之和一致。
+- 2026-10-29 — 整分支评审处理：I1 工作台转发 runner deps 时丢了 `success` 参数，「取消 upstream」无成功提示 → 抽出 `relayBranchRunnerDeps`（`branch-actions.ts`）并测试；I2 lockfile 误提交 worktree 相对路径 → 还原；M3 `selectionGone` 拓扑重排误判 → 只在注释注明局限；M4 `git.path.superseded` 文案改为「又发起了一次设置」，`GitBody.sendGitPath` 只让最后一次调用写错误/忙碌状态（无组件测试，GitBody 没有现成测试替身）；M5 保存进行中又来外部导航 → 直接按取消回应新询问；M6 worktree 原因 id 加 `useId` 前缀；M7 标签被拒的 `remote:` 行每行截到 200 字符。
 - 2026-10-29 — T1 「新的 URL（留空不修改）」：空值本来就无法提交，改文案为「新的 URL」；锁定 worktree 的原因文案提示在终端 `git worktree unlock`（界面无解锁操作）。
 
 ## 意外与发现
 
 - T4 补并发测试时发现真 bug：重叠设置 git 路径时先发起的那次会生效；已修（`src/host/git-executable.ts`，被取代的设置返回 `git/stale-target`）。
 - T1 确认 `<remote>/HEAD` 删除确实会误删 `origin/main`（修复前测试复现）。
-- worktree 中跑 `make check` 会因 pnpm install 改写 `pnpm-lock.yaml`（esbuild build script 被忽略、link 相对路径变化），各子代理均已还原未提交。
+- worktree 中跑 `make check` 会因 pnpm install 改写 `pnpm-lock.yaml`（esbuild build script 被忽略、link 相对路径变化）。子代理报告已还原，但整分支评审发现 28fecbd 仍误提交了 worktree 相对路径（`link:../../../../deepseek-harness`），已在评审修复提交中还原为 main 的版本。以后在 worktree 里并行开发需注意这一点。
 - T2 遗留：搁架来源冲突的对方一侧名字仍写「贮藏」，来源只在内存，已登记 TODO。
 
 ## 验证记录

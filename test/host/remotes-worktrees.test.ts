@@ -1,5 +1,5 @@
 // B3d T1–T3: remotes, tag push/delete, remote branch delete, upstream, worktrees (real repositories).
-import { existsSync, readFileSync, realpathSync, rmSync } from 'node:fs'
+import { chmodSync, existsSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -88,6 +88,19 @@ describe('tags', () => {
     expect(failure.details).toMatchObject({ target: 'tag', name: 'v9', remote: 'origin' })
     expect(String(failure.details?.['summary'])).toMatch(/already exists/u)
     expect(failure.message).toMatch(/already exists/u)
+  })
+
+  it('caps each remote: line of a rejected tag push (review M7)', async () => {
+    const { bare, local } = remoteSetup()
+    const hook = join(bare, 'hooks', 'pre-receive')
+    writeFileSync(hook, `#!/bin/sh\necho "${'x'.repeat(1000)}" >&2\nexit 1\n`)
+    chmodSync(hook, 0o755)
+    local.git('tag', 'v8')
+    const failure = await failureOf(write(tagPushOperation, local, { name: 'v8', remote: 'origin' }))
+    expect(failure.code).toBe('git/rejected')
+    const remoteMessage = String(failure.details?.['remoteMessage'])
+    expect(remoteMessage.length).toBeGreaterThan(0)
+    expect(remoteMessage.length).toBeLessThanOrEqual(201)
   })
 
   it('keeps the local tag when deleting it on the remote fails, so the user can retry', async () => {

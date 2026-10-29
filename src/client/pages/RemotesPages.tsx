@@ -1,7 +1,7 @@
 // B3d pages (design §11 Remotes, §6.2 Worktree, plan b3d T5): the remotes list with add / change URL /
 // rename / remove (URLs only ever shown redacted), and the worktree list with add / remove / prune /
 // copy path. Views are hook-free; containers load the lists and go through the action store.
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { RemoteEntry, RemoteListValue, RpcResult, WorktreeEntry, WorktreeListValue } from '../../shared/protocol.ts'
 import type { FocusTarget } from '../focus.ts'
@@ -163,6 +163,7 @@ function removeBlock(entry: WorktreeEntry): GitWorkbenchKey | null {
 
 export function WorktreesPageView(props: WorktreesPageViewProps): ReactNode {
   const { t, worktrees } = props
+  const reasonIdPrefix = `worktree-remove-reason${useId()}`
   const prunable = (worktrees ?? []).some(entry => entry.prunable)
   return (
     <div className={css.root} role="dialog" aria-label={t('worktrees.title')} tabIndex={-1} data-worktrees-page>
@@ -180,7 +181,7 @@ export function WorktreesPageView(props: WorktreesPageViewProps): ReactNode {
       <ul className={css.list}>
         {(worktrees ?? []).map((entry, index) => {
           const reason = removeBlock(entry)
-          const reasonId = `worktree-remove-reason-${index}`
+          const reasonId = `${reasonIdPrefix}-${index}`
           return (
           <li key={entry.path} className={css.row} data-worktree={entry.path}>
             <div className={css.line}>

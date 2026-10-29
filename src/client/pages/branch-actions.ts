@@ -364,6 +364,23 @@ function smartCheckoutOverlay(target: CheckoutTarget, details: Record<string, un
   return { kind: 'smartCheckout', target, paths: stringList(details?.['paths']), ...(untracked.length > 0 ? { untracked } : {}) }
 }
 
+/** Deps that forward every call to the latest deps (the workbench keeps those in a ref). */
+export function relayBranchRunnerDeps(
+  actions: BranchActionRunnerDeps['actions'],
+  current: () => BranchActionRunnerDeps | null,
+): BranchActionRunnerDeps {
+  return {
+    actions,
+    openOverlay: (overlay, trigger) => { current()?.openOverlay(overlay, trigger) },
+    copy: (text) => { current()?.copy(text) },
+    showInLog: (entry) => { current()?.showInLog(entry) },
+    filterLog: (entry) => { current()?.filterLog(entry) },
+    openPush: () => { current()?.openPush() },
+    onOutcome: (outcome, success) => { current()?.onOutcome(outcome, success) },
+    currentBranch: () => current()?.currentBranch?.() ?? null,
+  }
+}
+
 export function createBranchActionRunner(deps: BranchActionRunnerDeps): BranchActionRunner {
   async function checkout(
     target: CheckoutTarget,

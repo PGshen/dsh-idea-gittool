@@ -355,6 +355,8 @@ export function createLogStore(options: LogStoreOptions): LogStore {
    * 确认的依据（不额外发请求）：一个仍存在的提交在新列表里最多下移「新出现的行数」位，
    * 所以重新加载已到历史末尾，或已加载行数超过「原位置 + 新出现的行数」，却仍没有它，就是已被改写/删除；
    * 否则它可能只是被新提交挤到了已加载范围之外，保持原行为（不清详情）。
+   * 已知局限（t1 评审 M3）：拓扑重排可能把原本在它下方、已加载的行移到上方，
+   * 选中项若在已加载范围末尾附近，会被误判为已消失；后果只是详情关闭。
    */
   function restoreSelection(shas: string[], previousIndex: ReadonlyMap<string, number>): void {
     const loaded = new Set(state.commits.map((commit) => commit.sha))

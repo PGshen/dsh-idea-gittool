@@ -62,12 +62,16 @@ async function assertRemote(ctx: Parameters<typeof createTagOperation.run>[0], r
   if (!(await readRemotes(ctx)).includes(remote)) throw invalidPayload(`unknown remote "${remote}"`, { remote })
 }
 
+/** Longest `remote:` line kept in a rejection (servers may print anything). */
+const REMOTE_LINE_MAX = 200
+
 /** A rejected tag push with git's own reason (porcelain summary plus `remote:` lines), redacted. */
 function tagRejected(input: { name: string; remote: string }, summary: string, stderr: string): GitCommandFailure {
   const remoteMessage = stderr.split('\n')
     .filter(line => /^remote:\s*\S/u.test(line))
     .slice(0, 5)
     .map(line => redactCredentials(line.replace(/^remote:\s*/u, '').trim()))
+    .map(line => (line.length > REMOTE_LINE_MAX ? `${line.slice(0, REMOTE_LINE_MAX)}…` : line))
     .join('\n')
   const details: TagPushRejectedDetails = { target: 'tag', name: input.name, remote: input.remote, summary: redactCredentials(summary), remoteMessage }
   const reason = [details.summary, remoteMessage].filter(part => part !== '').join(' — ')

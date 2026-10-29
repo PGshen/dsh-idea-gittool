@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { en, zh } from '../../../src/client/locales.ts'
 import { text } from '../../../src/client/localized-text.ts'
 import { ActionNotice } from '../../../src/client/pages/ActionNotice.tsx'
-import { createBranchActionRunner, outcomeNotice } from '../../../src/client/pages/branch-actions.ts'
+import { createBranchActionRunner, outcomeNotice, relayBranchRunnerDeps } from '../../../src/client/pages/branch-actions.ts'
 import { RemoteBranchDeleteSheet, TagSheet, UpstreamSheet } from '../../../src/client/pages/RemoteSheets.tsx'
 import { WorktreesPageView } from '../../../src/client/pages/RemotesPages.tsx'
 import { actionErrorText } from '../../../src/client/store/action-store.ts'
@@ -46,6 +46,15 @@ describe('success notices', () => {
     const status = byRole(view.container, 'status')
     expect(status.getAttribute('data-notice')).toBe('success')
     expect(status.textContent).toContain('已取消 feat 的 upstream')
+  })
+
+  it('the workbench relay passes the success sentence through (review I1)', async () => {
+    const onOutcome = vi.fn()
+    const actions = { run: vi.fn(async () => done) } as never
+    const target = { actions, openOverlay: () => {}, openPush: () => {}, copy: () => {}, showInLog: () => {}, filterLog: () => {}, onOutcome }
+    const runner = createBranchActionRunner(relayBranchRunnerDeps(actions, () => target))
+    await runner.run('unsetUpstream', { kind: 'local', name: 'feat', upstream: 'origin/feat' } as never, null)
+    expect(onOutcome).toHaveBeenCalledWith(done, text('upstream.unset.done', { branch: 'feat' }))
   })
 
   it('unset upstream reports its success sentence', async () => {

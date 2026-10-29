@@ -279,6 +279,40 @@ describe('read-only mode', () => {
   })
 })
 
+describe('B1 final review gaps', () => {
+  it('model actions and edits are ignored while a save or an apply is running', async () => {
+    for (const write of ['save', 'apply'] as const) {
+      const pending = deferred<ActionOutcome<never>>()
+      const { store } = setup({ run: () => pending.promise })
+      await store.open('a.txt')
+      store.dispatch({ type: 'acceptFile', side: 'left' })
+      const result = store.getState().model?.result
+      const running = write === 'save' ? store.saveAndClose() : store.apply()
+      expect(store.getState().status).toBe(write === 'save' ? 'saving' : 'applying')
+      expect(store.dispatch({ type: 'acceptFile', side: 'right' })).toBe(0)
+      store.edit(0, 0, 'x')
+      expect(store.getState().model?.result).toBe(result)
+      pending.resolve({ kind: 'done', value: { path: 'a.txt', remaining: 0 } } as unknown as ActionOutcome<never>)
+      await running
+    }
+  })
+
+  it.each([
+    ['conflict', { kind: 'conflict', error: { code: 'git/conflict', message: 'c' }, details: {} }],
+    ['cancelled', { kind: 'cancelled' }],
+  ] as const)('a %s outcome of save / apply / unresolve shows the reload text', async (_name, outcome) => {
+    const { store, onApplied } = setup({ run: async () => outcome as unknown as ActionOutcome<never> })
+    await store.open('a.txt')
+    store.dispatch({ type: 'acceptFile', side: 'left' })
+    expect(await store.saveAndClose()).toBe(false)
+    expect(store.getState()).toMatchObject({ status: 'ready', dirty: true, error: text('merge.error.stale') })
+    expect(await store.apply()).toBeNull()
+    expect(store.getState()).toMatchObject({ status: 'ready', dirty: true, error: text('merge.error.stale') })
+    expect(onApplied).not.toHaveBeenCalled()
+    expect(await store.unresolve('a.txt')).toEqual({ error: text('merge.error.stale') })
+  })
+})
+
 describe('discard / unresolve', () => {
   it('discard returns to idle without a request', async () => {
     const { store, run } = setup()

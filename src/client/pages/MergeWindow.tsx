@@ -34,6 +34,7 @@ import css from './MergeWindow.module.css'
 import { MergeConfirmBar, MergeFallback, MergeFooter, MergeHeader } from './MergeWindowParts.tsx'
 import type { MergeSideLabels } from './MergeWindowParts.tsx'
 import { resolveConflictFile } from './operation-actions.ts'
+import { useUnloadGuard } from './unload-guard.ts'
 
 export type { MergeSideLabels }
 
@@ -332,6 +333,10 @@ function MergeFileSession(props: MergeWindowProps): ReactNode {
     leaveGuard.current = guard
     return () => { if (leaveGuard.current === guard) leaveGuard.current = null }
   }, [controller, leaveGuard])
+  // T2: the window closed without an answer (e.g. closeIf after the operation ended) cancels a held prompt.
+  useEffect(() => () => { controller.dispose() }, [controller])
+  // T2: reloading / closing the page with unsaved changes asks first.
+  useUnloadGuard(state.dirty)
   const [menuOpen, setMenuOpen] = useState(false)
   const [fallbackBusy, setFallbackBusy] = useState(false)
   const [fallbackError, setFallbackError] = useState<LocalizedText | null>(null)

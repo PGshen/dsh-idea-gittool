@@ -2,7 +2,9 @@
 // is): advance after apply, skip resolved files the window cannot review (incl. binary ones, fix 1),
 // stop on back / switching files / another entry point. Real conflict and merge stores, fake RPCs.
 import { describe, expect, it, vi } from 'vitest'
-import { createMergeReviewWiring } from '../../../src/client/pages/merge-review-wiring.ts'
+import { createMergeReviewWiring, mergeWindowOverlayGuard } from '../../../src/client/pages/merge-review-wiring.ts'
+import type { MergeLeaveGuard } from '../../../src/client/pages/merge-review-wiring.ts'
+import { createMergeWindowController } from '../../../src/client/pages/merge-window-controller.ts'
 import type { WorkbenchOverlay } from '../../../src/client/pages/workbench-overlay.ts'
 import { createConflictStore } from '../../../src/client/store/conflict-store.ts'
 import { createMergeStore } from '../../../src/client/store/merge-store.ts'
@@ -114,5 +116,48 @@ describe('Review queue wiring', () => {
     expect(manual.review.reviewing()).toBe(true)
     manual.review.openFile('u2')
     expect(manual.review.reviewing()).toBe(false)
+  })
+})
+
+describe('T2: the overlay guard wires a held dirty-worktree ask to cancelStash', () => {
+  async function windowWith(guardRef: { current: MergeLeaveGuard | null }) {
+    const { store } = await setup({})
+    await store.open('u1')
+    const controller = createMergeWindowController({ store, adjacentFile: () => null, onClose: vi.fn(), onOpenFile: vi.fn() })
+    guardRef.current = controller.guardLeave
+    controller.run({ type: 'accept', id: 0, side: 'left' })
+    return controller
+  }
+
+  it('cancelling the question (or the window going away) cancels the pending stash ask; discard proceeds', async () => {
+    const guardRef: { current: MergeLeaveGuard | null } = { current: null }
+    const cancelStash = vi.fn()
+    const guard = mergeWindowOverlayGuard(guardRef, cancelStash)
+    const controller = await windowWith(guardRef)
+    const proceed = vi.fn()
+    expect(guard({ kind: 'mergeWindow', path: 'u1' }, { kind: 'dirtyWorktree' }, proceed)).toBe(true)
+    controller.answerLeave('cancel')
+    expect(cancelStash).toHaveBeenCalledTimes(1)
+
+    expect(guard({ kind: 'mergeWindow', path: 'u1' }, { kind: 'dirtyWorktree' }, proceed)).toBe(true)
+    controller.dispose()
+    expect(cancelStash).toHaveBeenCalledTimes(2)
+
+    expect(guard({ kind: 'mergeWindow', path: 'u1' }, { kind: 'dirtyWorktree' }, proceed)).toBe(true)
+    controller.answerLeave('discard')
+    expect(proceed).toHaveBeenCalledTimes(1)
+    expect(cancelStash).toHaveBeenCalledTimes(2)
+  })
+
+  it('another overlay is held without a cancel; other overlays and a missing window are never held', async () => {
+    const guardRef: { current: MergeLeaveGuard | null } = { current: null }
+    const cancelStash = vi.fn()
+    const guard = mergeWindowOverlayGuard(guardRef, cancelStash)
+    expect(guard({ kind: 'mergeWindow', path: 'u1' }, null, vi.fn())).toBe(false)
+    const controller = await windowWith(guardRef)
+    expect(guard({ kind: 'conflicts' }, null, vi.fn())).toBe(false)
+    expect(guard({ kind: 'mergeWindow', path: 'u1' }, { kind: 'conflicts' }, vi.fn())).toBe(true)
+    controller.answerLeave('cancel')
+    expect(cancelStash).not.toHaveBeenCalled()
   })
 })

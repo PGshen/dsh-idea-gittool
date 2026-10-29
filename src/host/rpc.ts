@@ -17,6 +17,7 @@ import type {
   BlameValue,
   BootstrapValue,
   UnsupportedVersionDetails,
+  GitExecutableInfo,
   CompareRequest,
   CompareValue,
   FormatPatchValue,
@@ -56,6 +57,7 @@ import { isAbsolute, resolve as resolvePath } from 'node:path'
 
 import type { GitRunner, WriteOperation } from './git-executor.ts'
 import { GIT_BASE_ARGV, GitCommandFailure, bindWriteContext, messageOf } from './git-executor.ts'
+import type { GitExecutable } from './git-executable.ts'
 import { GIT_MIN_VERSION, formatGitVersion, isSupportedGitVersion, parseGitVersion } from './git-version.ts'
 import {
   checkoutOperation,
@@ -208,6 +210,8 @@ export interface RpcDeps extends SessionSources {
   now?: (() => number) | undefined
   /** Git console buffer fed by the instrumented runner; absent → empty console (A1). */
   console?: GitConsole | undefined
+  /** Which git runs (B4d T2); absent → PATH only, no `git` bootstrap field, `gitExecutable` refused. */
+  gitExecutable?: GitExecutable | undefined
   /** Test seam: replaces individual write operations (A2). */
   writeOperations?: Partial<WriteOperations> | undefined
 }
@@ -292,6 +296,9 @@ export function createRpcRuntime(deps: RpcDeps): RpcRuntime {
   // Only a successful probe is memoized; a failed one is retried on the next bootstrap.
   let gitVersionProbe: Promise<string | undefined> | undefined
   const gitVersion = async (cwd: string, signal: AbortSignal): Promise<string | undefined> => {
+    if (deps.gitExecutable !== undefined) {
+      return (await deps.gitExecutable.info(signal).catch(() => undefined))?.version
+    }
     gitVersionProbe ??= deps.runner(['--version'], { cwd, signal })
       .then(result => (result.exitCode === 0 ? versionNumber(result.stdout) : undefined))
       .catch(() => undefined)
@@ -339,6 +346,8 @@ export function createRpcRuntime(deps: RpcDeps): RpcRuntime {
       switch (endpoint) {
         case 'bootstrap':
           return await handleBootstrap(deps, runtime, payload, signal)
+        case 'gitExecutable':
+          return await handleGitExecutable(deps, payload, signal)
         case 'status':
           return await handleStatus(deps, runtime, payload, signal)
         case 'log':
@@ -580,6 +589,7 @@ async function handleBootstrap(
     throw new GitCommandFailure('git/unsupported-version', `git ${details.current} is older than ${GIT_MIN_VERSION}`, { ...details })
   }
   const pendingWrites = runtime.writes.pending(resolution.root)
+  const git = await deps.gitExecutable?.info(signal).catch(() => undefined)
   return ok<BootstrapValue>({
     sessionId,
     repoRoot: resolution.root,
@@ -587,8 +597,22 @@ async function handleBootstrap(
     writePolicy,
     version,
     ...(gitVersion === undefined ? {} : { gitVersion }),
+    ...(git === undefined ? {} : { git }),
     ...(pendingWrites > 0 ? { pendingWrites } : {}),
   })
+}
+
+/** B4d T2: validate and adopt a git path (or go back to PATH); the Host keeps it in memory only. */
+async function handleGitExecutable(deps: RpcDeps, payload: unknown, signal: AbortSignal): Promise<ConnectionRpcHandlerResult> {
+  parseSessionId(payload)
+  const path = (payload as { path?: unknown }).path
+  if (path !== null && typeof path !== 'string') {
+    throw new GitCommandFailure('git/invalid-payload', 'path must be an absolute path or null', {})
+  }
+  if (deps.gitExecutable === undefined) {
+    throw new GitCommandFailure('git/invalid-payload', 'this Host cannot change its git executable', {})
+  }
+  return ok<GitExecutableInfo>(await deps.gitExecutable.set(path, signal))
 }
 
 /**

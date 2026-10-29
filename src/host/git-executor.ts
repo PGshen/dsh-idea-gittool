@@ -168,6 +168,11 @@ export interface GitRunnerDefaults {
    * removes the old Cellar path) and re-probed when it is gone.
    */
   directBinary?: boolean | undefined
+  /**
+   * B4d T2: a user-set git path (see git-executable.ts). When it returns a path, every command
+   * runs exactly that program (checked before each use) and `directBinary` is not consulted.
+   */
+  executable?: { override(): string | null } | undefined
 }
 
 /** Name of the git binary inside `--exec-path`. */
@@ -300,6 +305,11 @@ export function createGitRunner(
   }
 
   const resolveProgram = async (signal: AbortSignal): Promise<string> => {
+    const override = defaults.executable?.override() ?? null
+    if (override !== null) {
+      await subprocess.resolveExecutable(override, undefined, signal)
+      return override
+    }
     if (defaults.directBinary !== true) return subprocess.resolveExecutable('git', undefined, signal)
     const cached = directProgram
     const program = await untilAborted(sharedDirect(), signal)
@@ -354,8 +364,10 @@ export function createGitRunner(
     try {
       program = await resolveProgram(lifetime)
     } catch (error) {
+      // Not an abort → there is no git to run (design §16.7 `git/not-found`, B4d T2).
+      const aborted = classifyAbort(error).code
       throw new GitCommandFailure(
-        classifyAbort(error).code,
+        aborted === 'git/exec-failed' && options.signal?.aborted !== true ? 'git/not-found' : aborted,
         `git executable unavailable: ${messageOf(error)}`,
         { argv: [...argv], cwd: options.cwd },
       )

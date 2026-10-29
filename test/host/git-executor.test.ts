@@ -99,7 +99,7 @@ describe('createGitRunner', () => {
     expect(result.stderr.length).toBeGreaterThan(0)
   })
 
-  it('maps a spawn lookup failure to git/exec-failed', async () => {
+  it('maps a spawn lookup failure to git/not-found (B4d T2)', async () => {
     const repo = makeRepo()
     const fake = createFakeSubprocess()
     fake.resolveExecutable = async () => {
@@ -108,7 +108,7 @@ describe('createGitRunner', () => {
     const run = createGitRunner(fake)
 
     await expect(run(['status'], { cwd: repo.root })).rejects.toMatchObject({
-      code: 'git/exec-failed',
+      code: 'git/not-found',
     })
   })
 

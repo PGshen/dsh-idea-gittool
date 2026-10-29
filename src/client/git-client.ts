@@ -23,6 +23,8 @@ import type {
   AddToVcsValue,
   AmendMessageRequest,
   BootstrapValue,
+  GitExecutableInfo,
+  GitExecutableRequest,
   BranchesValue,
   CommitDetailValue,
   CommitFilesRequest,
@@ -68,6 +70,8 @@ export type WriteMethods = { [K in WriteEndpoint]: WriteMethod<K> }
 
 export interface GitClient {
   bootstrap(sessionId: string, signal?: AbortSignal): Promise<RpcResult<BootstrapValue>>
+  /** B4d: adopt a git path on the Host (null → PATH); also the「重新检测」call. */
+  gitExecutable(request: GitExecutableRequest, signal?: AbortSignal): Promise<RpcResult<GitExecutableInfo>>
   status(sessionId: string, signal?: AbortSignal): Promise<RpcResult<StatusValue>>
   log(request: LogRequest, signal?: AbortSignal): Promise<RpcResult<LogValue>>
   branches(sessionId: string, signal?: AbortSignal): Promise<RpcResult<BranchesValue>>
@@ -205,6 +209,7 @@ function write<K extends WriteEndpoint>(endpoint: K): WriteMethod<K> {
 export function createGitClient(_ctx: unknown): GitClient {
   return {
     bootstrap: (sessionId, signal) => call<BootstrapValue>('bootstrap', { sessionId }, signal),
+    gitExecutable: (request, signal) => call<GitExecutableInfo>('gitExecutable', request, signal),
     status: (sessionId, signal) => call<StatusValue>('status', { sessionId }, signal),
     log: (request, signal) => call<LogValue>('log', request, signal),
     branches: (sessionId, signal) => call<BranchesValue>('branches', { sessionId }, signal),

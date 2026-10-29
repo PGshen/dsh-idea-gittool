@@ -14,6 +14,7 @@ import type { SandboxMode } from '@deepseek-ai/dsh-sandbox'
 import type {
   BlameValue,
   BootstrapValue,
+  GitExecutableInfo,
   CompareValue,
   RebasePlanValue,
   FileHistoryValue,
@@ -40,6 +41,8 @@ import type { GitRpcHandler, RpcDeps } from '../../src/host/rpc.ts'
 import { createRpcHandler } from '../../src/host/rpc.ts'
 import { createTempDir, createTempRepo, removeTempDir } from './fixtures.ts'
 import { createFakeSubprocess } from './fake-subprocess.ts'
+import { createGitExecutable } from '../../src/host/git-executable.ts'
+import { GIT_BINARY } from './git-binary.ts'
 
 const cleanups: Array<() => void> = []
 
@@ -211,6 +214,42 @@ describe('createRpcHandler / bootstrap', () => {
 
     expect(failure.code).toBe('git/unsupported-version')
     expect(failure.details).toEqual({ current: '2.24.1', minimum: '2.25.0' })
+  })
+
+  it('fails bootstrap with git/not-found when PATH has no git (B4d T2)', async () => {
+    const repo = makeRepo()
+    const fake = createFakeSubprocess({ executable: null })
+    const gitExecutable = createGitExecutable(fake)
+    const handler = createRpcHandler({
+      runner: createGitRunner(fake, { executable: gitExecutable }),
+      gitExecutable,
+      sandboxPolicy: () => policySource(repo.root),
+    })
+
+    expect(errorOf(await handler('bootstrap', { sessionId: 'session-1' }, SIGNAL)).code).toBe('git/not-found')
+  })
+
+  it('reports the git in use and lets gitExecutable switch it (B4d T2)', async () => {
+    const repo = makeRepo()
+    const fake = createFakeSubprocess()
+    const gitExecutable = createGitExecutable(fake)
+    const handler = createRpcHandler({
+      runner: createGitRunner(fake, { executable: gitExecutable }),
+      gitExecutable,
+      sandboxPolicy: () => policySource(repo.root),
+    })
+
+    const before = okValue<BootstrapValue>(await handler('bootstrap', { sessionId: 'session-1' }, SIGNAL))
+    expect(before.git).toMatchObject({ path: GIT_BINARY, source: 'path' })
+    expect(before.gitVersion).toBe(before.git?.version)
+
+    const set = okValue<GitExecutableInfo>(await handler('gitExecutable', { sessionId: 'session-1', path: GIT_BINARY }, SIGNAL))
+    expect(set).toMatchObject({ path: GIT_BINARY, source: 'setting' })
+    const after = okValue<BootstrapValue>(await handler('bootstrap', { sessionId: 'session-1' }, SIGNAL))
+    expect(after.git?.source).toBe('setting')
+
+    expect(errorOf(await handler('gitExecutable', { sessionId: 'session-1', path: 42 }, SIGNAL)).code).toBe('git/invalid-payload')
+    expect(errorOf(await handler('gitExecutable', { sessionId: 'session-1', path: 'git' }, SIGNAL)).details).toMatchObject({ reason: 'not-absolute' })
   })
 
   it('defaults the write policy to fail-closed read-only', async () => {

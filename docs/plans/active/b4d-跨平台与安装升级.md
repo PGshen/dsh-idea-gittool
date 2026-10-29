@@ -97,7 +97,7 @@ export function gitSupports(version: ParsedGitVersion, feature: 'updateRefs' | '
 - **测试**：版本字符串表驱动（Apple/Windows/rc 后缀/垃圾输入）；低版本下变基计划不带 `--update-refs`。
 - **验证命令**：`pnpm vitest run test/host/git-version.test.ts`、`make check`
 
-### T2：`git/not-found` 与 git 路径（Host）（待开始）
+### T2：`git/not-found` 与 git 路径（Host）（完成）
 
 - **目标**：AC1、AC2 的 Host 部分。
 - **涉及文件**：`src/host/git-executor.ts`、`src/host/rpc.ts`、`src/host/git-version.ts`、`test/host/git-executor.test.ts`、`test/host/fake-subprocess.ts`。
@@ -151,10 +151,11 @@ export function gitSupports(version: ParsedGitVersion, feature: 'updateRefs' | '
 ## 进度
 
 - 2026-10-29 — T1 — `src/host/git-version.ts`（解析、最低 2.25.0、`updateRefs` 门控）；协议加 `git/not-found`、`git/unsupported-version`、`GitExecutableInfo`；仓库 bootstrap 在 git < 2.25 时返回 `git/unsupported-version`；交互式变基在 git < 2.38 时不传 `--update-refs`
+- 2026-10-29 — T2 — `src/host/git-executable.ts`（PATH / 设置路径、校验、`info()` 缓存）；执行器解析失败（非取消/超时）→ `git/not-found`，有设置路径时每条命令都跑它；`gitExecutable` 端点；bootstrap 带 `git`
 
 ## 下一步
 
-- T2：`git/not-found` 与 git 路径（Host），`gitExecutable` 端点与 bootstrap `git` 字段。
+- T3：客户端空状态（`git/not-found`、`git/unsupported-version`）与设置页「git 路径」。
 
 ## 决策记录
 
@@ -163,6 +164,11 @@ export function gitSupports(version: ParsedGitVersion, feature: 'updateRefs' | '
 - T1 Ruling：交互式变基在操作内自己跑一次 `git --version` 决定是否传 `--update-refs`，不接 runtime 的版本缓存（`WriteContext` 不带 runtime）；不符合时静默不传，而不是报错（页面本就隐藏该选项）。代价：每次变基多一次约 3ms 的进程；T2 把版本缓存移进执行器后可复用。
 - T1 Ruling：版本门控只在「是仓库」的 bootstrap 上做；不在仓库时照旧返回只读空状态。代价：非仓库目录里 git 过旧不提示，但那里也不跑任何 git 操作。
 - T1 Ruling：保留已有的 `BootstrapValue.gitVersion`（状态栏用），不改名。
+- T2 Ruling：去掉契约里的 `redetect` 参数——`set(path)` 每次都重新校验、清缓存并重新探测，「重新检测」就是重发当前设置。代价：无。
+- T2 Ruling：校验失败用 `git/invalid-payload` + `details.reason`（`not-absolute`/`not-found`/`not-executable`/`not-git`）；版本过低用 `git/unsupported-version`；被拒时保留原来的路径。代价：客户端按 reason 出文案（T3）。
+- T2 Ruling：有设置路径时每条命令前用 `resolveExecutable(path)` 复核、原样运行该路径，不再走 `directBinary` 探测（用户指定的就是要跑的程序）。代价：若用户指向 macOS 的 `/usr/bin/git` 会重新付 xcrun 开销。
+- T2 Ruling：`info().path` 报 PATH 解析出的 `git`，而不是 `directBinary` 实际运行的 `--exec-path` 下的程序。代价：设置页显示的路径与真实子进程 argv[0] 可能不同（同一个 git 安装）。
+- T2 Ruling：已有测试「spawn lookup failure → `git/exec-failed`」改为 `git/not-found`——这正是设计 §16.7 要的行为变化。控制台仍显示 `git <参数>`，不显示程序路径；AC2「使用该路径」以子进程 argv[0] 断言。
 
 ## 意外与发现
 

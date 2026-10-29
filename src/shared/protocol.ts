@@ -18,6 +18,8 @@ export const RPC_ENDPOINTS = [
   'commit',
   'diff',
   'console',
+  // B4d：设置/重新检测 Host 使用的 git（只改进程内存）。
+  'gitExecutable',
   // A2 写端点与推送预览（写端点名避开读端点 `commit`）。
   'commitFiles',
   'amendMessage',
@@ -379,6 +381,13 @@ export interface BootstrapValue {
   gitVersion?: string
   /** 该仓库正在执行或排队的写操作数；>0 时客户端显示「等待当前操作完成」（A2 追加）。 */
   pendingWrites?: number
+  /** Host 实际使用的 git（B4d）；探测失败时省略。 */
+  git?: GitExecutableInfo
+}
+
+/** 设置 git 路径（B4d）：绝对路径，或 null 回到 PATH；每次都重新检测，「重新检测」即重发当前设置。 */
+export interface GitExecutableRequest extends RpcRequest {
+  path: string | null
 }
 
 // ---------------------------------------------------------------------------
@@ -1797,6 +1806,7 @@ export type UnresolveConflictValue = ResolveConflictValue
  */
 export interface RpcEndpointTypes {
   bootstrap: { request: RpcRequest; value: BootstrapValue }
+  gitExecutable: { request: GitExecutableRequest; value: GitExecutableInfo }
   status: { request: RpcRequest; value: StatusValue }
   log: { request: LogRequest; value: LogValue }
   branches: { request: RpcRequest; value: BranchesValue }

@@ -13,7 +13,6 @@
 | TD-13 | 2026-10-26 | `src/host/watch.ts` | `logs/refs/stash` 不在监听目标内：外部（终端/Agent）删除非栈顶贮藏时只有该文件变化，贮藏列表与 `stashCount` 徽标保持旧数据直到下次 version 变化 | 外部删非栈顶贮藏后短时间显示过期（Host 自己的写会推进 version，不受影响） | 把 `logs/refs/stash` 加入监听目标 | A3 T5 报告 |
 | TD-14 | 2026-10-26 | `src/host/git/smart-stash.ts` | 待恢复标记的 `update-ref` 没有旧值检查；新的智能操作覆盖更早的标记（更早的贮藏失去自动恢复，仍在贮藏列表里）；`stash push` 成功到标记写入之间 Host 崩溃同样无自动恢复；无提交的 unborn HEAD 不写标记 | 极端时序下贮藏需要用户在贮藏页手动恢复，不会丢失 | 写标记时带旧值；多标记队列或在贮藏信息里编码 sha | A3 T2 评审 |
 | TD-15 | 2026-10-26 | `src/host/git/conflict.ts` | 冲突标记检测只认 7 字符的 `<<<<<<<`，忽略 `conflict-marker-size` 属性 | 自定义标记长度的文件在「标记已解决」时不会触发二次确认 | 读取 `git check-attr conflict-marker-size` 后按长度检测 | A3 T3 评审 |
-| TD-17 | 2026-10-26 | `build.mjs` | `lib/` 目录不存在时构建失败（首次 `pnpm build` 需要先建目录） | 干净 checkout 上 `pnpm build` 报错 | 构建前 `mkdir -p lib` | A3 T6 报告 |
 | TD-19 | 2026-10-27 | `src/host/git/merge-file.ts`、`src/host/git/status.ts` | 冲突类型有两份映射：`kindFromStages`（按索引 stage 1/2/3 是否存在）与 status 的 `CONFLICT_KINDS`（按 porcelain XY） | 两处规则若改一处忘另一处，冲突列表与合并窗口对同一文件给出不同类型 | 统一为按 stage 推导，或加一条两者一致的表驱动测试 | B1 终审 |
 | TD-20 | 2026-10-27 | `src/host/git/merge-file.ts` `hashWorktree` | 「工作区文件不存在」靠匹配 `git hash-object` 的 stderr 英文文本判断 | git 改措辞或本地化 stderr 时会把缺失文件当成错误抛出，`mergeFile` 失败 | 先 `lstat` 判断存在性，或用 `ls-files`/`diff-files` 判定 | B1 终审 |
 
@@ -21,6 +20,7 @@
 
 | # | 处理日期 | 说明 |
 |---|---|---|
+| TD-17 | 2026-10-29 | B4d T6 复核：`build.mjs` 写产物前 `mkdirSync('lib', { recursive: true })`（主包、chunk 都有）；B4d 新建的 worktree 没有 `lib/`，首次 `make check` 直接构建通过 |
 | TD-16 | 2026-10-28 | B4c T4/T5：长测试时间的根因是 macOS `/usr/bin/git`（xcrun 转发器）在 pnpm/vitest 进程里每次启动多付约 40ms；测试改用 `$(git --exec-path)/git`（`test/host/git-binary.ts`）后全量 `make check` 约 488s → 33s。嵌套 refs 用例的 `until` 改为 10s 截止时间（原来是固定 200×10ms）并放宽文件级超时；12 核满载下 3 次、6 核负载下全量 3 次均通过 |
 | TD-18 | 2026-10-28 | B4b T2：引入 `happy-dom`（devDependency），`*.dom.test.tsx` 按文件开启，辅助函数在 `test/client/dom.tsx`（render/press/click/pointerDown/byRole/stubLayout/nameViolations）；已覆盖日志 ↑↓、分支树漫游、菜单键盘与不可用项、覆盖层进入焦点/Esc/还焦/Tab 圈定、可访问名称审计。已验证行为见 [references/happy-dom.md](../references/happy-dom.md)；拖放、CodeMirror、真实布局仍靠 L4 |
 | TD-8 | 2026-10-26 | A3 T5/T11：`RollbackRequest.confirmedUntracked`，Host 只删除「执行时未跟踪 ∩ 确认列表」，其余进 `skipped`；不传视为空集；客户端发送确认框里的路径，`skipped` 非空时提示 |

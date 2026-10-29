@@ -1,6 +1,7 @@
 // 产物 smoke：不依赖浏览器，也不依赖 DSH。
 // 校验 lib/client.js 的 __ModuleLoader__ 包装契约与 lib/host.js 的 apply 导出。
 // 契约来源：docs/references/dsh-integration-feasibility.md §5.4（TD-1 要盯住的部分）。
+import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import vm from 'node:vm'
@@ -141,6 +142,21 @@ if (chunkSource !== undefined) {
     if (typeof chunkExports?.createMergePane !== 'function') fail(`${MERGE_CHUNK} 没有导出 createMergePane`)
     if (chunkRequested.some(name => !PLATFORM_MODULES.has(name))) fail(`${MERGE_CHUNK} require 了非基线模块：${chunkRequested.join(', ')}`)
   }
+}
+
+// ---- package contents (B4d T6, AC6) ----
+// What `dsh plugin add <tarball>` installs: the two bundles, the merge chunk, the patch and the docs.
+const PACKED_FILES = ['README.md', 'cordis.patch.yml', 'lib/client.js', 'lib/client.merge.js', 'lib/host.js', 'package.json']
+const pack = spawnSync('pnpm', ['pack', '--dry-run', '--json'], {
+  cwd: new URL('..', import.meta.url),
+  encoding: 'utf8',
+  env: { ...process.env, pnpm_config_verify_deps_before_run: 'false' },
+})
+if (pack.status !== 0) {
+  fail(`pnpm pack --dry-run 失败：${pack.stderr.trim()}`)
+} else {
+  const packed = JSON.parse(pack.stdout).files.map(file => file.path).sort()
+  if (JSON.stringify(packed) !== JSON.stringify(PACKED_FILES)) fail(`打包内容应为 ${PACKED_FILES.join(', ')}，实际 ${packed.join(', ')}`)
 }
 
 // ---- host bundle ----

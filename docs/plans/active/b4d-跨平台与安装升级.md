@@ -128,7 +128,7 @@ export function gitSupports(version: ParsedGitVersion, feature: 'updateRefs' | '
 - **要点**：旧版 git 放临时目录，不装进系统；测试通过环境变量指定 git 路径（`test/host/fixtures.ts` 读取），不影响 `make check` 默认行为。
 - **验证命令**：`scripts/compat/run-host-tests.sh <git 路径>`
 
-### T6：打包、安装、升级、卸载验证（待开始）
+### T6：打包、安装、升级、卸载验证（完成）
 
 - **目标**：AC6、AC7。
 - **涉及文件**：`test/bundle.smoke.mjs`（pack 内容断言）、`package.json`（版本，按待确认 4）、`docs/runbooks/install-upgrade.md`（新）、`docs/runbooks/dev-setup.md`、`docs/references/dsh-integration-feasibility.md`（engines 行为）、`docs/quality/tech-debt.md`（TD-17）。
@@ -155,10 +155,11 @@ export function gitSupports(version: ParsedGitVersion, feature: 'updateRefs' | '
 - 2026-10-29 — T3 — 设置项 `gitPath`（只收绝对路径，恢复默认时保留）；`git-path.ts`（客户端绝对路径检查、Host 拒绝原因文案、Host 采用后才保存）；`git-missing.tsx` 空状态（未找到 / 版本过低、安装说明、重新检测、设置路径）；设置页「git 路径」行（正在使用的路径与版本、未生效提示）；Git 标签挂载时把已存路径交给 Host；变基页在 git < 2.38 且范围内有其他分支时说明不会移动它们。L4（AC1「无需重启即恢复」）并入 T6 的隔离 DSH 走查
 - 2026-10-29 — T4 — 跨平台审计（清单见「验证记录」）；修了两处真实风险：win32 上 `validateRepoPath` 放过 `..\x`、`C:foo`；win32 默认关闭 `directBinary`。`isWithinRoot` 用 `path.win32`/`posix` 补测
 - 2026-10-29 — T5 — `scripts/compat/run-host-tests.sh` + `DSH_GIT_TEST_BINARY`；用本机 Apple Git 2.39.5（CommandLineTools）跑 `test/host`：首轮 9 个失败，其中 1 个是真实缺口（搁架三方取回用的 `merge-file --object-id` 需 2.43，已加门控），其余是测试绑死新版 git 输出（已改为按版本断言）；修后 2.39.5 与 2.50.1 都是 762/762
+- 2026-10-29 — T6 — `package.json` 版本 `1.0.0-rc.1`、`files` 改为显式清单（不再带 `client.css` 与 `host.js.map`）；smoke 校验 `pnpm pack` 内容；隔离 HOME 走通 tarball 安装 → 升级 → 设置 git 路径 → 无 git 空状态与恢复 → 卸载 → engines 不匹配（逐项见 [install-upgrade](../../runbooks/install-upgrade.md)「实测」）；TD-17 复核后移入已处理
 
 ## 下一步
 
-- T6：打包、安装、升级、卸载验证（隔离 HOME）。
+- T7：真实仓库矩阵（L5）。
 - 待负责人：是否允许在 scratchpad 编译 git 2.25.5 / 2.38.5（源码已下载到 scratchpad，编译被自动模式拦截），用于补跑 T5。
 
 ## 决策记录
@@ -184,6 +185,9 @@ export function gitSupports(version: ParsedGitVersion, feature: 'updateRefs' | '
 - T5 Ruling：搁架三方取回在 git < 2.43 上直接拒绝（`git/unsupported-version` + `feature`），而不是改写成「临时文件 + `merge-file -p` + `hash-object`」的降级：后者要把 blob 当文本读进 Node，会弄坏二进制文件。版本探测失败时不拦，让 git 自己报错。代价：2.25–2.42 的用户不能三方取回搁架（普通取回不受影响），客户端显示的是 Host 的英文消息。
 - T5 Ruling：兼容运行里依赖新版输出的测试改为按 `GIT_TEST_VERSION` 分支断言（不跳过）：`fetch` 计数（2.41）、搁架三方（2.43）；与版本无关的写法替换：`git var GIT_SEQUENCE_EDITOR` → shell 别名、`%aI` → `%at`、`directBinary` 期望值从 `GIT_BINARY` 的 `--exec-path` 推出。
 - T5 阻塞：编译 2.25.5 / 2.38.5 源码被自动模式（Code from External）拦截；按指令不绕过，记「未实测」，请负责人决定是否放行。下载的源码包在 scratchpad `compat/src/`。
+- T6 Ruling：包里不放 `lib/client.css`（构建时的样式副本，DSH 不读取，样式已内联进 `client.js`）与 `lib/host.js.map`；`files` 用显式清单，smoke 用 `pnpm pack --dry-run --json` 比对。代价：Host 出错时安装态没有 source map（开发态 `lib/` 里仍有）。
+- T6 Ruling：升级验证的旧版本用 `b4c-perf` worktree（= main 的代码）打的 0.1.0 包，新版本用本分支打的 1.0.0-rc.1 包；engines 不匹配用改了 `engines.dsh` 与版本号的 1.0.0-rc.99 临时包（只在 scratchpad）。
+- T6 Ruling：卸载后 DSH 恢复的「Git」占位标签不由插件处理（插件已不在，无法清理 DSH 的布局存储），写进 install-upgrade runbook 与 README 排障。
 
 ## 意外与发现
 

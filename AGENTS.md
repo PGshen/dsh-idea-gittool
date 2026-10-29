@@ -35,7 +35,7 @@
 | `scripts/compat/run-host-tests.sh <git 绝对路径>` | 用指定版本的 git 跑 `test/host`（L5 兼容，B4d），不进 `make check` |
 
 代码骨架在 M0 计划中建立；之后新增构建/挂载命令时，必须同步更新本表和 runbooks。
-运行和自验证的方法见 [docs/runbooks/verification.md](docs/runbooks/verification.md)，环境搭建见 [docs/runbooks/dev-setup.md](docs/runbooks/dev-setup.md)。
+运行和自验证的方法见 [docs/runbooks/verification.md](docs/runbooks/verification.md)，环境搭建见 [docs/runbooks/dev-setup.md](docs/runbooks/dev-setup.md)，打包安装与升级见 [docs/runbooks/install-upgrade.md](docs/runbooks/install-upgrade.md)。
 
 ## 文档索引
 

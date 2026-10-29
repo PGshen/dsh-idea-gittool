@@ -66,6 +66,15 @@ describe('readCompare', () => {
     expect(value.filesTruncated).toBe(false)
   })
 
+  it('a full ref names the branch even when a tag has the same short name', async () => {
+    const repo = makeRepo()
+    forked(repo)
+    repo.git('tag', 'feature', 'main')
+    const value = await readCompare(run, repo.root, { sessionId: 's', left: 'refs/heads/feature', right: 'main' })
+    expect(value.left?.sha).toBe(repo.git('rev-parse', 'refs/heads/feature').trim())
+    expect(value.commits.map(commit => commit.subject)).toEqual(['feature 2', 'feature 1'])
+  })
+
   it('swapping sides swaps both lists', async () => {
     const repo = makeRepo()
     forked(repo)

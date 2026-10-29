@@ -10,6 +10,22 @@ import type { ConflictStore } from '../store/conflict-store.ts'
 import { createReviewRunner, nextFileAfterApply } from './merge-window-controller.ts'
 import type { WorkbenchOverlay } from './workbench-overlay.ts'
 
+/** The open merge window's `guardLeave` (filled by MergeWindow while a file is open). */
+export type MergeLeaveGuard = (go: () => void, cancel?: () => void) => boolean
+
+/**
+ * The workbench overlay guard: a dirty merge window holds whatever replaces it. When that is the
+ * pending action's dirty-worktree ask, not leaving (cancel, Esc, a newer navigation, the window
+ * closing) answers the ask as cancelled (`cancelStash`).
+ */
+export function mergeWindowOverlayGuard(
+  guard: { current: MergeLeaveGuard | null },
+  cancelStash: () => void,
+): (current: WorkbenchOverlay, next: WorkbenchOverlay | null, proceed: () => void) => boolean {
+  return (current, next, proceed) => current.kind === 'mergeWindow'
+    && guard.current?.(proceed, next?.kind === 'dirtyWorktree' ? cancelStash : undefined) === true
+}
+
 export interface MergeReviewDeps {
   conflicts: Pick<ConflictStore, 'getState' | 'refresh' | 'invalidateCount' | 'markNotReviewable' | 'markReviewed'>
   open: (overlay: WorkbenchOverlay, trigger: FocusTarget | null) => void

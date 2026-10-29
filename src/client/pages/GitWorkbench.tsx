@@ -31,7 +31,8 @@ import { isFeatureEnabled } from '../features.ts'
 import { createMergeStore } from '../store/merge-store.ts'
 import { MergeWindow } from './MergeWindow.tsx'
 import type { SidebarFullscreen } from './merge-fullscreen.ts'
-import { createMergeReviewWiring } from './merge-review-wiring.ts'
+import { createMergeReviewWiring, mergeWindowOverlayGuard } from './merge-review-wiring.ts'
+import type { MergeLeaveGuard } from './merge-review-wiring.ts'
 import { controlOperation, mergePrefill, operationBusy, operationOutcomeEffect, pendingRestoreNotice, restorePendingStash, submitOperationStep } from './operation-actions.ts'
 import { createPendingStashStore, usePendingStashState } from '../store/pending-stash-store.ts'
 import type { OperationStepKind } from './operation-actions.ts'
@@ -311,7 +312,7 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
     [client, historyDiffStore, sessionId],
   )
   const historyScroll = useRef(0)
-  const mergeLeaveGuard = useRef<((go: () => void, cancel?: () => void) => boolean) | null>(null)
+  const mergeLeaveGuard = useRef<MergeLeaveGuard | null>(null)
   const mergeLeft = useRef<(path: string, next: WorkbenchOverlay | null) => void>(() => {})
   const leaveEffects = overlayLeaveEffects(actions)
   const overlays = useWorkbenchOverlay(
@@ -322,8 +323,7 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
       if (!keepsFileHistory(next)) historyStore.close()
     },
     // A pending action's dirty-worktree ask held by the window's question: not leaving cancels it.
-    (current, next, proceed) => current.kind === 'mergeWindow'
-      && mergeLeaveGuard.current?.(proceed, next?.kind === 'dirtyWorktree' ? () => { actions.cancelStash() } : undefined) === true,
+    mergeWindowOverlayGuard(mergeLeaveGuard, () => { actions.cancelStash() }),
   )
   actionCallbacks.current.openOverlay = overlays.open
   const dirtyHandlers = dirtySheetHandlers(actions, overlays)

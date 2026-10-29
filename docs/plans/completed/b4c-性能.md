@@ -9,11 +9,11 @@
 
 | 项 | 值 |
 |---|---|
-| 状态 | 待验收 |
+| 状态 | 已完成 |
 | 里程碑 | B4 打磨（第 3 份，共 4 份：B4a 设置页 + Blame 渲染器、B4b a11y 与样式变量、**B4c 性能**、B4d 跨平台/安装升级/文档；拆分 2026-10-28 负责人同意） |
 | 设计依据 | [产品设计 v0.2](../../design/2026-10-25-产品设计-v0.2.md) §16.8（性能预算）、§16.10（CodeMirror 按需 chunk）；[设计决策 v0.2](../../design/2026-10-25-产品设计决策-v0.2.md) §4（B4 打磨）、§5 S5（真实仓库矩阵）；[verification runbook](../../runbooks/verification.md) L5；[tech-debt](../../quality/tech-debt.md) TD-16；[TODO](../TODO.md)「layout 2000 行 50ms 偶发超时」 |
 | 分支 | `b4c-perf`（从 main 切出） |
-| 批准记录 | 2026-10-28 负责人批准计划，待确认 1–4 按推荐；执行方式：当前会话内联执行，最后做一次整分支评审 |
+| 批准记录 | 2026-10-28 负责人批准计划，待确认 1–4 按推荐；执行方式：当前会话内联执行，最后做一次整分支评审；2026-10-29 负责人验收通过 |
 
 ## 目标
 
@@ -129,7 +129,7 @@ export function createBenchRepo(dir: string, options?: { commits?: number /* 10_
 - **完成标准**：AC4/AC5 数值写进「验证记录」，截图 `.evidence/b4c/`。
 - **验证命令**：harness 脚本、L4 走查
 
-### T7：自验证、整分支评审与收尾文档（完成，待负责人验收）
+### T7：自验证、整分支评审与收尾文档（完成）
 
 - **目标**：AC8；逐条 AC 附证据；独立评审者做整分支评审并处理发现；更新 QUALITY（`build.mjs` 体积、各模块性能已验证）、tech-debt、TODO、AGENTS.md 命令表。
 - **验证命令**：`make check`、`pnpm build && pnpm smoke`、`pnpm bench`
@@ -140,7 +140,7 @@ export function createBenchRepo(dir: string, options?: { commits?: number /* 10_
 
 ## 下一步
 
-- 等负责人验收（可演示：`make check` 时长、`pnpm bench`、`pnpm smoke` 体积、合并窗口按需加载 chunk、2000 行日志滚动）。验收通过后按 SOP §7/§8：计划移入 `completed/`、TODO 移到已完成，rebase 到最新 main、合并后 `make check`、`--no-ff` 合并；然后开工 B4d。
+- 无。2026-10-29 负责人验收通过，计划移入 `completed/`，rebase 到 main 后 `--no-ff` 合并；下一份是 [b4d](../active/b4d-跨平台与安装升级.md)。
 
 ## 决策记录
 

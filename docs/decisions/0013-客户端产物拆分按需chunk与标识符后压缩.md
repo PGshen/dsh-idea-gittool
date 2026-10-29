@@ -6,7 +6,7 @@
 |---|---|
 | 状态 | 已采纳 |
 | 日期 | 2026-10-28 |
-| 相关 | [b4c 计划](../plans/active/b4c-性能.md) T3；[设计 v0.2](../design/2026-10-25-产品设计-v0.2.md) §16.8 包体积、§16.10「CodeMirror 按需 chunk」；[ADR 0005](0005-自建CSS-Modules管线.md)；[references §17](../references/dsh-integration-feasibility.md) |
+| 相关 | [b4c 计划](../plans/completed/b4c-性能.md) T3；[设计 v0.2](../design/2026-10-25-产品设计-v0.2.md) §16.8 包体积、§16.10「CodeMirror 按需 chunk」；[ADR 0005](0005-自建CSS-Modules管线.md)；[references §17](../references/dsh-integration-feasibility.md) |
 
 ## 背景
 

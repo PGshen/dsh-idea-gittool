@@ -135,7 +135,7 @@ export function gitSupports(version: ParsedGitVersion, feature: 'updateRefs' | '
 - **要点**：全部在隔离 HOME（复制 profile 的做法见 verification runbook B2 一节）里执行，端口 3081/3082；真实 `~/.dsh/profiles/web` 不动（红线）。
 - **验证命令**：`pnpm pack`、`pnpm smoke`、L4 走查
 
-### T7：真实仓库矩阵（L5）（待开始）
+### T7：真实仓库矩阵（L5）（完成）
 
 - **目标**：AC8。
 - **涉及文件**：`scripts/matrix/`（建 11 种仓库的脚本，复用 B4c 生成器）、`docs/runbooks/verification.md` L5 一节。
@@ -156,10 +156,11 @@ export function gitSupports(version: ParsedGitVersion, feature: 'updateRefs' | '
 - 2026-10-29 — T4 — 跨平台审计（清单见「验证记录」）；修了两处真实风险：win32 上 `validateRepoPath` 放过 `..\x`、`C:foo`；win32 默认关闭 `directBinary`。`isWithinRoot` 用 `path.win32`/`posix` 补测
 - 2026-10-29 — T5 — `scripts/compat/run-host-tests.sh` + `DSH_GIT_TEST_BINARY`；用本机 Apple Git 2.39.5（CommandLineTools）跑 `test/host`：首轮 9 个失败，其中 1 个是真实缺口（搁架三方取回用的 `merge-file --object-id` 需 2.43，已加门控），其余是测试绑死新版 git 输出（已改为按版本断言）；修后 2.39.5 与 2.50.1 都是 762/762
 - 2026-10-29 — T6 — `package.json` 版本 `1.0.0-rc.1`、`files` 改为显式清单（不再带 `client.css` 与 `host.js.map`）；smoke 校验 `pnpm pack` 内容；隔离 HOME 走通 tarball 安装 → 升级 → 设置 git 路径 → 无 git 空状态与恢复 → 卸载 → engines 不匹配（逐项见 [install-upgrade](../../runbooks/install-upgrade.md)「实测」）；TD-17 复核后移入已处理
+- 2026-10-29 — T7 — `scripts/matrix/host.ts`（`pnpm matrix`）12 种仓库全部通过（表见「验证记录」）；L4：空仓库在真实沙箱下从提交页做出第一个提交
 
 ## 下一步
 
-- T7：真实仓库矩阵（L5）。
+- T8：README 重写、B 阶段核对表、整分支评审与收尾文档。
 - 待负责人：是否允许在 scratchpad 编译 git 2.25.5 / 2.38.5（源码已下载到 scratchpad，编译被自动模式拦截），用于补跑 T5。
 
 ## 决策记录
@@ -188,6 +189,8 @@ export function gitSupports(version: ParsedGitVersion, feature: 'updateRefs' | '
 - T6 Ruling：包里不放 `lib/client.css`（构建时的样式副本，DSH 不读取，样式已内联进 `client.js`）与 `lib/host.js.map`；`files` 用显式清单，smoke 用 `pnpm pack --dry-run --json` 比对。代价：Host 出错时安装态没有 source map（开发态 `lib/` 里仍有）。
 - T6 Ruling：升级验证的旧版本用 `b4c-perf` worktree（= main 的代码）打的 0.1.0 包，新版本用本分支打的 1.0.0-rc.1 包；engines 不匹配用改了 `engines.dsh` 与版本号的 1.0.0-rc.99 临时包（只在 scratchpad）。
 - T6 Ruling：卸载后 DSH 恢复的「Git」占位标签不由插件处理（插件已不在，无法清理 DSH 的布局存储），写进 install-upgrade runbook 与 README 排障。
+- T7 Ruling：矩阵在 Host 层跑（真实 RPC 处理器 + 真实 git + 直通 confine），不逐个开 DSH 走 UI；UI 只补此前各计划 L4 没覆盖过的空仓库。代价：矩阵不覆盖客户端渲染差异（例如浅克隆边界提交在提交图里的画法）。
+- T7 Ruling：计划写的「11 种」实际做了 12 种：linked worktree 拆成「在 `.worktrees/` 下、工作区为主仓库」（可写）与「主仓库在工作区外」（只读）两种，后者是 fail closed 的设计行为（共同 `.git` 在沙箱外，写也会被沙箱拒），不是缺陷；另加了「路径含空格/中文/引号」。
 
 ## 意外与发现
 
@@ -211,3 +214,21 @@ export function gitSupports(version: ParsedGitVersion, feature: 'updateRefs' | '
 | `interactive-rebase.ts` `GIT_SEQUENCE_EDITOR='cat >'` | 固定 | Git for Windows 用自带 `sh` 执行编辑器 | 记录：经 `cmd\git.exe` 启动时 `usr\bin` 在 PATH 上（为此关闭 `directBinary`）；未实测 |
 | 所有 git 调用 | — | 含空格/引号/中文的路径 | 无风险：一律 argv（无 shell），路径列表走 `--pathspec-from-file` + NUL；`status`/`commit-write`/`rollback`/`diff` 测试已覆盖特殊字符，`git-executable.test.ts` 的临时目录名含空格与 `✓` |
 | `diff.ts` 内容行、`blame.ts` | 文件内容 | CRLF | diff 保留 `\r`（如实），blame 去掉行尾 `\r`；只改行尾的 diff 难以分辨，登记 TODO |
+
+### T7 真实仓库矩阵（AC8，2026-10-29，`pnpm matrix`，git 2.50.1）
+
+| 仓库 | 结果 | 记录 |
+|---|---|---|
+| 10k 合成提交（含合并/大文件/脏工作区） | 通过 | 日志 100 行；25 处改动；提交 + 撤销 |
+| 脏工作区（修改/暂存/未跟踪/重命名） | 通过 | 4 处改动；提交 + 撤销 |
+| 合并冲突进行中 | 通过 | `operation: merge`、1 个冲突（提交走 operationCommit，不在矩阵里） |
+| 仓库根在沙箱外 | 通过 | 只读；读操作正常 |
+| 子目录会话 | 通过 | 仓库根解析到顶层；提交子目录里的文件 + 撤销 |
+| CRLF + `core.autocrlf` | 通过 | 提交 + 撤销 |
+| 浅克隆（`--depth 3`） | 通过 | 最早一行（边界）读作无父提交，详情列出整棵树 |
+| linked worktree（`.worktrees/` 下，工作区为主仓库） | 通过 | 分支 `feature`；提交 + 撤销 |
+| linked worktree（主仓库在工作区外） | 通过 | 只读 `repo-outside-workspace`（fail closed） |
+| 空仓库 | 通过 | 日志 0 行；第一个提交（没有父提交可撤销）；L4 在真实沙箱下从提交页提交成功，日志显示「没有父提交（根提交）」 |
+| 非仓库目录 | 通过 | 只读空状态 |
+| 路径含空格/中文/引号 | 通过 | 提交 `文档/说明 "引号" it's.md` + 撤销 |
+

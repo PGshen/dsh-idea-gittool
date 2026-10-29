@@ -10,11 +10,11 @@ B4c 合并到 main 之后再开工（同一时间只执行一份计划）。
 
 | 项 | 值 |
 |---|---|
-| 状态 | 待验收 |
+| 状态 | 已完成 |
 | 里程碑 | B4 打磨（第 4 份，共 4 份：B4a 设置页 + Blame 渲染器、B4b a11y 与样式变量、B4c 性能、**B4d 跨平台/安装升级/文档**；拆分 2026-10-28 负责人同意） |
 | 设计依据 | [产品设计 v0.2](../../design/2026-10-25-产品设计-v0.2.md) §7.2（「找不到 git」空状态）、设置表「git 路径（P1）」、§16.2（插件形态与安装）、§16.7 错误分类（`git/not-found`、`git/unsupported-version`）、§16.9「兼容」；[设计决策 v0.2](../../design/2026-10-25-产品设计决策-v0.2.md) §4、§5 S3/S4/S5；[references](../../references/dsh-integration-feasibility.md) R1、§13；tech-debt TD-1、TD-2、TD-17 |
 | 分支 | `b4d-platform-install`（B4c 合并后从 main 切出） |
-| 批准记录 | 2026-10-28 负责人：待确认 1–4 按推荐，B4c 合并后再开工；2026-10-29 执行方式：当前会话内联执行，最后做一次整分支评审 |
+| 批准记录 | 2026-10-28 负责人：待确认 1–4 按推荐，B4c 合并后再开工；2026-10-29 执行方式：当前会话内联执行，最后做一次整分支评审；2026-10-29 负责人验收通过（B 阶段差距按 TODO 登记处理，git 2.25/2.38 编译暂不做） |
 
 ## 目标
 
@@ -142,7 +142,7 @@ export function gitSupports(version: ParsedGitVersion, feature: 'updateRefs' | '
 - **要点**：仓库全部在临时目录生成，不用真实仓库数据；每种仓库走：打开 tab、日志、详情/diff、提交页、（可写时）一次提交与撤销。
 - **验证命令**：矩阵脚本 + L4 走查
 
-### T8：用户文档与 B 阶段收尾（完成，待负责人验收）
+### T8：用户文档与 B 阶段收尾（完成）
 
 - **目标**：AC9、AC10；整分支评审；收尾清单（QUALITY、tech-debt、references、TODO、ARCHITECTURE）。
 - **涉及文件**：`README.md`、`docs/glossary.md`、`AGENTS.md`、`docs/ARCHITECTURE.md`、`docs/quality/QUALITY.md`。
@@ -161,8 +161,7 @@ export function gitSupports(version: ParsedGitVersion, feature: 'updateRefs' | '
 
 ## 下一步
 
-- 等负责人：通读 README（AC9）、裁定 B 阶段差距（AC10）、决定是否放行编译 git 2.25/2.38、验收。
-- 待负责人：是否允许在 scratchpad 编译 git 2.25.5 / 2.38.5（源码已下载到 scratchpad，编译被自动模式拦截），用于补跑 T5。
+- 无。2026-10-29 负责人验收通过，计划移入 `completed/`，`--no-ff` 合并到 main；B 阶段差距与 git 2.25/2.38 实测见 TODO。
 
 ## 决策记录
 
@@ -212,7 +211,7 @@ export function gitSupports(version: ParsedGitVersion, feature: 'updateRefs' | '
 
 ## 阻塞
 
-- T5：git 2.25 / 2.38 兼容实测需要在本机编译源码，自动模式拦截，等负责人决定（不阻塞 T6–T8）
+- 无（T5 的 git 2.25 / 2.38 实测：负责人 2026-10-29 决定暂不做，登记 TODO）
 
 ## 验证记录
 

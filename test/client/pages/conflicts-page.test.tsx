@@ -136,6 +136,17 @@ describe('carry 4: conflicts from restoring the stash (operation null)', () => {
     expect(html).not.toContain(zh['conflict.closeHint'].slice(0, 8))
   })
 
+  it('T2: conflicts left by a shelf three-way apply say so instead of the stash note', () => {
+    const html = view(null, { state: { status: 'ready', value: stashPopState(), error: null, origin: 'shelf' } })
+    expect(html).toContain(zh['conflict.shelf.note'])
+    expect(html).not.toContain(zh['conflict.stash.note'])
+    expect(html).toContain('data-conflict-origin="shelf"')
+    const english = view(null, { t: enT, state: { status: 'ready', value: stashPopState(), error: null, origin: 'shelf' } })
+    expect(english).toContain(en['conflict.shelf.note'])
+    // An operation in progress has no origin note at all.
+    expect(view(null, { state: { status: 'ready', value: mergeState(), error: null, origin: 'shelf' } })).not.toContain('data-stash-note')
+  })
+
   it('renders in English too', () => {
     const html = view(stashPopState(), { t: enT })
     expect(html).toContain(en['conflict.stash.note'])

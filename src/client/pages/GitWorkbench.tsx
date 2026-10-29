@@ -919,7 +919,11 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
                 busy={stashBusy}
                 blockReason={blockText(integrateBlock)}
                 version={value.version}
-                onConflicts={(trigger) => { overlays.open({ kind: 'conflicts' }, trigger) }}
+                onConflicts={(trigger) => {
+                  // T2: the list's no-operation note names the shelf, not the stash.
+                  conflictStore.noteOrigin('shelf')
+                  overlays.open({ kind: 'conflicts' }, trigger)
+                }}
                 onApplied={() => { void onRefresh() }}
               />
             ) : (

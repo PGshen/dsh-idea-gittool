@@ -25,7 +25,15 @@ export interface ConflictStoreState {
   /** Last loaded state (kept while reloading or after a failed reload). */
   value: OperationStateValue | null
   error: GitError | null
+  /**
+   * T2: where conflicts without an operation came from (absent = restoring a stash). Set by the
+   * workbench when a shelf three-way apply left conflicts; {@link ConflictStore.clear} forgets it.
+   */
+  origin?: ConflictOrigin
 }
+
+/** Source of conflicts left without an operation in progress. */
+export type ConflictOrigin = 'stash' | 'shelf'
 
 export interface ConflictStoreDeps {
   load: (signal?: AbortSignal) => Promise<RpcResult<OperationStateValue>>
@@ -57,8 +65,10 @@ export interface ConflictStore {
   subscribe(listener: () => void): () => void
   /** Reload operationState; an older response arriving late is dropped. */
   refresh(): Promise<void>
-  /** No operation any more: drop the value. */
+  /** No operation any more: drop the value (and the origin). */
   clear(): void
+  /** T2: conflicts without an operation now come from `origin` (kept across refreshes until clear). */
+  noteOrigin(origin: ConflictOrigin): void
   getReview(): ConflictReview
   markReviewed(path: string): void
   /** 「全部简单冲突」 resolved these files without anyone looking: not reviewed. */
@@ -113,6 +123,12 @@ export function createConflictStore(deps: ConflictStoreDeps): ConflictStore {
   let review = EMPTY_REVIEW
   /** Counts by stages (decision D4: the same diff3 as the window); survives invalidation of the path. */
   const countCache = new Map<string, { key: string; count: ChunkCount | null }>()
+  /**
+   * T2: paths whose `mergeFile` failed in this round. A failure has no stages to key by, so it lasts
+   * as long as the stages can only be the same: until the round changes (new operation / rebase
+   * step), the path is invalidated (window left, resolved, restored) or the list is cleared.
+   */
+  const failedCounts = new Set<string>()
   let counting: Promise<void> | null = null
   let countAgain = false
 
@@ -135,6 +151,7 @@ export function createConflictStore(deps: ConflictStoreDeps): ConflictStore {
     if (key !== review.key) {
       next = { ...EMPTY_REVIEW, key }
       countCache.clear()
+      failedCounts.clear()
     }
     const fresh = value.conflicts.filter(entry => isTextConflict(entry) && !next.seen.has(entry.path))
     if (fresh.length > 0) next = { ...next, seen: new Set([...next.seen, ...fresh.map(entry => entry.path)]) }
@@ -150,14 +167,18 @@ export function createConflictStore(deps: ConflictStoreDeps): ConflictStore {
     const targets = (state.value?.conflicts ?? []).filter(isTextConflict).slice(0, CHUNK_COUNT_LIMIT)
     for (const entry of targets) {
       if (review.key !== key) return
-      if (review.counts.has(entry.path)) continue
+      if (review.counts.has(entry.path) || failedCounts.has(entry.path)) continue
       let result: RpcResult<MergeFileValue>
       try {
         result = await load(entry.path)
       } catch {
+        result = { ok: false, error: { code: 'git/exec-failed', message: 'mergeFile threw' } }
+      }
+      if (review.key !== key) return
+      if (!result.ok) {
+        failedCounts.add(entry.path)
         continue
       }
-      if (review.key !== key || !result.ok) continue
       const file = result.value
       const cacheKey = countKey(file)
       const cached = countCache.get(entry.path)
@@ -184,14 +205,19 @@ export function createConflictStore(deps: ConflictStoreDeps): ConflictStore {
       }
       if (mine !== seq) return
       if (result.ok) syncReview(result.value)
+      const origin = state.origin === undefined ? {} : { origin: state.origin }
       emit(result.ok
-        ? { status: 'ready', value: result.value, error: null }
-        : { status: 'error', value: state.value, error: result.error })
+        ? { status: 'ready', value: result.value, error: null, ...origin }
+        : { status: 'error', value: state.value, error: result.error, ...origin })
+    },
+    noteOrigin: (origin) => {
+      if ((state.origin ?? 'stash') !== origin) emit({ ...state, origin })
     },
     clear: () => {
       seq += 1
       review = EMPTY_REVIEW
       countCache.clear()
+      failedCounts.clear()
       if (state !== IDLE) emit(IDLE)
     },
     getReview: () => review,
@@ -225,6 +251,7 @@ export function createConflictStore(deps: ConflictStoreDeps): ConflictStore {
       }
     },
     invalidateCount: (path) => {
+      failedCounts.delete(path)
       if (!review.counts.has(path)) return
       const next = new Map(review.counts)
       next.delete(path)

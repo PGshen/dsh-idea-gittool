@@ -53,9 +53,19 @@ describe('createGitClient / B1 merge endpoints', () => {
       body: JSON.stringify({ sessionId: 's', requestId: 'r', path: 'a.txt', draft }),
     }))
     await client.mergeApply({ sessionId: 's', requestId: 'r', path: 'a.txt', result: 'x\n', stages, expectedWorktreeSha: null })
-    expect(fetch).toHaveBeenLastCalledWith('dsh-git/mergeApply', expect.anything())
+    expect(fetch).toHaveBeenLastCalledWith('dsh-git/mergeApply', expect.objectContaining({
+      method: 'POST',
+      body: JSON.stringify({ sessionId: 's', requestId: 'r', path: 'a.txt', result: 'x\n', stages, expectedWorktreeSha: null }),
+    }))
+    await client.mergeApply({ sessionId: 's', requestId: 'r', path: 'a.txt', result: '', stages, expectedWorktreeSha: 'w'.repeat(40) })
+    expect(fetch).toHaveBeenLastCalledWith('dsh-git/mergeApply', expect.objectContaining({
+      body: JSON.stringify({ sessionId: 's', requestId: 'r', path: 'a.txt', result: '', stages, expectedWorktreeSha: 'w'.repeat(40) }),
+    }))
     await client.unresolveConflict({ sessionId: 's', requestId: 'r', path: 'a.txt' })
-    expect(fetch).toHaveBeenLastCalledWith('dsh-git/unresolveConflict', expect.anything())
+    expect(fetch).toHaveBeenLastCalledWith('dsh-git/unresolveConflict', expect.objectContaining({
+      method: 'POST',
+      body: JSON.stringify({ sessionId: 's', requestId: 'r', path: 'a.txt' }),
+    }))
   })
 })
 

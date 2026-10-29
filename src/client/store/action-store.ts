@@ -155,6 +155,7 @@ const STALE_TARGET_KEY: Record<StaleTargetDetails['target'], GitWorkbenchKey> = 
   conflict: 'action.error.git/stale-target.conflict',
   head: 'action.error.git/stale-target.head',
   branch: 'action.error.git/stale-target.branch',
+  'git-path': 'git.path.superseded',
 }
 
 const INVALID_REASON_KEY: Record<string, GitWorkbenchKey> = {

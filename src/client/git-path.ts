@@ -23,6 +23,7 @@ export function gitPathErrorText(error: GitError, t: Translate): string {
     return t('git.path.tooOld', { current: detail(error, 'current'), minimum: detail(error, 'minimum') })
   }
   if (error.code === 'git/not-found') return t('git.path.notFound')
+  if (error.code === 'git/stale-target' && detail(error, 'target') === 'git-path') return t('git.path.superseded')
   if (error.code === 'git/invalid-payload') {
     switch (detail(error, 'reason')) {
       case 'not-absolute': return t('git.path.notAbsolute')

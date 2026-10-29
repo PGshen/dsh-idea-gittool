@@ -1249,7 +1249,8 @@ export interface UpstreamRewrittenDetails {
 
 /** `git/stale-target`：`target` 说明哪类对象已变化。 */
 export interface StaleTargetDetails {
-  target: 'stash' | 'conflict' | 'head' | 'branch'
+  /** `git-path`：`gitExecutable` 设置在校验期间被更晚的一次设置取代（T1-T4）。 */
+  target: 'stash' | 'conflict' | 'head' | 'branch' | 'git-path'
   /** 请求里的 sha 或路径。 */
   expected?: string
 }

@@ -7,6 +7,7 @@ import type { RemoteListValue, RpcResult, WorktreeAddValue } from '../../shared/
 import type { FocusTarget } from '../focus.ts'
 import { useT } from '../i18n.tsx'
 import type { Translate } from '../i18n.tsx'
+import { text } from '../localized-text.ts'
 import type { LocalizedText } from '../localized-text.ts'
 import type { ActionOutcome, ActionStore } from '../store/action-store.ts'
 import { actionErrorText } from '../store/action-store.ts'
@@ -168,13 +169,16 @@ function useRemoteNames(load: () => Promise<RpcResult<RemoteListValue>>): string
   return names
 }
 
-function useSubmit(onOutcome: (outcome: ActionOutcome<unknown>) => void, onClose: () => void): { busy: boolean; error: LocalizedText | null; send: (task: () => Promise<ActionOutcome<unknown>>) => Promise<void> } {
+/** A finished sheet write; `success` is the sentence for the workbench notice (T1). */
+export type SheetOutcome = (outcome: ActionOutcome<unknown>, success?: LocalizedText) => void
+
+function useSubmit(onOutcome: SheetOutcome, onClose: () => void): { busy: boolean; error: LocalizedText | null; send: (task: () => Promise<ActionOutcome<unknown>>, success?: LocalizedText) => Promise<void> } {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<LocalizedText | null>(null)
   return {
     busy,
     error,
-    send: async (task) => {
+    send: async (task, success) => {
       setBusy(true)
       setError(null)
       const outcome = await task()
@@ -185,14 +189,14 @@ function useSubmit(onOutcome: (outcome: ActionOutcome<unknown>) => void, onClose
         return
       }
       if (outcome.kind === 'done') {
-        onOutcome(outcome)
+        onOutcome(outcome, success)
         onClose()
       }
     },
   }
 }
 
-export function TagSheet(props: { mode: 'push' | 'delete'; name: string; loadRemotes: () => Promise<RpcResult<RemoteListValue>>; actions: Actions; onOutcome: (outcome: ActionOutcome<unknown>) => void; onClose: () => void }): ReactNode {
+export function TagSheet(props: { mode: 'push' | 'delete'; name: string; loadRemotes: () => Promise<RpcResult<RemoteListValue>>; actions: Actions; onOutcome: SheetOutcome; onClose: () => void }): ReactNode {
   const t = useT()
   const rootRef = useRef<HTMLDivElement | null>(null)
   useInitialFocus(rootRef)
@@ -209,13 +213,14 @@ export function TagSheet(props: { mode: 'push' | 'delete'; name: string; loadRem
       onSubmit={(trigger) => {
         void send(() => (props.mode === 'push'
           ? props.actions.run('tagPush', { name: props.name, remote: chosen }, { target: `tag:${props.name}`, trigger })
-          : props.actions.run('tagDelete', { name: props.name, ...(alsoRemote && chosen !== '' ? { remote: chosen } : {}) }, { target: `tag:${props.name}`, trigger })))
+          : props.actions.run('tagDelete', { name: props.name, ...(alsoRemote && chosen !== '' ? { remote: chosen } : {}) }, { target: `tag:${props.name}`, trigger })),
+        props.mode === 'push' ? text('tag.push.done', { name: props.name, remote: chosen }) : undefined)
       }}
     />
   )
 }
 
-export function RemoteBranchDeleteSheet(props: { ref_: string; actions: Actions; onOutcome: (outcome: ActionOutcome<unknown>) => void; onClose: () => void }): ReactNode {
+export function RemoteBranchDeleteSheet(props: { ref_: string; actions: Actions; onOutcome: SheetOutcome; onClose: () => void }): ReactNode {
   const t = useT()
   const rootRef = useRef<HTMLDivElement | null>(null)
   useInitialFocus(rootRef)
@@ -226,13 +231,13 @@ export function RemoteBranchDeleteSheet(props: { ref_: string; actions: Actions;
       t={t} ref_={props.ref_} busy={busy} error={error} rootRef={rootRef} onCancel={props.onClose}
       onSubmit={(trigger) => {
         if (split === null) return
-        void send(() => props.actions.run('remoteBranchDelete', split, { target: `remote-branch:${props.ref_}`, trigger }))
+        void send(() => props.actions.run('remoteBranchDelete', split, { target: `remote-branch:${props.ref_}`, trigger }), text('remoteBranch.delete.done', { ref: props.ref_ }))
       }}
     />
   )
 }
 
-export function UpstreamSheet(props: { branch: string; upstream?: string | undefined; remoteBranches: readonly string[]; actions: Actions; onOutcome: (outcome: ActionOutcome<unknown>) => void; onClose: () => void }): ReactNode {
+export function UpstreamSheet(props: { branch: string; upstream?: string | undefined; remoteBranches: readonly string[]; actions: Actions; onOutcome: SheetOutcome; onClose: () => void }): ReactNode {
   const t = useT()
   const rootRef = useRef<HTMLDivElement | null>(null)
   useInitialFocus(rootRef)
@@ -243,7 +248,9 @@ export function UpstreamSheet(props: { branch: string; upstream?: string | undef
     <UpstreamSheetView
       t={t} branch={props.branch} options={options} value={value} busy={busy} error={error} rootRef={rootRef} onCancel={props.onClose}
       onValue={setValue}
-      onSubmit={(trigger) => { void send(() => props.actions.run('setUpstream', { branch: props.branch, upstream: value }, { target: `upstream:${props.branch}`, trigger })) }}
+      onSubmit={(trigger) => {
+        void send(() => props.actions.run('setUpstream', { branch: props.branch, upstream: value }, { target: `upstream:${props.branch}`, trigger }), text('upstream.set.done', { branch: props.branch, upstream: value }))
+      }}
     />
   )
 }

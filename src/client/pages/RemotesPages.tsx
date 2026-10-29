@@ -9,6 +9,7 @@ import { useT } from '../i18n.tsx'
 import type { Translate } from '../i18n.tsx'
 import { render } from '../localized-text.ts'
 import type { LocalizedText } from '../localized-text.ts'
+import type { GitWorkbenchKey } from '../locales.ts'
 import type { ActionOutcome, ActionStore } from '../store/action-store.ts'
 import { actionErrorText } from '../store/action-store.ts'
 import { Button } from '../ui/Button.tsx'
@@ -149,6 +150,17 @@ export interface WorktreesPageViewProps {
   onBack: () => void
 }
 
+/**
+ * Why a worktree cannot be removed (null: it can). The button stays focusable with `aria-disabled`
+ * and the reason as its description, like the B4b menu items (T1, b3d review M4).
+ */
+function removeBlock(entry: WorktreeEntry): GitWorkbenchKey | null {
+  if (entry.main || entry.bare) return 'worktrees.remove.main'
+  if (entry.current) return 'worktrees.remove.current'
+  if (entry.locked) return 'worktrees.remove.locked'
+  return null
+}
+
 export function WorktreesPageView(props: WorktreesPageViewProps): ReactNode {
   const { t, worktrees } = props
   const prunable = (worktrees ?? []).some(entry => entry.prunable)
@@ -166,7 +178,10 @@ export function WorktreesPageView(props: WorktreesPageViewProps): ReactNode {
       {props.loadError !== null ? <div className={css.state}><EmptyState error title={t('worktrees.loadFailed')} hint={props.loadError} /></div> : null}
       {worktrees === null && props.loadError === null ? <p className={css.state} role="status">{t('worktrees.loading')}</p> : null}
       <ul className={css.list}>
-        {(worktrees ?? []).map(entry => (
+        {(worktrees ?? []).map((entry, index) => {
+          const reason = removeBlock(entry)
+          const reasonId = `worktree-remove-reason-${index}`
+          return (
           <li key={entry.path} className={css.row} data-worktree={entry.path}>
             <div className={css.line}>
               <strong>{entry.branch ?? t('worktrees.detached', { sha: (entry.head ?? '').slice(0, 7) })}</strong>
@@ -175,8 +190,16 @@ export function WorktreesPageView(props: WorktreesPageViewProps): ReactNode {
               {entry.prunable ? <span className={css.badge}>{t('worktrees.prunable')}</span> : null}
               <span className={css.url} title={entry.path}>{entry.path}</span>
               <Button onClick={() => props.onCopy(entry.path)}>{t('worktrees.copyPath')}</Button>
-              <Button tone="danger" disabled={props.busy || entry.current || entry.bare} title={entry.current ? t('worktrees.remove.current') : undefined} onClick={() => props.onAskRemove({ path: entry.path, force: false })}>{t('worktrees.remove')}</Button>
+              <Button
+                tone="danger"
+                disabled={props.busy}
+                {...(reason === null ? {} : { 'aria-disabled': true, 'aria-describedby': reasonId, title: t(reason) })}
+                onClick={() => { if (reason === null) props.onAskRemove({ path: entry.path, force: false }) }}
+              >
+                {t('worktrees.remove')}
+              </Button>
             </div>
+            {reason === null ? null : <div id={reasonId} className={css.muted} data-worktree-remove-reason>{t(reason)}</div>}
             {props.removing?.path === entry.path
               ? (
                   <div className={css.edit} role="alert">
@@ -187,7 +210,8 @@ export function WorktreesPageView(props: WorktreesPageViewProps): ReactNode {
                 )
               : null}
           </li>
-        ))}
+          )
+        })}
       </ul>
     </div>
   )

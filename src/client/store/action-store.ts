@@ -170,6 +170,10 @@ const INVALID_REASON_KEY: Record<string, GitWorkbenchKey> = {
   'not-ancestor': 'rebase.blocked.not-ancestor',
   detached: 'rebase.blocked.detached',
   empty: 'rebase.blocked.empty',
+  // T1: worktree removals the Host refuses.
+  'main-worktree': 'worktrees.remove.main',
+  'current-worktree': 'worktrees.remove.current',
+  'worktree-locked': 'worktrees.remove.locked',
 }
 
 /** Error code (+ details) → localized, actionable text. */
@@ -190,6 +194,13 @@ export function actionErrorText(error: GitError): LocalizedText {
       return text('action.error.git/dirty-worktree', { count: dirtyDetails(error).count })
     case 'git/upstream-rewritten':
       return text('action.error.git/upstream-rewritten', { count: numberOr(details['localAhead'], 0) })
+    case 'git/rejected':
+      // T1: a rejected tag push carries git's own reason (`[rejected] (already exists)`, `remote:` lines).
+      if (details['target'] === 'tag') {
+        const reason = [details['summary'], details['remoteMessage']].filter((part): part is string => typeof part === 'string' && part !== '').join(' — ')
+        return text('tag.push.rejected', { name: String(details['name'] ?? ''), remote: String(details['remote'] ?? ''), reason })
+      }
+      break
     case 'git/conflict':
       return text('action.error.git/conflict')
     case 'git/paths-changed':

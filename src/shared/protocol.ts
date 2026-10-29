@@ -875,6 +875,8 @@ export interface WorktreeEntry {
   locked: boolean
   prunable: boolean
   bare: boolean
+  /** 主工作区（`worktree list` 的第一项，T1）；不可删除。 */
+  main: boolean
 }
 
 export interface WorktreeListValue {
@@ -1146,6 +1148,17 @@ export interface PushRejectedDetails {
   summary: string
   /** fetch 后的远程分支 tip（A3 T4，TD-10）；强推时回传为 `expectedRemoteSha`。取不到时省略。 */
   remoteSha?: string
+}
+
+/** 推送标签被拒（`tagPush` 的 `git/rejected`，T1）的 `details` 形状；用 `target` 与分支推送被拒区分。 */
+export interface TagPushRejectedDetails {
+  target: 'tag'
+  name: string
+  remote: string
+  /** porcelain 被拒行的说明，如 `[rejected] (already exists)`（已脱敏）。 */
+  summary: string
+  /** 远程返回的 `remote: …` 行（已脱敏，最多 5 行）；没有时为空串。 */
+  remoteMessage: string
 }
 
 /** `git/auth-required` 错误的 `details` 形状。 */

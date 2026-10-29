@@ -1038,6 +1038,7 @@ stdin 与长路径（A3 T1 spike，2026-10-26，git 2.50.1 / macOS Seatbelt，AR
 | `stash apply [--index] <sha>` 直接接受贮藏提交 sha；`pop`/`drop` 只接受 reflog 选择子（`stash@{n}`）。`drop` 在 stdout 打印 `Dropped stash@{n} (<完整 sha>)`，可据此核对删掉的是哪条 | ✅ 2026-10-26 | 本机实测 |
 | `apply --index` 暂存区补丁打不上时报 `conflicts in index. Try without --index.`（退出 1，工作区不动）；本地改动会被覆盖时报 `would be overwritten by merge`；`-u` 贮藏的未跟踪文件已存在时报 `<path> already exists, no checkout` + `could not restore untracked files from stash`；三者都不改工作区、不删贮藏 | ✅ 2026-10-26 | 本机实测 |
 | `stash store` 同一个 sha 重复存入时 reflog 不新增条目；`diff-tree --stdin -r --name-only -z` 读 `<stash> <第一父>` 行，只为有改动的贮藏输出 `<sha>\0<path>\0…` | ✅ 2026-10-26 | 本机实测 |
+| 同一条 `diff-tree --stdin --root` 里，只写一个 sha 的行（`-u` 贮藏的第三父，根提交）输出 `<该 sha>\0<全部文件>\0…`，可与 `<stash> <第一父>` 行混排；贮藏列表据此把未跟踪文件计入文件数（T1-T4） | ✅ 2026-10-29 | git 2.50.1 本机实测；`stash.test.ts` |
 
 依赖与类型：DSH 类型用 `link:` 指向本机 checkout；`webServer` 服务的类型包是 **`@deepseek-ai/dsh-host-webserver`**（不是 `dsh-webserver`）；`ctx.connection` 的 Host 半边类型来自 `@deepseek-ai/dsh-client-connection`。
 

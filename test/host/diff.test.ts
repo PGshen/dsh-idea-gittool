@@ -116,6 +116,22 @@ describe('validateRepoPath', () => {
     expect(validateRepoPath('src/a b/*.ts')).toBe('src/a b/*.ts')
     expect(validateRepoPath('.gitignore')).toBe('.gitignore')
   })
+
+  // B4d T4: on Windows `\` is a separator and `C:` a drive prefix, so `path.join` would leave the
+  // repository through them.
+  it.each(['..\\x', 'a\\..\\..\\b', 'C:foo', 'c:/x', '.git\\config', 'sub\\.GIT\\x', '\\\\server\\share\\x', 'a\\\\b'])(
+    'rejects %j on win32 (B4d T4)',
+    (path) => {
+      expect(() => validateRepoPath(path, 'win32')).toThrow(GitCommandFailure)
+    },
+  )
+
+  it('keeps POSIX names with backslashes, quotes and CJK, and win32 subpaths (B4d T4)', () => {
+    expect(validateRepoPath('a\\b.txt', 'linux')).toBe('a\\b.txt')
+    expect(validateRepoPath('it\'s "quoted".txt', 'darwin')).toBe('it\'s "quoted".txt')
+    expect(validateRepoPath('文档/中文 文件.md', 'win32')).toBe('文档/中文 文件.md')
+    expect(validateRepoPath('src\\a.ts', 'win32')).toBe('src\\a.ts')
+  })
 })
 
 describe('readDiff', () => {

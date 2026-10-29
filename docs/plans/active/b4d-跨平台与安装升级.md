@@ -113,7 +113,7 @@ export function gitSupports(version: ParsedGitVersion, feature: 'updateRefs' | '
 - **测试**：DOM 测试覆盖空状态按钮、设置路径成功/失败、版本过低提示；中英文键集一致。
 - **验证命令**：`make check`
 
-### T4：跨平台审计与单元测试（待开始）
+### T4：跨平台审计与单元测试（完成）
 
 - **目标**：AC4。
 - **涉及文件**：Host 中 `import 'node:path'` 的 12 个文件、`src/host/git/write-support.ts`、`src/host/git/interactive-rebase.ts`、`src/host/repo-resolver.ts`；测试放各自现有测试文件。
@@ -153,10 +153,11 @@ export function gitSupports(version: ParsedGitVersion, feature: 'updateRefs' | '
 - 2026-10-29 — T1 — `src/host/git-version.ts`（解析、最低 2.25.0、`updateRefs` 门控）；协议加 `git/not-found`、`git/unsupported-version`、`GitExecutableInfo`；仓库 bootstrap 在 git < 2.25 时返回 `git/unsupported-version`；交互式变基在 git < 2.38 时不传 `--update-refs`
 - 2026-10-29 — T2 — `src/host/git-executable.ts`（PATH / 设置路径、校验、`info()` 缓存）；执行器解析失败（非取消/超时）→ `git/not-found`，有设置路径时每条命令都跑它；`gitExecutable` 端点；bootstrap 带 `git`
 - 2026-10-29 — T3 — 设置项 `gitPath`（只收绝对路径，恢复默认时保留）；`git-path.ts`（客户端绝对路径检查、Host 拒绝原因文案、Host 采用后才保存）；`git-missing.tsx` 空状态（未找到 / 版本过低、安装说明、重新检测、设置路径）；设置页「git 路径」行（正在使用的路径与版本、未生效提示）；Git 标签挂载时把已存路径交给 Host；变基页在 git < 2.38 且范围内有其他分支时说明不会移动它们。L4（AC1「无需重启即恢复」）并入 T6 的隔离 DSH 走查
+- 2026-10-29 — T4 — 跨平台审计（清单见「验证记录」）；修了两处真实风险：win32 上 `validateRepoPath` 放过 `..\x`、`C:foo`；win32 默认关闭 `directBinary`。`isWithinRoot` 用 `path.win32`/`posix` 补测
 
 ## 下一步
 
-- T4：跨平台审计与单元测试。
+- T5：git 兼容测试（本机能否拿到 2.25 / 2.38）。
 
 ## 决策记录
 
@@ -174,6 +175,10 @@ export function gitSupports(version: ParsedGitVersion, feature: 'updateRefs' | '
 - T3 Ruling：已存路径只在 Git 标签挂载时交给 Host 一次（之后的改动走设置页/空状态）；挂载时没有设置就不发请求，Host 保持 PATH。代价：Host 重启而页面不刷新时，直到下次挂载才恢复设置路径（设置页会显示「未生效」提示）。
 - T3 Ruling：设置页与空状态共用 `GitPathField`；空状态在没有已存路径、也没有错误时先只给「设置 git 路径…」按钮，点开后输入框获得焦点。
 - T3 Ruling：AC3「说明文案可见」落在变基页：git < 2.38 且范围内有其他分支时显示一句说明（列出分支名），没有其他分支时不显示（不相关）。
+- T4 Ruling：Windows 上默认关闭 `directBinary`（`directBinaryByDefault`）：直接启动 `libexec/git-core/git.exe` 不会带上 `cmd\git.exe` 补进 PATH 的 `usr\bin`（`GIT_SEQUENCE_EDITOR='cat >'` 的 `sh`/`cat`、ssh、凭据助手）。没有 Windows 真机可测，按「宁可慢、不可坏」处理（B4c 终审 Minor 之一由此关闭）。代价：Windows 上每次 git 调用多付 `cmd\git.exe` 的转发开销（未测量）。
+- T4 Ruling：`validateRepoPath` 按平台判定：win32 上 `\` 也是分隔符、任何 `C:` 前缀都拒绝；POSIX 上文件名里的 `\` 仍是合法字符。代价：无（git 在 Windows 上不产生含 `\` 的路径）。
+- T4 Ruling：沙箱根包含判断抽成纯函数 `isWithinRoot`，顺带修正 `/repo/..cache` 这类以 `..` 开头的子目录被误判为「在外面」的问题。
+- T4 Ruling：diff 行文本保留 CRLF 文件的 `\r`（如实反映内容，浏览器里不可见），只记录不改；「只改了行尾」的 diff 看起来像相同的行，登记 TODO。
 
 ## 意外与发现
 
@@ -185,4 +190,15 @@ export function gitSupports(version: ParsedGitVersion, feature: 'updateRefs' | '
 
 ## 验证记录
 
-- 无
+### T4 跨平台审计（AC4，2026-10-29，静态审计 + 单元测试；Windows/Linux 真机**未实测**：没有可用机器，按待确认 3）
+
+| 位置 | 路径/文本来源 | 风险 | 处理 |
+|---|---|---|---|
+| `git/diff.ts` `validateRepoPath`（diff、worktree、blame、文件历史等 20 处入口） | 客户端 | win32 上 `..\x`、`a\..\..\b`、`C:foo` 未被拒绝，`path.join` 会离开仓库 | **已修**：按平台分隔符与盘符判定；`diff.test.ts` 补 win32 用例 |
+| `sandbox-gate.ts` `isInside` | 会话 cwd、沙箱根、git 输出 | `startsWith('..')` 把 `/repo/..cache` 判成仓库外；win32 大小写/分隔符 | **已修**：抽成 `isWithinRoot`，按段比较；`path.win32` 用例覆盖大小写、`/` 与 `\` 混用、跨盘 |
+| `git-executor.ts` `directBinary` | `git --exec-path` | Windows 上绕过 `cmd\git.exe` 的 PATH 补充 | **已修**：win32 默认关闭 |
+| `repo-resolver.ts`、`rpc.ts` gitDirs、`watch.ts`、`status.ts`/`operation.ts`/`shelf.ts`/`smart-stash.ts` 的 `join(gitDir, …)` | git 输出（Windows 上为 `C:/…`） | 与 `\` 混用 | 无需改：win32 的 `join`/`relative`/`isAbsolute` 都接受两种分隔符；仓库根始终来自 git 输出，作为缓存键前后一致；多行输出都先 `trim()` |
+| `write-support.ts` `shellQuote`（控制台「复制命令」、blame 命令提示） | 仓库根、参数 | 生成的是 POSIX shell 语法 | 记录：Windows 上复制的命令要在 Git Bash 里运行；登记 TODO |
+| `interactive-rebase.ts` `GIT_SEQUENCE_EDITOR='cat >'` | 固定 | Git for Windows 用自带 `sh` 执行编辑器 | 记录：经 `cmd\git.exe` 启动时 `usr\bin` 在 PATH 上（为此关闭 `directBinary`）；未实测 |
+| 所有 git 调用 | — | 含空格/引号/中文的路径 | 无风险：一律 argv（无 shell），路径列表走 `--pathspec-from-file` + NUL；`status`/`commit-write`/`rollback`/`diff` 测试已覆盖特殊字符，`git-executable.test.ts` 的临时目录名含空格与 `✓` |
+| `diff.ts` 内容行、`blame.ts` | 文件内容 | CRLF | diff 保留 `\r`（如实），blame 去掉行尾 `\r`；只改行尾的 diff 难以分辨，登记 TODO |

@@ -1,6 +1,6 @@
 import { mkdirSync, mkdtempSync, symlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, posix, win32 } from 'node:path'
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -17,7 +17,7 @@ import type {
   SandboxLike,
   SandboxPolicySource,
 } from '../../src/host/sandbox-gate.ts'
-import { assertWritable, evaluateWritePolicy } from '../../src/host/sandbox-gate.ts'
+import { assertWritable, evaluateWritePolicy, isWithinRoot } from '../../src/host/sandbox-gate.ts'
 import { createRpcHandler } from '../../src/host/rpc.ts'
 import { createTempRepo, removeTempDir } from './fixtures.ts'
 import { createFakeSubprocess } from './fake-subprocess.ts'
@@ -340,5 +340,22 @@ describe('bootstrap write policy', () => {
     expect(bootstrap.writePolicy.mode).toBe('read-only')
     const status = okValue<StatusValue>(await handler('status', { sessionId: 's-1' }, SIGNAL))
     expect(status.branch).toBe('main')
+  })
+})
+
+describe('isWithinRoot (B4d T4)', () => {
+  it('compares POSIX paths by segment, not by prefix', () => {
+    expect(isWithinRoot('/repo', '/repo', posix)).toBe(true)
+    expect(isWithinRoot('/repo', '/repo/src/a', posix)).toBe(true)
+    expect(isWithinRoot('/repo', '/repo/..cache', posix)).toBe(true)
+    expect(isWithinRoot('/repo', '/repo2', posix)).toBe(false)
+    expect(isWithinRoot('/repo', '/', posix)).toBe(false)
+  })
+
+  it('treats Windows paths case-insensitively, with either separator, and never across drives', () => {
+    expect(isWithinRoot('C:\\Work\\Repo', 'c:/work/repo/src', win32)).toBe(true)
+    expect(isWithinRoot('C:\\Work\\Repo', 'C:\\Work\\Repo', win32)).toBe(true)
+    expect(isWithinRoot('C:\\Work\\Repo', 'C:\\Work\\Repo\\..\\Other', win32)).toBe(false)
+    expect(isWithinRoot('C:\\Work\\Repo', 'D:\\Work\\Repo', win32)).toBe(false)
   })
 })

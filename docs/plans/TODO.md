@@ -45,6 +45,8 @@
 | P2 | B4b 终审 Minor（6 条）：搜索中对分组头/目录按 ← 会切换被搜索强制展开的存储折叠状态；分支抽屉与推送被拒页滑入方向变为竖向；提交 ▾ 菜单开着时开关被禁用、Esc 还焦失败；菜单内 Tab 的还焦与 APG 不同；`tabbablesOf` 不认 `contenteditable`/`display:none`；reduced-motion 检查不逐个动画核对 | B4b 终审，2026-10-28 | 细节见 [b4b 计划](completed/b4b-a11y与样式变量.md)「决策记录」终审条目 |
 | P2 | 「提交后跳到日志」在 10k 仓库上偶发提示「已加载的 100 行中未找到「<新提交>」」，而新提交其实在首行：疑为提交使 version 前进、触发第二次日志重载，`logStore.refresh()` 的结果被丢弃后 `jumpTo` 先执行 | B4c T6 L4，2026-10-28 | `src/client/pages/GitWorkbench.tsx:503`；B4c 未改日志 store，非本计划回归（B4a L4 在小仓库上通过） |
 | P2 | B4c 终审 Minor（6 条）：chunk 加载失败后因文件/文案变化重载成功时失败提示不消失；加载期间 pane 容器重挂会用旧宿主节点；`LogRow` memo 后「相对日期」只在行 props 变化时刷新；`pnpm dev` 下 chunk 变化整体重建 client context（可改 `rebuild()`，onEnd 抛错会让 watch 退出）；测试替身对绝对路径 realpath 而真实 provider 不做；Windows 上 `directBinary` 直连 `libexec/git-core/git.exe` 会绕过 `cmd\git.exe` 对 PATH 的补充（B4d 实测，或 win32 默认关闭） | B4c 终审，2026-10-28 | 细节见 [b4c 计划](completed/b4c-性能.md)「决策记录」终审条目 |
+| P2 | Windows 上控制台「复制命令」与 blame 命令提示生成的是 POSIX shell 语法（单引号、`cd … &&`），需在 Git Bash 里运行；可按平台改成 PowerShell 引号 | B4d T4 审计，2026-10-29 | `src/host/git/write-support.ts` `shellQuote` |
+| P2 | Diff 里只改了行尾（CRLF↔LF）的行看起来与原行相同：Host 如实保留 `\r`，客户端不显示行尾标记 | B4d T4 审计，2026-10-29 | 可在行尾差异时显示 `CRLF`/`LF` 小标记（IntelliJ 行为） |
 
 ## 已完成
 

@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 // 真实 git 仓库 + 进程 spawn 在并发 worker 下偶尔超过默认 5s，这里按文件放宽。
 vi.setConfig({ testTimeout: 30_000 })
 
-import { GitCommandFailure, bindWriteContext, createGitRunner, instrumentGitRunner } from '../../src/host/git-executor.ts'
+import { GitCommandFailure, bindWriteContext, createGitRunner, directBinaryByDefault, instrumentGitRunner } from '../../src/host/git-executor.ts'
 import { createGitConsole } from '../../src/host/console.ts'
 import {
   canonicalPath,
@@ -474,5 +474,13 @@ describe('instrumentGitRunner', () => {
 
     const [record] = gitConsole.recent().records
     expect(record).toMatchObject({ stdoutTruncated: true, exitCode: null })
+  })
+})
+
+describe('directBinaryByDefault (B4d T4)', () => {
+  it('is off on Windows, where cmd\\git.exe sets up PATH for git\'s own sh and helpers', () => {
+    expect(directBinaryByDefault('win32')).toBe(false)
+    expect(directBinaryByDefault('darwin')).toBe(true)
+    expect(directBinaryByDefault('linux')).toBe(true)
   })
 })

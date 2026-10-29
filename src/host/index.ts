@@ -16,7 +16,7 @@ import type { FsServiceLike, FsWatch } from './watch.ts'
 import { fsWatchFromService } from './watch.ts'
 import { createGitConsole } from './console.ts'
 import { createGitExecutable } from './git-executable.ts'
-import { createGitRunner, instrumentGitRunner } from './git-executor.ts'
+import { createGitRunner, directBinaryByDefault, instrumentGitRunner } from './git-executor.ts'
 import { createRpcRuntime } from './rpc.ts'
 import { registerRpcRoutes } from './http.ts'
 
@@ -38,8 +38,8 @@ export function apply(ctx: Context): void {
   // B4d T2: PATH git unless the client sends a validated path (kept in memory only).
   const gitExecutable = createGitExecutable(ctx.subprocess)
   const deps: RpcDeps = {
-    // B4c T2: run git's own binary (`--exec-path`), not a PATH launcher such as macOS xcrun.
-    runner: instrumentGitRunner(createGitRunner(ctx.subprocess, { directBinary: true, executable: gitExecutable }), gitConsole),
+    // B4c T2: run git's own binary (`--exec-path`), not a PATH launcher such as macOS xcrun (not on Windows, B4d T4).
+    runner: instrumentGitRunner(createGitRunner(ctx.subprocess, { directBinary: directBinaryByDefault(), executable: gitExecutable }), gitConsole),
     gitExecutable,
     console: gitConsole,
     // 惰性读取：composition 可能在本插件之后加载这些服务；缺失服务不等于错误。

@@ -175,6 +175,15 @@ export interface GitRunnerDefaults {
   executable?: { override(): string | null } | undefined
 }
 
+/**
+ * Whether the Host runs git's `--exec-path` binary directly (B4c T2). Off on Windows (B4d T4): Git
+ * for Windows' `cmd\\git.exe` puts `usr\\bin` (the `sh`/`cat` behind GIT_SEQUENCE_EDITOR, ssh,
+ * credential helpers) on PATH, and `mingw64\\libexec\\git-core\\git.exe` started directly does not.
+ */
+export function directBinaryByDefault(platform: NodeJS.Platform = process.platform): boolean {
+  return platform !== 'win32'
+}
+
 /** Name of the git binary inside `--exec-path`. */
 function directBinaryName(): string {
   return process.platform === 'win32' ? 'git.exe' : 'git'

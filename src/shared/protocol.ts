@@ -875,6 +875,8 @@ export interface WorktreeEntry {
   locked: boolean
   prunable: boolean
   bare: boolean
+  /** 主工作区（`worktree list` 的第一项，T1）；不可删除。 */
+  main: boolean
 }
 
 export interface WorktreeListValue {
@@ -1148,6 +1150,17 @@ export interface PushRejectedDetails {
   remoteSha?: string
 }
 
+/** 推送标签被拒（`tagPush` 的 `git/rejected`，T1）的 `details` 形状；用 `target` 与分支推送被拒区分。 */
+export interface TagPushRejectedDetails {
+  target: 'tag'
+  name: string
+  remote: string
+  /** porcelain 被拒行的说明，如 `[rejected] (already exists)`（已脱敏）。 */
+  summary: string
+  /** 远程返回的 `remote: …` 行（已脱敏，最多 5 行）；没有时为空串。 */
+  remoteMessage: string
+}
+
 /** `git/auth-required` 错误的 `details` 形状。 */
 export interface AuthRequiredDetails {
   /** 可在终端里执行的等价命令（不含凭据）。 */
@@ -1249,7 +1262,8 @@ export interface UpstreamRewrittenDetails {
 
 /** `git/stale-target`：`target` 说明哪类对象已变化。 */
 export interface StaleTargetDetails {
-  target: 'stash' | 'conflict' | 'head' | 'branch'
+  /** `git-path`：`gitExecutable` 设置在校验期间被更晚的一次设置取代（T1-T4）。 */
+  target: 'stash' | 'conflict' | 'head' | 'branch' | 'git-path'
   /** 请求里的 sha 或路径。 */
   expected?: string
 }
@@ -1583,7 +1597,10 @@ export interface StashEntry {
   branch: string | null
   /** ISO 8601。 */
   date: string
-  /** 已跟踪改动文件数；条目超过 {@link STASH_FILE_COUNT_LIMIT} 时省略。 */
+  /**
+   * 文件数 = 已跟踪改动（`^1..sha`）+ 未跟踪文件（`-u` 贮藏的 `^3`），与 `stashFiles` 两个列表之和一致；
+   * 条目超过 {@link STASH_FILE_COUNT_LIMIT} 时省略。
+   */
   fileCount?: number
 }
 

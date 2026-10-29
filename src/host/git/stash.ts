@@ -1,6 +1,7 @@
 // 贮藏读写（A3 T5，设计 §8.5）：
-// - 列表：一条 `stash list --format` 取 sha/父提交/信息/日期；文件数用一条 `diff-tree --stdin`
-//   批量算「贮藏 vs 第一父」，超过 STASH_FILE_COUNT_LIMIT 条时省略（列表在页面可见时会被轮询）；
+// - 列表：一条 `stash list --format` 取 sha/父提交/信息/日期；文件数用一条 `diff-tree --stdin --root`
+//   批量算「贮藏 vs 第一父」加上第三父（未跟踪文件）的文件，超过 STASH_FILE_COUNT_LIMIT 条时省略
+//   （列表在页面可见时会被轮询）；
 // - 文件：已跟踪改动 = 第一父 → 贮藏；未跟踪文件 = 第三父（`-u` 贮藏的根提交）。预览 diff 复用
 //   `diff` 端点 `scope: 'commit'`；
 // - 创建：`stash push [-u] [--keep-index] --message=<msg>`；没写信息时 Host 生成
@@ -73,26 +74,46 @@ function branchOf(name: string): string | null {
   return name === '(no branch)' || name === '' ? null : name
 }
 
-/** Tracked file counts (stash vs. its first parent) for every listed stash in one call. */
+/**
+ * File counts for every listed stash in one call: tracked changes (stash vs. its first parent)
+ * plus untracked files (the third parent of a `-u` stash, a root commit, so `--root`) — the same
+ * files `stashFiles` lists.
+ */
 async function fileCounts(
   git: (args: readonly string[], stdin?: string) => Promise<GitRunResult>,
   stashes: readonly ListedStash[],
 ): Promise<Map<string, number>> {
   const counts = new Map<string, number>()
-  const pairs = stashes.filter((stash) => stash.parents[0] !== undefined)
-  if (pairs.length === 0) return counts
-  for (const stash of pairs) counts.set(stash.sha, 0)
+  // diff-tree output sha (stash or untracked commit) -> stash sha it counts toward.
+  const owners = new Map<string, string>()
+  const lines: string[] = []
+  for (const stash of stashes) {
+    const parent = stash.parents[0]
+    if (parent === undefined) continue
+    counts.set(stash.sha, 0)
+    owners.set(stash.sha, stash.sha)
+    lines.push(`${stash.sha} ${parent}\n`)
+    const untracked = stash.parents[2]
+    if (untracked !== undefined && !owners.has(untracked)) {
+      owners.set(untracked, stash.sha)
+      lines.push(`${untracked}\n`)
+    }
+  }
+  if (lines.length === 0) return counts
   const result = await git(
-    ['diff-tree', '--stdin', '-r', '--name-only', '-z', '--no-renames'],
-    pairs.map((stash) => `${stash.sha} ${stash.parents[0] ?? ''}\n`).join(''),
+    ['diff-tree', '--stdin', '--root', '-r', '--name-only', '-z', '--no-renames'],
+    lines.join(''),
   )
   if (result.exitCode !== 0) throw failureFromExit(result, 'git diff-tree')
-  // Output: `<commit sha>\0<path>\0...` per stash with changes; stashes without any are absent.
+  // Output: `<commit sha>\0<path>\0...` per input line with changes; lines without any are absent.
   let current: string | undefined
+  let currentSha: string | undefined
   for (const token of result.stdout.split('\0')) {
     if (token === '') continue
-    if (counts.has(token) && token !== current) {
-      current = token
+    const owner = owners.get(token)
+    if (owner !== undefined && token !== currentSha) {
+      current = owner
+      currentSha = token
       continue
     }
     if (current !== undefined) counts.set(current, (counts.get(current) ?? 0) + 1)

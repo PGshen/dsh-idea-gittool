@@ -203,4 +203,52 @@ describe('chunk counts', () => {
     expect(loadFile).toHaveBeenCalledTimes(CHUNK_COUNT_LIMIT)
     expect(store.getReview().counts.has(`f${CHUNK_COUNT_LIMIT}`)).toBe(false)
   })
+
+  it('T2: a failed load is not retried on every pass, only after the file was invalidated or the round changed', async () => {
+    const states = [
+      mergeState({ conflicts: [conflictEntry('a'), conflictEntry('b')], resolved: [] }),
+      mergeState({ conflicts: [conflictEntry('a'), conflictEntry('b')], resolved: [] }),
+      rebaseState({ conflicts: [conflictEntry('a'), conflictEntry('b')], resolved: [] }),
+    ]
+    const load = vi.fn(async () => ({ ok: true as const, value: states.length > 1 ? states.shift()! : states[0]! }))
+    let failA = true
+    const loadFile = vi.fn(async (path: string) => (path === 'a' && failA
+      ? { ok: false, error: { code: 'git/exec-failed', message: 'boom' } }
+      : { ok: true, value: mergeFile(path) }) as RpcResult<MergeFileValue>)
+    const store = createConflictStore({ load, loadFile })
+    await store.refresh()
+    await store.loadCounts()
+    expect(loadFile.mock.calls.map(call => call[0])).toEqual(['a', 'b'])
+    expect(store.getReview().counts.has('a')).toBe(false)
+    // The next refresh of the same round (same file) does not ask again.
+    await store.refresh()
+    await store.loadCounts()
+    expect(loadFile).toHaveBeenCalledTimes(2)
+    // The file changed (window left / resolved / restored): it is tried again.
+    store.invalidateCount('a')
+    await store.loadCounts()
+    expect(loadFile).toHaveBeenCalledTimes(3)
+    // A new round (other stages) tries again too.
+    failA = false
+    await store.refresh()
+    await store.loadCounts()
+    expect(loadFile.mock.calls.map(call => call[0]).slice(3)).toEqual(['a', 'b'])
+    expect(store.getReview().counts.get('a')).toEqual({ resolved: 0, total: 2 })
+  })
+})
+
+describe('T2: where conflicts without an operation came from', () => {
+  it('defaults to the stash; a shelf three-way apply marks it until the list is cleared', async () => {
+    const { store } = storeWith([mergeState({ operation: null, conflicts: [conflictEntry('a')], resolved: [] })])
+    expect(store.getState().origin ?? 'stash').toBe('stash')
+    store.noteOrigin('shelf')
+    expect(store.getState().origin).toBe('shelf')
+    await store.refresh()
+    expect(store.getState().origin).toBe('shelf')
+    store.clear()
+    expect(store.getState().origin ?? 'stash').toBe('stash')
+    store.noteOrigin('shelf')
+    store.noteOrigin('stash')
+    expect(store.getState().origin).toBe('stash')
+  })
 })

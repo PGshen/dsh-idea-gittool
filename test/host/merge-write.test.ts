@@ -1,5 +1,5 @@
 // B1 T3：mergeDraftSave / mergeApply / unresolveConflict 与草稿清理（真实临时仓库）。
-import { chmodSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { chmodSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -17,7 +17,7 @@ import {
 import { operationCommitOperation, operationControlOperation } from '../../src/host/git/operation.ts'
 import { deleteRefs, readJsonRef, writeJsonRef } from '../../src/host/git/write-support.ts'
 import type { MergeDraft, MergeFileValue } from '../../src/shared/protocol.ts'
-import { createTempRepo } from './fixtures.ts'
+import { createTempRepo, writeExecutableScript } from './fixtures.ts'
 import type { TempRepo } from './fixtures.ts'
 import { contextFor } from './remote-fixtures.ts'
 
@@ -420,6 +420,41 @@ describe('draft cleanup when the operation ends', () => {
     await run(resolveConflictOperation, ctx, { path: 'du.txt', resolution: 'delete' })
     await run(operationCommitOperation, ctx, { message: 'merge done' })
     expect(draftRefs(repo)).toEqual([])
+  })
+
+  it('a continue refused for unresolved conflicts keeps every draft', async () => {
+    const repo = makeRepo()
+    mergeStopped(repo)
+    const ctx = contextFor(repo)
+    await saveDrafts(repo, ctx, ['uu.txt', 'other.txt'])
+    await run(resolveConflictOperation, ctx, { path: 'uu.txt', resolution: 'ours' })
+    expect((await failureOf(run(operationControlOperation, ctx, { action: 'continue' }))).code).toBe('git/conflict')
+    expect(draftRefs(repo)).toHaveLength(2)
+  })
+
+  it('a continue that git rejects (hook) keeps the drafts of resolved paths', async () => {
+    const repo = makeRepo()
+    mergeStopped(repo)
+    const ctx = contextFor(repo)
+    await saveDrafts(repo, ctx, ['uu.txt'])
+    for (const path of ['uu.txt', 'other.txt']) await run(resolveConflictOperation, ctx, { path, resolution: 'ours' })
+    await run(resolveConflictOperation, ctx, { path: 'du.txt', resolution: 'delete' })
+    writeExecutableScript(join(repo.root, '.git', 'hooks'), 'pre-commit', '#!/bin/sh\nexit 1\n')
+    expect((await failureOf(run(operationControlOperation, ctx, { action: 'continue' }))).code).toBe('git/hook-failed')
+    expect(draftRefs(repo)).toEqual([mergeDraftRef('uu.txt')])
+  })
+
+  it('an abort that git rejects keeps the drafts', async () => {
+    const repo = makeRepo()
+    mergeStopped(repo)
+    const ctx = contextFor(repo)
+    await saveDrafts(repo, ctx, ['uu.txt'])
+    await run(resolveConflictOperation, ctx, { path: 'uu.txt', resolution: 'ours' })
+    // A held index lock makes `merge --abort` fail while the merge stays in progress.
+    writeFileSync(join(repo.root, '.git', 'index.lock'), '')
+    await failureOf(run(operationControlOperation, ctx, { action: 'abort' }))
+    rmSync(join(repo.root, '.git', 'index.lock'))
+    expect(draftRefs(repo)).toEqual([mergeDraftRef('uu.txt')])
   })
 
   it('a rebase continue that stops on the next conflict drops drafts of paths no longer in conflict', async () => {

@@ -1,10 +1,11 @@
 // B3d T1–T3: remotes, tag push/delete, remote branch delete, upstream, worktrees (real repositories).
-import { existsSync, readFileSync, realpathSync, rmSync } from 'node:fs'
+import { chmodSync, existsSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { GitCommandFailure, createGitRunner } from '../../src/host/git-executor.ts'
+import { GitCommandFailure, bindWriteContext, createGitRunner } from '../../src/host/git-executor.ts'
+import type { GitRunner } from '../../src/host/git-executor.ts'
 import {
   readRemoteList,
   remoteBranchDeleteOperation,
@@ -75,6 +76,33 @@ describe('tags', () => {
     expect((await failureOf(write(tagPushOperation, local, { name: '-x', remote: 'origin' }))).code).toBe('git/invalid-payload')
   })
 
+  it('reports why a tag push was rejected instead of only "failed to push some refs"', async () => {
+    const { local, other } = remoteSetup()
+    other.write('o.txt', 'o\n')
+    other.commit('other')
+    other.git('tag', 'v9')
+    other.git('push', '-q', 'origin', 'refs/tags/v9')
+    local.git('tag', 'v9')
+    const failure = await failureOf(write(tagPushOperation, local, { name: 'v9', remote: 'origin' }))
+    expect(failure.code).toBe('git/rejected')
+    expect(failure.details).toMatchObject({ target: 'tag', name: 'v9', remote: 'origin' })
+    expect(String(failure.details?.['summary'])).toMatch(/already exists/u)
+    expect(failure.message).toMatch(/already exists/u)
+  })
+
+  it('caps each remote: line of a rejected tag push (review M7)', async () => {
+    const { bare, local } = remoteSetup()
+    const hook = join(bare, 'hooks', 'pre-receive')
+    writeFileSync(hook, `#!/bin/sh\necho "${'x'.repeat(1000)}" >&2\nexit 1\n`)
+    chmodSync(hook, 0o755)
+    local.git('tag', 'v8')
+    const failure = await failureOf(write(tagPushOperation, local, { name: 'v8', remote: 'origin' }))
+    expect(failure.code).toBe('git/rejected')
+    const remoteMessage = String(failure.details?.['remoteMessage'])
+    expect(remoteMessage.length).toBeGreaterThan(0)
+    expect(remoteMessage.length).toBeLessThanOrEqual(201)
+  })
+
   it('keeps the local tag when deleting it on the remote fails, so the user can retry', async () => {
     const { local } = remoteSetup()
     local.git('tag', 'v3')
@@ -94,6 +122,17 @@ describe('remote branches and upstream', () => {
     expect(local.git('ls-remote', '--heads', 'origin').trim()).not.toContain('topic')
     expect(local.gitResult('rev-parse', '--verify', '-q', 'refs/remotes/origin/topic').status).not.toBe(0)
     expect((await failureOf(write(remoteBranchDeleteOperation, local, { remote: 'origin', branch: 'topic' }))).code).toBe('git/stale-target')
+  })
+
+  it('deleting <remote>/HEAD removes only the symbolic ref, never the branch it points to', async () => {
+    const { local } = remoteSetup()
+    local.git('remote', 'set-head', 'origin', 'main')
+    const mainSha = local.git('rev-parse', 'refs/remotes/origin/main').trim()
+    const failure = await failureOf(write(remoteBranchDeleteOperation, local, { remote: 'origin', branch: 'HEAD' }))
+    expect(failure.code).toBe('git/stale-target')
+    expect(local.git('rev-parse', 'refs/remotes/origin/main').trim()).toBe(mainSha)
+    expect(local.gitResult('symbolic-ref', '-q', 'refs/remotes/origin/HEAD').status).not.toBe(0)
+    expect(local.git('ls-remote', '--heads', 'origin').trim()).toContain('refs/heads/main')
   })
 
   it('sets and unsets the upstream of a local branch', async () => {
@@ -127,6 +166,15 @@ describe('remotes', () => {
   })
 })
 
+describe('remote list failures', () => {
+  it('redacts credentials from the error of a failing `git remote -v`', async () => {
+    const failing = (async () => ({ exitCode: 128, stdout: '', stderr: "fatal: bad config for remote 'up': https://alice:secret@example.com/r.git\n" })) as unknown as GitRunner
+    const failure = await failureOf(readRemoteList(failing, '/work/repo'))
+    expect(JSON.stringify({ message: failure.message, details: failure.details })).not.toContain('secret')
+    expect(failure.message).toContain('https://***@example.com/r.git')
+  })
+})
+
 describe('worktrees', () => {
   it('lists, adds from an existing or a new branch, removes and prunes', async () => {
     const repo = makeRepo()
@@ -151,6 +199,25 @@ describe('worktrees', () => {
     expect((await readWorktreeList(run, repo.root)).find(entry => entry.branch === 'fresh')?.prunable).toBe(true)
     expect(await write(worktreePruneOperation, repo, {})).toEqual({ pruned: 1 })
     expect((await failureOf(write(worktreeRemoveOperation, repo, { path: repo.root }))).details).toMatchObject({ reason: 'current-worktree' })
+  })
+
+  it('marks the main worktree and refuses to remove it or a locked worktree', async () => {
+    const repo = makeRepo()
+    repo.git('branch', 'side')
+    repo.git('branch', 'kept')
+    const side = await write(worktreeAddOperation, repo, { path: '.worktrees/side', branch: 'side' })
+    const kept = await write(worktreeAddOperation, repo, { path: '.worktrees/kept', branch: 'kept' })
+    repo.git('worktree', 'lock', kept.worktree.path)
+    const list = await readWorktreeList(run, repo.root)
+    expect(list[0]).toMatchObject({ branch: 'main', main: true })
+    expect(list.filter(entry => entry.main)).toHaveLength(1)
+    expect((await failureOf(write(worktreeRemoveOperation, repo, { path: kept.worktree.path, force: true }))).details).toMatchObject({ reason: 'worktree-locked' })
+    expect(existsSync(kept.worktree.path)).toBe(true)
+    // From a session inside the linked worktree the main worktree is not "current", but still not removable.
+    const fromSide = bindWriteContext(createGitRunner(createFakeSubprocess()), side.worktree.path, { kind: 'unconfined' }, new AbortController().signal)
+    const input = worktreeRemoveOperation.parse({ sessionId: 's', requestId: 'r', path: repo.root, force: true })
+    expect((await failureOf(worktreeRemoveOperation.run(fromSide, input))).details).toMatchObject({ reason: 'main-worktree' })
+    expect(existsSync(join(repo.root, '.git'))).toBe(true)
   })
 
   it('refuses paths outside the repository and option-like branches', async () => {

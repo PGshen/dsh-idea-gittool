@@ -206,7 +206,13 @@ export function ConflictsPageView(props: ConflictsPageViewProps): ReactNode {
           {t('conflict.sides', { ours: t(sides.ours.name.key, sides.ours.name.params), theirs: t(sides.theirs.name.key, sides.theirs.name.params) })}
         </p>
         {sides.note === null ? null : <p className={css.note} data-rebase-note>{t(sides.note.key, sides.note.params)}</p>}
-        {stashPop ? <p className={css.note} data-stash-note>{t('conflict.stash.note')}</p> : null}
+        {stashPop
+          ? (
+              <p className={css.note} data-stash-note data-conflict-origin={state.origin ?? 'stash'}>
+                {t(state.origin === 'shelf' ? 'conflict.shelf.note' : 'conflict.stash.note')}
+              </p>
+            )
+          : null}
         <h3 className={css.groupTitle}>{t('conflict.unresolved', { count: unresolved })}</h3>
         {unresolved === 0
           ? <p className={integrateCss.hint}>{t('conflict.none')}</p>

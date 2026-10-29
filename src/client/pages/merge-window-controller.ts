@@ -143,7 +143,13 @@ export interface MergeWindowController {
    * save / discard / cancel first (`go` runs after save or discard); false when it may go right away.
    */
   guardLeave(go: () => void, cancel?: () => void): boolean
+  /** Save failing on a held outside prompt asks the same question again (T2). */
   answerLeave(answer: LeaveAnswer): void
+  /**
+   * T2: the window is going away without answering (e.g. `closeIf` after the operation ended). A held
+   * outside prompt — open, or waiting on its save — is answered as cancelled; a late save result is ignored.
+   */
+  dispose(): void
   requestApply(): void
   confirmApply(): void
   /** In the apply question: apply the non-conflicting changes, then ask again for what is left (or apply). */
@@ -159,6 +165,9 @@ export function createMergeWindowController(deps: MergeWindowControllerDeps): Me
   let ui = INITIAL
   let reveal: ((chunkId: number) => void) | null = null
   let applying = false
+  /** The leave target whose save is in flight, and the token that save answers to. */
+  let savingTarget: LeaveTarget | null = null
+  let saveToken = 0
 
   const set = (patch: Partial<MergeWindowUi>): void => {
     ui = { ...ui, ...patch }
@@ -268,6 +277,11 @@ export function createMergeWindowController(deps: MergeWindowControllerDeps): Me
     requestLeave,
     guardLeave: (go, cancel) => {
       if (!store.getState().dirty) return false
+      // Review M5: a save is already answering an earlier prompt; refuse this one instead of leaving it open.
+      if (savingTarget !== null) {
+        cancel?.()
+        return true
+      }
       if (ui.confirm !== null) dropConfirm()
       set({ confirm: { kind: 'leave', target: cancel === undefined ? { kind: 'external', go } : { kind: 'external', go, cancel } } })
       return true
@@ -284,9 +298,24 @@ export function createMergeWindowController(deps: MergeWindowControllerDeps): Me
         return
       }
       set({ confirm: null })
+      const target = confirm.target
+      const token = ++saveToken
+      savingTarget = target
       void store.saveAndClose().then((saved) => {
-        if (saved) leave(confirm.target)
+        // The window went away (dispose) or another save started: this result answers nothing.
+        if (token !== saveToken) return
+        savingTarget = null
+        if (saved) leave(target)
+        // T2: a held outside prompt must stay answerable; ask again (the store shows the error).
+        else if (target.kind === 'external' && ui.confirm === null) set({ confirm })
       })
+    },
+    dispose: () => {
+      saveToken++
+      const held = savingTarget ?? (ui.confirm?.kind === 'leave' ? ui.confirm.target : null)
+      savingTarget = null
+      if (ui.confirm !== null) set({ confirm: null })
+      if (held?.kind === 'external') held.cancel?.()
     },
     requestApply,
     confirmApply: () => {

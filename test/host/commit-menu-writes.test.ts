@@ -114,7 +114,9 @@ describe('formatPatch and applyPatch', () => {
     expect(single.patch).toBe(repo.git('format-patch', '--stdout', '-1', c2 ?? ''))
     expect(single.fileName).toBe(`${(c2 ?? '').slice(0, 7)}-c2.patch`)
     const both = await readFormatPatch(run, repo.root, [c2 ?? '', c1 ?? ''])
-    expect(both.patch.indexOf('Subject: [PATCH] c1')).toBeLessThan(both.patch.indexOf('Subject: [PATCH] c2'))
+    expect(both.patch.indexOf('Subject: [PATCH 1/2] c1')).toBeGreaterThan(-1)
+    expect(both.patch.indexOf('Subject: [PATCH 1/2] c1')).toBeLessThan(both.patch.indexOf('Subject: [PATCH 2/2] c2'))
+    expect(both.patch).not.toContain('Subject: [PATCH] ')
     expect(both.fileName).toBe('2-commits.patch')
   })
 

@@ -208,3 +208,65 @@ describe('which programs may become git (final review I1)', () => {
   })
 })
 
+// T1-T4 (B4d final review minor): `info()` and `set()` called concurrently, as several sessions and
+// the client's mount-time re-send do.
+describe('concurrent probing and setting', () => {
+  const versionSpawns = (fake: ReturnType<typeof createFakeSubprocess>): number =>
+    fake.spawns.filter(spawn => spawn.spec.argv.includes('--version')).length
+
+  it('shares one --version probe among concurrent info() callers', async () => {
+    const fake = createFakeSubprocess()
+    const git = createGitExecutable(fake)
+
+    const results = await Promise.all(Array.from({ length: 5 }, () => git.info(SIGNAL)))
+
+    expect(versionSpawns(fake)).toBe(1)
+    for (const info of results) expect(info).toEqual(results[0])
+  })
+
+  it('answers info() with the newly set git even while a PATH probe is still in flight', async () => {
+    const fake = createFakeSubprocess()
+    const git = createGitExecutable(fake)
+    const wrapper = script('git', `exec "${GIT_BINARY}" "$@"`)
+
+    const early = git.info(SIGNAL)
+    const adopted = await git.set(wrapper, SIGNAL)
+
+    expect((await early).source).toBe('path')
+    expect(await git.info(SIGNAL)).toEqual(adopted)
+    expect(git.override()).toBe(realpathSync(wrapper))
+  })
+
+  it('lets the latest set() win when an earlier one finishes validating later', async () => {
+    const fake = createFakeSubprocess()
+    const git = createGitExecutable(fake)
+    const slow = script('git', 'sleep 1; echo "git version 2.40.0"')
+    const fast = script('git', 'echo "git version 2.41.0"')
+
+    const first = git.set(slow, SIGNAL)
+    const second = git.set(fast, SIGNAL)
+    const [firstOutcome, secondOutcome] = await Promise.allSettled([first, second])
+
+    expect(secondOutcome).toMatchObject({ status: 'fulfilled', value: { path: realpathSync(fast) } })
+    // The superseded call does not report success for a path that is not in effect.
+    expect(firstOutcome.status).toBe('rejected')
+    expect(git.override()).toBe(realpathSync(fast))
+    expect(await git.info(SIGNAL)).toMatchObject({ path: realpathSync(fast), version: '2.41.0' })
+  })
+
+  it('stays on PATH when clearing the path overtakes a set() still validating', async () => {
+    const fake = createFakeSubprocess()
+    const git = createGitExecutable(fake)
+    const slow = script('git', 'sleep 1; echo "git version 2.40.0"')
+
+    const first = git.set(slow, SIGNAL)
+    const cleared = await git.set(null, SIGNAL)
+    const [firstOutcome] = await Promise.allSettled([first])
+
+    expect(cleared.source).toBe('path')
+    expect(firstOutcome.status).toBe('rejected')
+    expect(git.override()).toBeNull()
+    expect((await git.info(SIGNAL)).source).toBe('path')
+  })
+})
+

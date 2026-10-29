@@ -152,13 +152,30 @@ describe('readStashList', () => {
     for (const entry of value.entries) expect(entry.date).toMatch(/^\d{4}-\d{2}-\d{2}T/)
   })
 
-  it('counts only tracked files and reports 0 for an untracked-only stash', async () => {
+  // T1-T4: the count covers tracked changes (`^1..sha`) plus untracked files (`^3`, `-u` stashes),
+  // the same files the stash detail lists.
+  it('counts untracked files of a -u stash together with tracked changes', async () => {
     const repo = baseRepo()
     repo.write('u.txt', 'u\n')
-    repo.git('stash', 'push', '-q', '-u')
+    repo.git('stash', 'push', '-q', '-u', '-m', 'untracked only')
+    repo.write('a.txt', 'a1\n')
+    repo.write('new/x.txt', 'x\n')
+    repo.write('new/deep/y.txt', 'y\n')
+    repo.git('stash', 'push', '-q', '-u', '-m', 'mixed')
+    repo.write('b.txt', 'b1\n')
+    repo.git('stash', 'push', '-q', '-m', 'tracked only')
+
     const value = await readStashList(runner(), repo.root)
-    expect(value.entries).toHaveLength(1)
-    expect(value.entries[0]?.fileCount).toBe(0)
+    expect(value.entries.map(({ message, fileCount }) => ({ message, fileCount }))).toEqual([
+      { message: 'tracked only', fileCount: 1 },
+      { message: 'mixed', fileCount: 3 },
+      { message: 'untracked only', fileCount: 1 },
+    ])
+    // Same total as the stash detail lists.
+    for (const entry of value.entries) {
+      const files = await readStashFiles(runner(), repo.root, entry.sha)
+      expect(files.files.length + files.untracked.length).toBe(entry.fileCount)
+    }
   })
 
   it(`omits fileCount beyond ${String(STASH_FILE_COUNT_LIMIT)} entries`, async () => {

@@ -267,6 +267,17 @@ function controlArgs(operation: ControllableOperation, action: OperationControlA
   return action === 'continue' ? [operation, '--continue', '--no-edit'] : [operation, `--${action}`]
 }
 
+/** Where the operation stands: HEAD, the rebase step and the commit being picked / reverted. */
+async function stepPosition(ctx: WriteContext, gitDir: string): Promise<string> {
+  const step = await readRebaseStep(gitDir)
+  return [
+    await readHead(ctx).then(head => head.sha, () => ''),
+    step === undefined ? '' : String(step.current),
+    (await readSha(join(gitDir, 'CHERRY_PICK_HEAD'))) ?? '',
+    (await readSha(join(gitDir, 'REVERT_HEAD'))) ?? '',
+  ].join('|')
+}
+
 export interface OperationControlInput {
   action: OperationControlAction
 }
@@ -307,17 +318,24 @@ export const operationControlOperation: WriteOperation<OperationControlInput, Om
     const matches = await matchesPending(query, gitDir, pending, operation)
 
     const args = controlArgs(operation, input.action)
+    const positionBefore = await stepPosition(ctx, gitDir)
     const result = await ctx.git([...GIT_BASE_ARGV, ...args])
     const after = await detectOperationIn(gitDir)
-    await cleanupDraftsAfterStep(ctx, !isControllable(after))
     if (isControllable(after)) {
-      // Still in progress: stopped on the next conflict, or the step itself failed.
+      // Still in progress: stopped on the next conflict, or the step itself failed. Drafts are only
+      // dropped once git moved on (exit 0, or HEAD / the current step changed); a rejected step
+      // (hook, lock, failed abort) keeps them so an unresolve can still find its draft (T2).
+      if (result.exitCode === 0 || (await stepPosition(ctx, gitDir)) !== positionBefore) {
+        await cleanupDraftsAfterStep(ctx, false)
+      }
       const remaining = await unmergedCount(ctx)
       if (remaining > 0) throw conflictsRemain(after, remaining, outputSummary(result))
       if (result.exitCode !== 0) throw await classifyFailure(ctx, result, `git ${args.join(' ')}`)
       return { operation: after, head: (await readHead(ctx)).sha }
     }
-    // The operation ended: the pending stash goes back whatever the exit code says.
+    // The operation ended: its drafts can never match again (whatever the exit code says), and the
+    // pending stash goes back.
+    await cleanupDraftsAfterStep(ctx, true)
     const outcome = await finishPendingStash(ctx, pending, matches)
     if (result.exitCode !== 0) {
       const failure = await classifyFailure(ctx, result, `git ${args.join(' ')}`)

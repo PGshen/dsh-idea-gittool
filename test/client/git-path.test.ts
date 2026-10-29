@@ -45,6 +45,9 @@ describe('gitPathErrorText', () => {
     expect(gitPathErrorText({ code: 'git/exec-failed', message: 'boom', details: {} }, zhT)).toBe('设置失败：boom')
     expect(gitPathErrorText({ code: 'git/invalid-payload', message: 'x', details: { reason: 'inside-workspace' } }, zhT)).toContain('工作区')
     expect(gitPathErrorText({ code: 'git/invalid-payload', message: 'x', details: { reason: 'not-local' } }, zhT)).toContain('本机')
+    // T1-T4: a later setting overtook this one while it was being validated.
+    expect(gitPathErrorText({ code: 'git/stale-target', message: 'x', details: { target: 'git-path', expected: '/a/git' } }, zhT)).toContain('又发起了一次设置')
+    expect(gitPathErrorText({ code: 'git/stale-target', message: 'x', details: { target: 'git-path', expected: '/a/git' } }, enT)).toContain('Another setting')
   })
 })
 

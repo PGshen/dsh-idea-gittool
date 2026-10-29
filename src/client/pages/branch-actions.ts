@@ -261,7 +261,8 @@ export function validateBranchName(name: string): LocalizedText | null {
 export type NoticeActionId = 'goStash'
 
 export interface ActionNotice {
-  tone: 'error' | 'warning'
+  /** `success`: a write with no other visible result says it worked (T1: tag push, upstream, …). */
+  tone: 'error' | 'warning' | 'success'
   message: LocalizedText
   /** Second sentence after the message (a failed write that kept or lost the user's stash). */
   detail?: LocalizedText
@@ -299,18 +300,20 @@ export function failedNotice(outcome: Extract<ActionOutcome<unknown>, { kind: 'f
   return { tone: 'error', message: outcome.message, detail: stash.message, ...(stash.action === undefined ? {} : { action: stash.action }) }
 }
 
-/** What the user should be told about an outcome (null: nothing — the UI already shows the result). */
-export function outcomeNotice(outcome: ActionOutcome<unknown>): ActionNotice | null {
+/**
+ * What the user should be told about an outcome (null: nothing — the UI already shows the result).
+ * `success` is the sentence for a write whose result is otherwise invisible; a stash notice wins.
+ */
+export function outcomeNotice(outcome: ActionOutcome<unknown>, success?: LocalizedText): ActionNotice | null {
   if (outcome.kind === 'failed') return failedNotice(outcome)
   if (outcome.kind === 'done') {
     const value = outcome.value
-    if (typeof value !== 'object' || value === null) return null
-    const fields = value as StashFields
+    const fields = (typeof value === 'object' && value !== null ? value : {}) as StashFields
     // A conflicting restore keeps its own wording; a git error or a vanished stash is told as such.
     if (fields.stashKept === true && typeof fields.stashError !== 'string') {
       return { tone: 'warning', message: text('notice.stashKept'), action: 'goStash' }
     }
-    return stashNotice(fields)
+    return stashNotice(fields) ?? (success === undefined ? null : { tone: 'success', message: success })
   }
   return null
 }
@@ -330,8 +333,8 @@ export interface BranchActionRunnerDeps {
   showInLog: (entry: BranchEntry) => void
   filterLog: (entry: BranchEntry) => void
   openPush: () => void
-  /** Every finished write outcome (the workbench turns it into a notice). */
-  onOutcome: (outcome: ActionOutcome<unknown>) => void
+  /** Every finished write outcome (the workbench turns it into a notice; `success` when it worked). */
+  onOutcome: (outcome: ActionOutcome<unknown>, success?: LocalizedText) => void
   /** B2: the current branch's name, the label of "compare with current" (HEAD when detached). */
   currentBranch?: () => string | null
 }
@@ -359,6 +362,23 @@ function stringList(value: unknown): string[] {
 function smartCheckoutOverlay(target: CheckoutTarget, details: Record<string, unknown> | undefined): WorkbenchOverlay {
   const untracked = stringList(details?.['untracked'])
   return { kind: 'smartCheckout', target, paths: stringList(details?.['paths']), ...(untracked.length > 0 ? { untracked } : {}) }
+}
+
+/** Deps that forward every call to the latest deps (the workbench keeps those in a ref). */
+export function relayBranchRunnerDeps(
+  actions: BranchActionRunnerDeps['actions'],
+  current: () => BranchActionRunnerDeps | null,
+): BranchActionRunnerDeps {
+  return {
+    actions,
+    openOverlay: (overlay, trigger) => { current()?.openOverlay(overlay, trigger) },
+    copy: (text) => { current()?.copy(text) },
+    showInLog: (entry) => { current()?.showInLog(entry) },
+    filterLog: (entry) => { current()?.filterLog(entry) },
+    openPush: () => { current()?.openPush() },
+    onOutcome: (outcome, success) => { current()?.onOutcome(outcome, success) },
+    currentBranch: () => current()?.currentBranch?.() ?? null,
+  }
 }
 
 export function createBranchActionRunner(deps: BranchActionRunnerDeps): BranchActionRunner {
@@ -421,10 +441,10 @@ export function createBranchActionRunner(deps: BranchActionRunnerDeps): BranchAc
         deps.copy(entry.ref)
         return
       case 'compareWithCurrent':
-        deps.openOverlay({ kind: 'compare', left: entry.name, right: 'HEAD', leftLabel: entry.name, rightLabel: deps.currentBranch?.() ?? 'HEAD' }, trigger)
+        deps.openOverlay({ kind: 'compare', left: entry.ref, right: 'HEAD', leftLabel: entry.name, rightLabel: deps.currentBranch?.() ?? 'HEAD' }, trigger)
         return
       case 'compareWithWorktree':
-        deps.openOverlay({ kind: 'compare', left: entry.name, right: null, leftLabel: entry.name, rightLabel: null }, trigger)
+        deps.openOverlay({ kind: 'compare', left: entry.ref, right: null, leftLabel: entry.name, rightLabel: null }, trigger)
         return
       case 'showInLog':
         deps.showInLog(entry)
@@ -443,7 +463,7 @@ export function createBranchActionRunner(deps: BranchActionRunnerDeps): BranchAc
         deps.openOverlay(entry.upstream === undefined ? { kind: 'upstreamSheet', branch: entry.name } : { kind: 'upstreamSheet', branch: entry.name, upstream: entry.upstream }, trigger)
         return
       case 'unsetUpstream':
-        deps.onOutcome(await deps.actions.run('setUpstream', { branch: entry.name, upstream: null }, { trigger }))
+        deps.onOutcome(await deps.actions.run('setUpstream', { branch: entry.name, upstream: null }, { trigger }), text('upstream.unset.done', { branch: entry.name }))
         return
       case 'checkoutInWorktree':
         deps.openOverlay({ kind: 'worktreeAdd', branch: entry.name }, trigger)

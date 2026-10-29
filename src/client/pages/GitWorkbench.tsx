@@ -31,7 +31,8 @@ import { isFeatureEnabled } from '../features.ts'
 import { createMergeStore } from '../store/merge-store.ts'
 import { MergeWindow } from './MergeWindow.tsx'
 import type { SidebarFullscreen } from './merge-fullscreen.ts'
-import { createMergeReviewWiring } from './merge-review-wiring.ts'
+import { createMergeReviewWiring, mergeWindowOverlayGuard } from './merge-review-wiring.ts'
+import type { MergeLeaveGuard } from './merge-review-wiring.ts'
 import { controlOperation, mergePrefill, operationBusy, operationOutcomeEffect, pendingRestoreNotice, restorePendingStash, submitOperationStep } from './operation-actions.ts'
 import { createPendingStashStore, usePendingStashState } from '../store/pending-stash-store.ts'
 import type { OperationStepKind } from './operation-actions.ts'
@@ -69,7 +70,7 @@ import { applyGitPath } from '../git-path.ts'
 import { UpdateProjectPage } from './UpdateProjectPage.tsx'
 import { commitActionEffect } from './commit-actions.ts'
 import type { CommitActionId } from './commit-actions.ts'
-import { FETCH_ALL, branchActionContext, createBranchActionRunner, outcomeNotice, pathsLimitNotice, writeBlock } from './branch-actions.ts'
+import { FETCH_ALL, branchActionContext, createBranchActionRunner, outcomeNotice, pathsLimitNotice, relayBranchRunnerDeps, writeBlock } from './branch-actions.ts'
 import type { ActionNotice as ActionNoticeValue, BranchActionRunnerDeps, QuickActionId } from './branch-actions.ts'
 import { createBranchesStore, useBranchesState } from './branch-store.ts'
 import { CommitDetail } from './CommitDetail.tsx'
@@ -190,10 +191,12 @@ export function detailActionFor(
   currentSha: string | null,
   /** 选中是被筛选/排序重建清空的（log generation 变化）；刷新清空时保留正在看的详情。 */
   filterReset = true,
+  /** 刷新确认选中提交已不在历史中（log `selectionGone` 变化，例如交互式变基改写了它）。 */
+  selectionGone = false,
 ): DetailAction {
   const sha = selection.commit?.sha
   if (sha !== undefined) return sha === currentSha ? { kind: 'keep' } : { kind: 'select', sha }
-  if (selection.shas.length === 0 && currentSha !== null && filterReset) return { kind: 'clear' }
+  if (selection.shas.length === 0 && currentSha !== null && (filterReset || selectionGone)) return { kind: 'clear' }
   return { kind: 'keep' }
 }
 
@@ -310,8 +313,10 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
     () => createFileHistoryStore({ sessionId, load: (request, signal) => client.fileHistory(request, signal), diff: historyDiffStore }),
     [client, historyDiffStore, sessionId],
   )
+  // Overlay leave effects close it on the way out; unmounting (or a new store) must release it too.
+  useEffect(() => () => { historyStore.close() }, [historyStore])
   const historyScroll = useRef(0)
-  const mergeLeaveGuard = useRef<((go: () => void, cancel?: () => void) => boolean) | null>(null)
+  const mergeLeaveGuard = useRef<MergeLeaveGuard | null>(null)
   const mergeLeft = useRef<(path: string, next: WorkbenchOverlay | null) => void>(() => {})
   const leaveEffects = overlayLeaveEffects(actions)
   const overlays = useWorkbenchOverlay(
@@ -322,8 +327,7 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
       if (!keepsFileHistory(next)) historyStore.close()
     },
     // A pending action's dirty-worktree ask held by the window's question: not leaving cancels it.
-    (current, next, proceed) => current.kind === 'mergeWindow'
-      && mergeLeaveGuard.current?.(proceed, next?.kind === 'dirtyWorktree' ? () => { actions.cancelStash() } : undefined) === true,
+    mergeWindowOverlayGuard(mergeLeaveGuard, () => { actions.cancelStash() }),
   )
   actionCallbacks.current.openOverlay = overlays.open
   const dirtyHandlers = dirtySheetHandlers(actions, overlays)
@@ -420,11 +424,14 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
   }, [consoleOpen, consoleStore])
 
   const lastGeneration = useRef(logStore.getState().generation)
+  const lastSelectionGone = useRef(logStore.getState().selectionGone)
   const onSelect = useCallback((selection: LogSelection) => {
-    const generation = logStore.getState().generation
+    const { generation, selectionGone } = logStore.getState()
     const filterReset = generation !== lastGeneration.current
+    const gone = selectionGone !== lastSelectionGone.current
     lastGeneration.current = generation
-    const action = detailActionFor(selection, detailStore.getState().sha, filterReset)
+    lastSelectionGone.current = selectionGone
+    const action = detailActionFor(selection, detailStore.getState().sha, filterReset, gone)
     if (action.kind === 'keep') return
     setSelectedFile(undefined)
     if (action.kind === 'clear') detailStore.cancel()
@@ -643,20 +650,11 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
       logStore.setFilter({ branches: [entry.name] })
     },
     openPush: () => { openPush({}) },
-    onOutcome: (outcome) => { setNotice(outcomeNotice(outcome)) },
+    onOutcome: (outcome, success) => { setNotice(outcomeNotice(outcome, success)) },
     currentBranch: () => (status === null || status.detached ? null : status.branch),
   }
-  const branchRunner = useMemo(() => createBranchActionRunner({
-    actions,
-    openOverlay: (overlay, trigger) => { runnerDeps.current?.openOverlay(overlay, trigger) },
-    copy: (text) => { runnerDeps.current?.copy(text) },
-    showInLog: (entry) => { runnerDeps.current?.showInLog(entry) },
-    filterLog: (entry) => { runnerDeps.current?.filterLog(entry) },
-    openPush: () => { runnerDeps.current?.openPush() },
-    onOutcome: (outcome) => { runnerDeps.current?.onOutcome(outcome) },
-    currentBranch: () => runnerDeps.current?.currentBranch?.() ?? null,
-  }), [actions])
-  const reportOutcome = useCallback((outcome: ActionOutcome<unknown>) => { setNotice(outcomeNotice(outcome)) }, [])
+  const branchRunner = useMemo(() => createBranchActionRunner(relayBranchRunnerDeps(actions, () => runnerDeps.current)), [actions])
+  const reportOutcome = useCallback((outcome: ActionOutcome<unknown>, success?: LocalizedText) => { setNotice(outcomeNotice(outcome, success)) }, [])
   const runQuickAction = useCallback((id: QuickActionId, trigger: FocusTarget | null) => {
     setNotice(null)
     switch (id) {
@@ -919,7 +917,11 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
                 busy={stashBusy}
                 blockReason={blockText(integrateBlock)}
                 version={value.version}
-                onConflicts={(trigger) => { overlays.open({ kind: 'conflicts' }, trigger) }}
+                onConflicts={(trigger) => {
+                  // T2: the list's no-operation note names the shelf, not the stash.
+                  conflictStore.noteOrigin('shelf')
+                  overlays.open({ kind: 'conflicts' }, trigger)
+                }}
                 onApplied={() => { void onRefresh() }}
               />
             ) : (
@@ -1105,7 +1107,7 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
             name={overlay.name}
             loadRemotes={() => client.remoteList({ sessionId })}
             actions={actions}
-            onOutcome={(outcome) => { reportOutcome(outcome); void refreshAll() }}
+            onOutcome={(outcome, success) => { reportOutcome(outcome, success); void refreshAll() }}
             onClose={() => { overlays.closeIf('tagSheet') }}
           />
         ) : null}
@@ -1113,7 +1115,7 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
           <RemoteBranchDeleteSheet
             ref_={overlay.ref}
             actions={actions}
-            onOutcome={(outcome) => { reportOutcome(outcome); void refreshAll() }}
+            onOutcome={(outcome, success) => { reportOutcome(outcome, success); void refreshAll() }}
             onClose={() => { overlays.closeIf('remoteBranchDelete') }}
           />
         ) : null}
@@ -1123,7 +1125,7 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
             upstream={overlay.upstream}
             remoteBranches={(branches.value?.remote ?? []).map(entry => entry.name)}
             actions={actions}
-            onOutcome={(outcome) => { reportOutcome(outcome); void refreshAll() }}
+            onOutcome={(outcome, success) => { reportOutcome(outcome, success); void refreshAll() }}
             onClose={() => { overlays.closeIf('upstreamSheet') }}
           />
         ) : null}

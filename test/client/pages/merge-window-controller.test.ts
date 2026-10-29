@@ -462,3 +462,77 @@ describe('B1 acceptance demo: Esc with focus on <body>, focus after a failed wri
     expect(focusIsLost(inside, doc())).toBe(false)
   })
 })
+
+describe('T2: a held outside prompt survives a failed save and is cancelled when the window goes away', () => {
+  const failedSave = async () => ({ kind: 'failed', error: { code: 'git/exec-failed', message: 'x' }, message: { key: 'write.error.fallback' } }) as ActionOutcome<never>
+
+  it('a failed save asks the same question again; it can then be answered', async () => {
+    const { controller } = await setup({ run: failedSave })
+    controller.run({ type: 'accept', id: 0, side: 'left' })
+    const go = vi.fn()
+    const cancel = vi.fn()
+    controller.guardLeave(go, cancel)
+    controller.answerLeave('save')
+    expect(controller.getState().confirm).toBeNull()
+    await flush()
+    expect(controller.getState().confirm).toEqual({ kind: 'leave', target: { kind: 'external', go, cancel } })
+    expect(go).not.toHaveBeenCalled()
+    expect(cancel).not.toHaveBeenCalled()
+    controller.answerLeave('cancel')
+    expect(cancel).toHaveBeenCalledTimes(1)
+  })
+
+  it('dispose answers a held prompt as cancelled', async () => {
+    const { controller } = await setup()
+    controller.run({ type: 'accept', id: 0, side: 'left' })
+    const go = vi.fn()
+    const cancel = vi.fn()
+    controller.guardLeave(go, cancel)
+    controller.dispose()
+    expect(cancel).toHaveBeenCalledTimes(1)
+    expect(controller.getState().confirm).toBeNull()
+    controller.dispose()
+    expect(cancel).toHaveBeenCalledTimes(1)
+    expect(go).not.toHaveBeenCalled()
+  })
+
+  it('dispose during the save cancels the prompt; the late save result does not run it', async () => {
+    let finish: (outcome: ActionOutcome<never>) => void = () => {}
+    const { controller } = await setup({ run: () => new Promise<ActionOutcome<never>>((resolve) => { finish = resolve }) })
+    controller.run({ type: 'accept', id: 0, side: 'left' })
+    const go = vi.fn()
+    const cancel = vi.fn()
+    controller.guardLeave(go, cancel)
+    controller.answerLeave('save')
+    controller.dispose()
+    expect(cancel).toHaveBeenCalledTimes(1)
+    finish({ kind: 'done', value: { path: 'a.txt' } } as unknown as ActionOutcome<never>)
+    await flush()
+    expect(go).not.toHaveBeenCalled()
+    expect(controller.getState().confirm).toBeNull()
+  })
+
+  it('an outside navigation while a save is running is cancelled, not left hanging (review M5)', async () => {
+    let finish: (outcome: ActionOutcome<never>) => void = () => {}
+    const { controller } = await setup({ run: () => new Promise<ActionOutcome<never>>((resolve) => { finish = resolve }) })
+    controller.run({ type: 'accept', id: 0, side: 'left' })
+    const go = vi.fn()
+    controller.guardLeave(go, vi.fn())
+    controller.answerLeave('save')
+    const laterGo = vi.fn()
+    const laterCancel = vi.fn()
+    expect(controller.guardLeave(laterGo, laterCancel)).toBe(true)
+    expect(laterCancel).toHaveBeenCalledTimes(1)
+    expect(controller.getState().confirm).toBeNull()
+    finish({ kind: 'done', value: { path: 'a.txt' } } as unknown as ActionOutcome<never>)
+    await flush()
+    expect(go).toHaveBeenCalledTimes(1)
+    expect(laterGo).not.toHaveBeenCalled()
+  })
+
+  it('dispose without a held prompt does nothing', async () => {
+    const { controller, onClose } = await setup()
+    controller.dispose()
+    expect(onClose).not.toHaveBeenCalled()
+  })
+})

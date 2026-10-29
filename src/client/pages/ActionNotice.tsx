@@ -11,12 +11,18 @@ export interface ActionNoticeProps {
   onAction?: (action: NoticeActionId) => void
 }
 
+const TONE_CLASS: Record<ActionNoticeValue['tone'], string> = {
+  error: css.error ?? '',
+  warning: css.warning ?? '',
+  success: css.success ?? '',
+}
+
 export function ActionNotice({ notice, onDismiss, onAction }: ActionNoticeProps): ReactNode {
   const t = useT()
   if (notice === null) return null
   return (
     <div
-      className={`${css.notice} ${notice.tone === 'error' ? css.error : css.warning}`}
+      className={`${css.notice} ${TONE_CLASS[notice.tone]}`}
       role={notice.tone === 'error' ? 'alert' : 'status'}
       data-notice={notice.tone}
     >

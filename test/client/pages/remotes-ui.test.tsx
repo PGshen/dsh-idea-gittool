@@ -49,8 +49,8 @@ describe('B3d pages', () => {
 
   it('lists worktrees, marks the current one and asks before a forced removal', () => {
     const worktrees = [
-      { path: '/r', head: 'a'.repeat(40), branch: 'main', current: true, locked: false, prunable: false, bare: false },
-      { path: '/r/.worktrees/x', head: 'b'.repeat(40), branch: null, current: false, locked: false, prunable: true, bare: false },
+      { path: '/r', head: 'a'.repeat(40), branch: 'main', current: true, locked: false, prunable: false, bare: false, main: true },
+      { path: '/r/.worktrees/x', head: 'b'.repeat(40), branch: null, current: false, locked: false, prunable: true, bare: false, main: false },
     ]
     const html = renderToStaticMarkup(withLocale(<WorktreesPageView t={zhT} worktrees={worktrees} loadError={null} removing={{ path: '/r/.worktrees/x', force: true }} busy={false} error={null} message={null} onAdd={noop} onPrune={noop} onCopy={noop} onAskRemove={noop} onRemove={noop} onBack={noop} />))
     expect(html).toContain('当前')

@@ -51,10 +51,13 @@ function GitBodyContent(props: GitBodyProps): ReactNode {
   const [gitPathBusy, setGitPathBusy] = useState(false)
   const [gitPathError, setGitPathError] = useState<string | null>(null)
   const mounted = useRef(true)
+  const gitPathCall = useRef(0)
   useEffect(() => () => { mounted.current = false }, [])
 
   /** B4d: hand `path` (or the stored setting when undefined) to the Host, then re-read bootstrap. */
   const sendGitPath = async (path?: string): Promise<void> => {
+    // Review M4: only the latest call may report; an earlier, superseded one must not overwrite it.
+    const call = ++gitPathCall.current
     setGitPathBusy(true)
     let error: string | null = null
     if (path === undefined) {
@@ -67,7 +70,7 @@ function GitBodyContent(props: GitBodyProps): ReactNode {
     }
     // A fresh bootstrap: one already in flight was read with the previous git (final review M2).
     await bootstrapCache.reload(sessionId)
-    if (!mounted.current) return
+    if (!mounted.current || call !== gitPathCall.current) return
     setGitPathError(error)
     setGitPathBusy(false)
   }

@@ -1,5 +1,6 @@
 // Patches (plan b3b): export commits with `format-patch --stdout` (read) and apply a pasted or chosen
-// patch (write): mbox → `git am --3way`, plain diff → `git apply --3way --index`.
+// patch (write): mbox → `git am --3way`, plain diff → `git apply --check --index` then `git apply --index`
+// (no `--3way` for plain diffs: a diff that does not apply cleanly is refused, leaving index and worktree untouched).
 import type { ApplyPatchValue, FormatPatchValue } from '../../shared/protocol.ts'
 import { APPLY_PATCH_MAX_BYTES, FORMAT_PATCH_MAX_COMMITS } from '../../shared/protocol.ts'
 import type { GitRunResult, GitRunner, WriteContext, WriteOperation } from '../git-executor.ts'
@@ -45,8 +46,13 @@ export async function readFormatPatch(
   const merge = commits.find(commit => commit.parents.length > 1)
   if (merge !== undefined) throw invalidPayload('merge commits cannot be exported as patches', { reason: 'merge-commit', sha: merge.sha })
   let patch = ''
-  for (const commit of commits) {
-    const result = await git(['format-patch', '--stdout', '-1', commit.sha], APPLY_PATCH_MAX_BYTES)
+  // One format-patch per commit (the picks need not be contiguous); several commits are numbered
+  // `[PATCH n/m]` like `format-patch --numbered` over a range, a single one stays `[PATCH]`.
+  for (const [index, commit] of commits.entries()) {
+    const numbering = commits.length > 1
+      ? ['--no-numbered', `--subject-prefix=PATCH ${String(index + 1)}/${String(commits.length)}`]
+      : []
+    const result = await git(['format-patch', '--stdout', ...numbering, '-1', commit.sha], APPLY_PATCH_MAX_BYTES)
     if (result.exitCode !== 0) throw failureFromExit(result, 'git format-patch')
     patch += result.stdout
     if (Buffer.byteLength(patch, 'utf8') > APPLY_PATCH_MAX_BYTES) {

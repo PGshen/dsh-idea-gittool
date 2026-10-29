@@ -9,6 +9,8 @@
 //   re-checked before every command: a replaced file stops being run.
 // - `info()` memoizes the successful probe; a failed one is retried on the next call. The probe has
 //   its own deadline, so one caller's cancellation never fails the others.
+// - Overlapping `set()` calls: the latest one wins; an earlier one still validating fails with
+//   `git/stale-target` (`target: 'git-path'`) instead of adopting its path afterwards.
 
 import { constants } from 'node:fs'
 import { access, realpath, stat } from 'node:fs/promises'
@@ -75,6 +77,8 @@ export function createGitExecutable(subprocess: GitSubprocess, options: GitExecu
   let override: string | null = null
   let identity: FileIdentity | null = null
   let probe: Promise<GitExecutableInfo> | undefined
+  /** Bumped by every `set()`; a validation that finishes after a newer call began is discarded. */
+  let generation = 0
 
   /** `<program> --version` stdout, or null when it could not run or exited non-zero. */
   const versionOutput = async (program: string, signal: AbortSignal): Promise<string | null> => {
@@ -175,6 +179,10 @@ export function createGitExecutable(subprocess: GitSubprocess, options: GitExecu
     },
     info,
     async set(path, signal, setOptions = {}) {
+      // The latest call wins: a call still validating when a later one starts must not adopt its
+      // path afterwards (T1-T4), and it does not report success for a path that is not in effect.
+      generation += 1
+      const mine = generation
       if (path === null) {
         override = null
         identity = null
@@ -182,6 +190,9 @@ export function createGitExecutable(subprocess: GitSubprocess, options: GitExecu
         return await info(signal)
       }
       const adopted = await validate(path, setOptions.forbiddenRoots ?? [], signal)
+      if (mine !== generation) {
+        throw new GitCommandFailure('git/stale-target', `a later git path setting replaced ${path}`, { target: 'git-path', expected: path })
+      }
       override = adopted.info.path
       identity = adopted.identity
       probe = Promise.resolve(adopted.info)

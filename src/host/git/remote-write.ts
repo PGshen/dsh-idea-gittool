@@ -9,7 +9,7 @@ import type {
 } from '../../shared/protocol.ts'
 import { redactCredentials } from '../console.ts'
 import type { GitRunner, WriteContext, WriteOperation } from '../git-executor.ts'
-import { GIT_BASE_ARGV, GitCommandFailure, failureFromExit } from '../git-executor.ts'
+import { GIT_BASE_ARGV, GitCommandFailure } from '../git-executor.ts'
 import { networkFailure } from './push.ts'
 import { invalidPayload, parseRefName, payloadRecord, query, readRemotes, readRunner, redactedFailure } from './write-support.ts'
 
@@ -32,7 +32,8 @@ function parseUrl(value: unknown): string {
 /** Configured remotes with redacted fetch/push URLs, in `git remote` order. */
 export async function readRemoteList(run: GitRunner, cwd: string, options: { signal?: AbortSignal | undefined } = {}): Promise<RemoteEntry[]> {
   const result = await run([...GIT_BASE_ARGV, 'remote', '-v'], { cwd, signal: options.signal })
-  if (result.exitCode !== 0) throw failureFromExit(result, 'git remote -v')
+  // Redacted: the diagnostic may quote a configured URL with credentials (b3d review M6).
+  if (result.exitCode !== 0) throw redactedFailure(result, 'git remote -v')
   const remotes = new Map<string, RemoteEntry>()
   for (const line of result.stdout.split('\n')) {
     const match = /^(\S+)\t(.*) \((fetch|push)\)$/u.exec(line)
@@ -97,14 +98,15 @@ export const remoteBranchDeleteOperation: WriteOperation<{ remote: string; branc
     if ((await query(ctx, ['check-ref-format', ref])).exitCode !== 0) throw invalidPayload(`invalid branch name "${input.branch}"`, {})
     const listed = await ctx.git([...GIT_BASE_ARGV, 'ls-remote', '--heads', '--', input.remote, ref], { mode: 'network' })
     if (listed.exitCode !== 0) throw networkFailure(listed, ctx.repoRoot, ['ls-remote', '--heads', input.remote, ref], 'git ls-remote')
+    // `--no-deref`: `<remote>/HEAD` is a symbolic ref; without it git deletes the branch it points to.
     if (listed.stdout.trim() === '') {
-      await ctx.git([...GIT_BASE_ARGV, 'update-ref', '-d', `refs/remotes/${input.remote}/${input.branch}`])
+      await ctx.git([...GIT_BASE_ARGV, 'update-ref', '--no-deref', '-d', `refs/remotes/${input.remote}/${input.branch}`])
       throw new GitCommandFailure('git/stale-target', `${input.remote}/${input.branch} no longer exists`, { target: 'remote-branch' })
     }
     const pushed = await ctx.git([...GIT_BASE_ARGV, 'push', '--porcelain', '--', input.remote, `:${ref}`], { mode: 'network' })
     if (pushed.exitCode !== 0) throw networkFailure(pushed, ctx.repoRoot, ['push', input.remote, `:${ref}`], 'git push')
     // `push` drops the tracking ref when it can; make sure it is gone.
-    await ctx.git([...GIT_BASE_ARGV, 'update-ref', '-d', `refs/remotes/${input.remote}/${input.branch}`])
+    await ctx.git([...GIT_BASE_ARGV, 'update-ref', '--no-deref', '-d', `refs/remotes/${input.remote}/${input.branch}`])
     return { remote: input.remote, branch: input.branch }
   },
 }

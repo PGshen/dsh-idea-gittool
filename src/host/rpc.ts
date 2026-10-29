@@ -579,15 +579,16 @@ async function handleBootstrap(
 
   // One version for the whole snapshot: a reader that races a watch bump keeps
   // the older version, so the client treats that data as stale and polls again.
-  const version = runtime.cache().versionOf(resolution.root)
-  const status = await cachedStatus(deps, runtime, resolution.root, signal, version)
-  const writePolicy = await resolveWritePolicy(deps, runtime, resolution.root, sessionId, signal)
+  // Before any repository read: on a too-old git those may fail with less useful errors (final review M5).
   const gitVersion = await runtime.gitVersion(resolution.root, signal)
   const parsedVersion = gitVersion === undefined ? null : parseGitVersion(gitVersion)
   if (parsedVersion !== null && !isSupportedGitVersion(parsedVersion)) {
     const details: UnsupportedVersionDetails = { current: gitVersion ?? '', minimum: GIT_MIN_VERSION }
     throw new GitCommandFailure('git/unsupported-version', `git ${details.current} is older than ${GIT_MIN_VERSION}`, { ...details })
   }
+  const version = runtime.cache().versionOf(resolution.root)
+  const status = await cachedStatus(deps, runtime, resolution.root, signal, version)
+  const writePolicy = await resolveWritePolicy(deps, runtime, resolution.root, sessionId, signal)
   const pendingWrites = runtime.writes.pending(resolution.root)
   const git = await deps.gitExecutable?.info(signal).catch(() => undefined)
   return ok<BootstrapValue>({
@@ -612,7 +613,10 @@ async function handleGitExecutable(deps: RpcDeps, payload: unknown, signal: Abor
   if (deps.gitExecutable === undefined) {
     throw new GitCommandFailure('git/invalid-payload', 'this Host cannot change its git executable', {})
   }
-  return ok<GitExecutableInfo>(await deps.gitExecutable.set(path, signal))
+  // A git planted in the session's workspace (e.g. by an agent) must never become the Host's git (final review I1).
+  const workspaceRoot = deps.sandboxPolicy?.()?.workspaceRoot
+  const forbiddenRoots = workspaceRoot === undefined || workspaceRoot === '' ? [] : [workspaceRoot]
+  return ok<GitExecutableInfo>(await deps.gitExecutable.set(path, signal, { forbiddenRoots }))
 }
 
 /**

@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { chmodSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -244,12 +244,46 @@ describe('createRpcHandler / bootstrap', () => {
     expect(before.gitVersion).toBe(before.git?.version)
 
     const set = okValue<GitExecutableInfo>(await handler('gitExecutable', { sessionId: 'session-1', path: GIT_BINARY }, SIGNAL))
-    expect(set).toMatchObject({ path: GIT_BINARY, source: 'setting' })
+    expect(set).toMatchObject({ path: realpathSync(GIT_BINARY), source: 'setting' })
     const after = okValue<BootstrapValue>(await handler('bootstrap', { sessionId: 'session-1' }, SIGNAL))
     expect(after.git?.source).toBe('setting')
 
     expect(errorOf(await handler('gitExecutable', { sessionId: 'session-1', path: 42 }, SIGNAL)).code).toBe('git/invalid-payload')
     expect(errorOf(await handler('gitExecutable', { sessionId: 'session-1', path: 'git' }, SIGNAL)).details).toMatchObject({ reason: 'not-absolute' })
+  })
+
+  it('refuses a git path inside the sandbox workspace (final review I1)', async () => {
+    const repo = makeRepo()
+    const fake = createFakeSubprocess()
+    const gitExecutable = createGitExecutable(fake)
+    const handler = createRpcHandler({
+      runner: createGitRunner(fake, { executable: gitExecutable }),
+      gitExecutable,
+      sandboxPolicy: () => policySource(repo.root),
+    })
+    repo.write('tools/git', '#!/bin/sh\necho "git version 2.50.0"\n')
+    chmodSync(join(repo.root, 'tools/git'), 0o755)
+
+    const failure = errorOf(await handler('gitExecutable', { sessionId: 'session-1', path: join(repo.root, 'tools/git') }, SIGNAL))
+
+    expect(failure.details).toMatchObject({ reason: 'inside-workspace' })
+  })
+
+  it('reports an old PATH git through gitExecutable before reading any status (final review M5)', async () => {
+    const repo = makeRepo()
+    const bin = createTempDir('old-git-')
+    cleanups.push(() => removeTempDir(bin))
+    const oldGit = join(bin, 'git')
+    writeFileSync(oldGit, `#!/bin/sh\nif [ "$1" = "--version" ]; then echo "git version 2.24.1"; exit 0; fi\nexec "${GIT_BINARY}" "$@"\n`)
+    chmodSync(oldGit, 0o755)
+    const fake = createFakeSubprocess({ executable: oldGit })
+    const gitExecutable = createGitExecutable(fake)
+    const handler = createRpcHandler({ runner: createGitRunner(fake, { executable: gitExecutable }), gitExecutable, sandboxPolicy: () => policySource(repo.root) })
+
+    const failure = errorOf(await handler('bootstrap', { sessionId: 'session-1' }, SIGNAL))
+
+    expect(failure).toMatchObject({ code: 'git/unsupported-version', details: { current: '2.24.1', minimum: '2.25.0' } })
+    expect(fake.spawns.some(spawn => spawn.spec.argv.includes('status'))).toBe(false)
   })
 
   it('defaults the write policy to fail-closed read-only', async () => {

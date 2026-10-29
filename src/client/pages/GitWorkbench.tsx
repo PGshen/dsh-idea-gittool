@@ -117,6 +117,8 @@ export interface GitWorkbenchProps {
   value: BootstrapValue
   /** 手动刷新 bootstrap（状态栏、仓库栏的刷新入口）。 */
   onRefresh: () => Promise<unknown>
+  /** B4d: a bootstrap that never joins one already in flight (after the git path changed). */
+  onReload?: () => Promise<unknown>
   autoRefresh: boolean
   onToggleAutoRefresh: () => void
   /** 最近一次成功刷新的时间（ms）。 */
@@ -1293,7 +1295,7 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
             git={value.git}
             onGitPath={async (path) => {
               const outcome = await applyGitPath(client, sessionId, path, t)
-              if (outcome.ok) void onRefresh()
+              if (outcome.ok) void (props.onReload ?? onRefresh)()
               return outcome.ok ? null : outcome.message
             }}
           />

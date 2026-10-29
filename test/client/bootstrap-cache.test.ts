@@ -87,3 +87,24 @@ describe('bootstrap 快照缓存', () => {
     expect(cache.get('s1')?.version).toBe(3)
   })
 })
+
+describe('reload（B4d 终审 M2）', () => {
+  it('不复用改设置之前发出的请求：等它结束后再发一次，采用新结果', async () => {
+    let release: ((result: RpcResult<BootstrapValue>) => void) | undefined
+    const replies: Array<() => Promise<RpcResult<BootstrapValue>>> = [
+      () => new Promise(resolve => { release = resolve }),
+      async () => okBootstrap(bootstrapValue(0)),
+    ]
+    const { client, calls } = fakeClient(() => (replies.shift() ?? (async () => okBootstrap(bootstrapValue(0))))())
+    const cache = createBootstrapCache(client)
+
+    cache.ensure('s1')
+    const reloaded = cache.reload('s1')
+    release?.(fail('git/not-found', 'no git'))
+    await reloaded
+
+    expect(calls()).toBe(2)
+    expect(cache.getFailure('s1')).toBeNull()
+    expect(cache.get('s1')?.version).toBe(0)
+  })
+})

@@ -10,7 +10,7 @@ B4c 合并到 main 之后再开工（同一时间只执行一份计划）。
 
 | 项 | 值 |
 |---|---|
-| 状态 | 进行中 |
+| 状态 | 待验收 |
 | 里程碑 | B4 打磨（第 4 份，共 4 份：B4a 设置页 + Blame 渲染器、B4b a11y 与样式变量、B4c 性能、**B4d 跨平台/安装升级/文档**；拆分 2026-10-28 负责人同意） |
 | 设计依据 | [产品设计 v0.2](../../design/2026-10-25-产品设计-v0.2.md) §7.2（「找不到 git」空状态）、设置表「git 路径（P1）」、§16.2（插件形态与安装）、§16.7 错误分类（`git/not-found`、`git/unsupported-version`）、§16.9「兼容」；[设计决策 v0.2](../../design/2026-10-25-产品设计决策-v0.2.md) §4、§5 S3/S4/S5；[references](../../references/dsh-integration-feasibility.md) R1、§13；tech-debt TD-1、TD-2、TD-17 |
 | 分支 | `b4d-platform-install`（B4c 合并后从 main 切出） |
@@ -142,7 +142,7 @@ export function gitSupports(version: ParsedGitVersion, feature: 'updateRefs' | '
 - **要点**：仓库全部在临时目录生成，不用真实仓库数据；每种仓库走：打开 tab、日志、详情/diff、提交页、（可写时）一次提交与撤销。
 - **验证命令**：矩阵脚本 + L4 走查
 
-### T8：用户文档与 B 阶段收尾（待开始）
+### T8：用户文档与 B 阶段收尾（完成，待负责人验收）
 
 - **目标**：AC9、AC10；整分支评审；收尾清单（QUALITY、tech-debt、references、TODO、ARCHITECTURE）。
 - **涉及文件**：`README.md`、`docs/glossary.md`、`AGENTS.md`、`docs/ARCHITECTURE.md`、`docs/quality/QUALITY.md`。
@@ -157,10 +157,11 @@ export function gitSupports(version: ParsedGitVersion, feature: 'updateRefs' | '
 - 2026-10-29 — T5 — `scripts/compat/run-host-tests.sh` + `DSH_GIT_TEST_BINARY`；用本机 Apple Git 2.39.5（CommandLineTools）跑 `test/host`：首轮 9 个失败，其中 1 个是真实缺口（搁架三方取回用的 `merge-file --object-id` 需 2.43，已加门控），其余是测试绑死新版 git 输出（已改为按版本断言）；修后 2.39.5 与 2.50.1 都是 762/762
 - 2026-10-29 — T6 — `package.json` 版本 `1.0.0-rc.1`、`files` 改为显式清单（不再带 `client.css` 与 `host.js.map`）；smoke 校验 `pnpm pack` 内容；隔离 HOME 走通 tarball 安装 → 升级 → 设置 git 路径 → 无 git 空状态与恢复 → 卸载 → engines 不匹配（逐项见 [install-upgrade](../../runbooks/install-upgrade.md)「实测」）；TD-17 复核后移入已处理
 - 2026-10-29 — T7 — `scripts/matrix/host.ts`（`pnpm matrix`）12 种仓库全部通过（表见「验证记录」）；L4：空仓库在真实沙箱下从提交页做出第一个提交
+- 2026-10-29 — T8 — README 改写为用户文档；术语表、QUALITY 更新；B 阶段核对表（见「验证记录」）；整分支终审（opus）1 个 Important + 11 个 Minor，修了 I1 与 M2–M7（各有先失败的测试），其余登记 TODO；ADR 0014
 
 ## 下一步
 
-- T8：README 重写、B 阶段核对表、整分支评审与收尾文档。
+- 等负责人：通读 README（AC9）、裁定 B 阶段差距（AC10）、决定是否放行编译 git 2.25/2.38、验收。
 - 待负责人：是否允许在 scratchpad 编译 git 2.25.5 / 2.38.5（源码已下载到 scratchpad，编译被自动模式拦截），用于补跑 T5。
 
 ## 决策记录
@@ -191,6 +192,19 @@ export function gitSupports(version: ParsedGitVersion, feature: 'updateRefs' | '
 - T6 Ruling：卸载后 DSH 恢复的「Git」占位标签不由插件处理（插件已不在，无法清理 DSH 的布局存储），写进 install-upgrade runbook 与 README 排障。
 - T7 Ruling：矩阵在 Host 层跑（真实 RPC 处理器 + 真实 git + 直通 confine），不逐个开 DSH 走 UI；UI 只补此前各计划 L4 没覆盖过的空仓库。代价：矩阵不覆盖客户端渲染差异（例如浅克隆边界提交在提交图里的画法）。
 - T7 Ruling：计划写的「11 种」实际做了 12 种：linked worktree 拆成「在 `.worktrees/` 下、工作区为主仓库」（可写）与「主仓库在工作区外」（只读）两种，后者是 fail closed 的设计行为（共同 `.git` 在沙箱外，写也会被沙箱拒），不是缺陷；另加了「路径含空格/中文/引号」。
+- Final：fixed I1（任何能调用 RPC 的页面代码都能让 Host 在沙箱外运行任意可执行文件）——运行前依次检查本地绝对路径、文件名 `git`/`git.exe`（原样与 realpath）、不在会话工作区内、可执行；运行并采用 realpath，钉住文件身份、每条命令前复核（[ADR 0014](../../decisions/0014-git路径的信任边界.md)）。测试：`which programs may become git` 5 条 + rpc「inside the sandbox workspace」，RED→GREEN。
+- Final：fixed M2（重新检测/设置路径后复用了改之前在飞的 bootstrap，自动刷新关闭时旧错误不消失）——`bootstrapCache.reload` 等在飞请求结束后再发一次；`bootstrap-cache.test.ts`「reload」RED→GREEN。
+- Final：fixed M3（共享的 `--version` 探测用第一个调用者的信号，它被取消时所有等待者都失败、版本门控被跳过）——探测用自己的超时，各调用者各自等待；测试 RED→GREEN。
+- Final：fixed M4（PATH 无 git 时清空路径，Host 已回到 PATH 而客户端没存清空，下次挂载又发旧路径）；`git-path.test.ts` RED→GREEN。
+- Final：fixed M5（版本门控在 status/写门禁之后才判断）——移到仓库解析之后；生产路径（`gitExecutable` 报旧版本）测试 RED→GREEN，并断言没有跑过 status。
+- Final：fixed M6（win32 上 `.git.`、`.git `、`.git::$…`、`GIT~1` 等别名绕过 `.git` 检查）；`diff.test.ts` 6 条 RED→GREEN。
+- Final：fixed M7（版本读不出时交互式变基悄悄去掉 `--update-refs`，与「未知版本让 git 试」不一致）；测试 RED→GREEN。
+- Final：minor (deferred): 缓存的工作台在 git 消失后不切到空状态（只在没有快照时显示）。
+- Final：minor (deferred): git 路径是 Host 全局的，只读会话也能改；改动会在其他仓库进行中的写操作的命令之间生效。
+- Final：minor (deferred): `GitBody` 的 `mounted` 引用在 StrictMode 重挂后不会恢复为 true（DSH 目前不用 StrictMode）。
+- Final：minor (deferred): 客户端与 Host 对「绝对路径」的判定在跨平台时不完全一致（Windows 的 `\Program Files\…` 根路径、POSIX Host 上的 UNC），Host 会给出最终原因。
+- Final：minor (deferred): 搁架门控测试只检查文件内容，未检查索引、搁架 ref；没有测试覆盖 `set`/`info` 并发与客户端刷新竞态的组件级行为。
+- Final：Ruling：评审「暂不判断」的 Windows `.bat`/`.cmd` 经 `cmd.exe` 执行的问题，现在由「文件名必须是 `git.exe`」规避——不再能指向 `.bat`/`.cmd`。代价：无。
 
 ## 意外与发现
 
@@ -231,4 +245,23 @@ export function gitSupports(version: ParsedGitVersion, feature: 'updateRefs' | '
 | 空仓库 | 通过 | 日志 0 行；第一个提交（没有父提交可撤销）；L4 在真实沙箱下从提交页提交成功，日志显示「没有父提交（根提交）」 |
 | 非仓库目录 | 通过 | 只读空状态 |
 | 路径含空格/中文/引号 | 通过 | 提交 `文档/说明 "引号" it's.md` + 撤销 |
+
+### T8 B 阶段核对表（AC10，2026-10-29，对照设计决策 v0.2 §2.1 / §4；三个 feature flag 默认值与「更多提交选项」缺失已在代码里核实）
+
+已实现（按计划）：仓库状态、日志与提交图、变更文件与统一 diff（A1）；按文件提交、Amend、提交并推送、回滚、加入 VCS、推送与被拒处理、控制台（A2）；分支全套、贮藏、冲突最小闭环、操作状态、智能操作（A3）；三栏合并、逐块 Accept、简单冲突、Review Changes、二进制/删除冲突（B1）；文件历史、Blame、比较、文档头部动作（B2）；交互式变基与完整提交菜单（B3a/B3b）；并排/词级/忽略空白/`n` `p`（B3b）；Shelf、Changelist（B3c）；Worktree、Remotes、标签推送/删除（B3d）；设置页与 Blame 渲染器（B4a）；a11y 与明暗主题（B4b）；性能（B4c）；git 路径、版本门控、安装/升级、真实仓库矩阵（B4d）；中英双语；高风险功能的 flag 均已默认开启。
+
+**差距（需负责人裁定）**
+
+| 设计条目 | 状态 | 说明 |
+|---|---|---|
+| 更多提交选项（author / sign-off / GPG，及跳过 hooks） | 未实现 | §2.1 明确列出；A2 推到「B3」，B3a–B3d 均未纳入，代码里没有。**最大缺口** |
+| 筛选：日期、路径过滤；折叠线性分支、长边、只看我的分支（P1） | 部分 | A1 列为不包含，之后无计划接手 |
+| 分支面板：收藏、「最近」分组（P1） | 部分 | A3 → B3 → B3d「B4 视情况」，未做 |
+| 提交详情：GPG 徽标、「在 N 个分支中」（P1） | 部分 | 无计划覆盖 |
+| 标签：合并标签（P1） | 部分 | A3 推到 B3，B3d 未纳入 |
+| Patch：提交页对未提交改动「创建补丁」；加入 `.gitignore`（P1） | 部分 | 从提交创建/应用补丁已做 |
+| 设置页扩展：接 DSH 设置页、按仓库覆盖 | 部分 | 宿主没有插件设置扩展点；按仓库覆盖未做 |
+| git 2.25 / 2.38 兼容实测 | 部分 | 编译被自动模式拦截，见「阻塞」 |
+| 跨平台真机 | 部分 | Windows/Linux 只做静态审计 + 单测 |
+| 只发 1.0.0 | 部分 | 现为 `1.0.0-rc.1`；转正式版与发布由负责人执行 |
 

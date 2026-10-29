@@ -6,6 +6,7 @@ import { REBASE_ACTIONS, REBASE_PLAN_MAX_COMMITS } from '../../shared/protocol.t
 import { buildTodo, rebaseTodoProblem } from '../../shared/rebase-todo.ts'
 import type { GitRunResult, WriteContext, WriteOperation } from '../git-executor.ts'
 import { GIT_BASE_ARGV, GitCommandFailure } from '../git-executor.ts'
+import { gitSupports } from '../git-version.ts'
 import { REBASE_HOOKS, parseFullSha } from './integrate.ts'
 import { unmergedCount } from './operation.ts'
 import { readRebasePlan } from './rebase-plan.ts'
@@ -20,6 +21,7 @@ import {
   parseCommitMessage,
   payloadRecord,
   readHead,
+  gitVersionOf,
   readRunner,
   redactedFailure,
 } from './write-support.ts'
@@ -87,11 +89,11 @@ export const interactiveRebaseOperation: WriteOperation<
 
   async run(ctx, input) {
     await assertNoOperation(ctx)
-    // An older git has no `--update-refs`: drop it rather than fail (B4d T1; the page hides the option).
-    const probe = await ctx.git(['--version'], { mode: 'read' })
-    const gitVersion = probe.exitCode === 0 ? probe.stdout : undefined
-    const plan = await readRebasePlan(readRunner(ctx), ctx.repoRoot, { sessionId: '', base: input.base }, { gitVersion })
-    const updateRefs = input.updateRefs && plan.supportsUpdateRefs
+    // A git known to be older has no `--update-refs`: drop it rather than fail (B4d T1; the page hides
+    // the option). An unreadable version lets git try, like requireGitFeature (final review M7).
+    const version = await gitVersionOf(ctx)
+    const plan = await readRebasePlan(readRunner(ctx), ctx.repoRoot, { sessionId: '', base: input.base })
+    const updateRefs = input.updateRefs && (version === null || gitSupports(version, 'updateRefs'))
     if (plan.head !== input.head) {
       throw new GitCommandFailure('git/stale-target', 'HEAD moved since the rebase list was opened', {
         target: 'head',

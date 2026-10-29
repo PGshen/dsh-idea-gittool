@@ -126,6 +126,14 @@ describe('validateRepoPath', () => {
     },
   )
 
+  // Final review M6: names Windows resolves to `.git` (trailing dot/space, streams, 8.3 short name).
+  it.each(['.git.\\config', '.git \\config', 'sub/.GIT./x', '.git::$INDEX_ALLOCATION\\config', 'GIT~1\\config', 'a/b:c'])(
+    'rejects the .git alias %j on win32',
+    (path) => {
+      expect(() => validateRepoPath(path, 'win32')).toThrow(GitCommandFailure)
+    },
+  )
+
   it('keeps POSIX names with backslashes, quotes and CJK, and win32 subpaths (B4d T4)', () => {
     expect(validateRepoPath('a\\b.txt', 'linux')).toBe('a\\b.txt')
     expect(validateRepoPath('it\'s "quoted".txt', 'darwin')).toBe('it\'s "quoted".txt')

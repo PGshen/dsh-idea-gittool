@@ -114,6 +114,10 @@ export function validateRepoPath(path: unknown, platform: NodeJS.Platform = proc
       throw invalidPayload('path must not contain empty, "." or ".." segments')
     }
     if (segment.toLowerCase() === '.git') throw invalidPayload('path must not address .git')
+    // Windows also opens `.git` as `.git.`, `.git ` and `GIT~1`, and `:` names a stream (final review M6).
+    if (windows && (segment.includes(':') || /^\.git[. ]*$/iu.test(segment) || /^git~\d+$/iu.test(segment))) {
+      throw invalidPayload('path must not address .git')
+    }
   }
   return path
 }

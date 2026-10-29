@@ -29,6 +29,8 @@ export function gitPathErrorText(error: GitError, t: Translate): string {
       case 'not-found': return t('git.path.notFound')
       case 'not-executable': return t('git.path.notExecutable')
       case 'not-git': return t('git.path.notGit')
+      case 'inside-workspace': return t('git.path.insideWorkspace')
+      case 'not-local': return t('git.path.notLocal')
       default: break
     }
   }
@@ -43,7 +45,12 @@ export async function applyGitPath(client: GitClient, sessionId: string, path: s
   const trimmed = path.trim()
   if (trimmed !== '' && !isAbsoluteGitPath(trimmed)) return { ok: false, message: t('git.path.notAbsolute') }
   const result = await client.gitExecutable({ sessionId, path: trimmed === '' ? null : trimmed })
-  if (!result.ok) return { ok: false, message: gitPathErrorText(result.error, t) }
+  if (!result.ok) {
+    // Clearing always takes effect on the Host (it is back on PATH even when PATH has no git);
+    // keeping the old path would re-send it on the next mount (final review M4).
+    if (trimmed === '' && result.error.code === 'git/not-found') writeSettings({ gitPath: null })
+    return { ok: false, message: gitPathErrorText(result.error, t) }
+  }
   writeSettings({ gitPath: trimmed === '' ? null : trimmed })
   return { ok: true, info: result.value }
 }

@@ -43,6 +43,8 @@ describe('gitPathErrorText', () => {
     expect(gitPathErrorText({ code: 'git/unsupported-version', message: 'x', details: { current: '2.20.1', minimum: '2.25.0' } }, enT))
       .toBe('Git 2.20.1 is too old; 2.25.0 or later is required.')
     expect(gitPathErrorText({ code: 'git/exec-failed', message: 'boom', details: {} }, zhT)).toBe('设置失败：boom')
+    expect(gitPathErrorText({ code: 'git/invalid-payload', message: 'x', details: { reason: 'inside-workspace' } }, zhT)).toContain('工作区')
+    expect(gitPathErrorText({ code: 'git/invalid-payload', message: 'x', details: { reason: 'not-local' } }, zhT)).toContain('本机')
   })
 })
 
@@ -84,6 +86,18 @@ describe('applyGitPath', () => {
     await applyGitPath(client, 's', '', zhT)
 
     expect(calls).toEqual([{ sessionId: 's', path: null }])
+    expect(readSettings().gitPath).toBeNull()
+  })
+})
+
+describe('clearing the path when PATH has no git (B4d final review M4)', () => {
+  it('still stores the clear: the Host has already gone back to PATH', async () => {
+    writeSettings({ gitPath: '/usr/bin/git' })
+    const { client } = clientAnswering({ ok: false, error: { code: 'git/not-found', message: 'no git' } })
+
+    const outcome = await applyGitPath(client, 's', '', zhT)
+
+    expect(outcome.ok).toBe(false)
     expect(readSettings().gitPath).toBeNull()
   })
 })

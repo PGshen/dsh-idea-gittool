@@ -47,6 +47,8 @@
 | P2 | B4c 终审 Minor（6 条）：chunk 加载失败后因文件/文案变化重载成功时失败提示不消失；加载期间 pane 容器重挂会用旧宿主节点；`LogRow` memo 后「相对日期」只在行 props 变化时刷新；`pnpm dev` 下 chunk 变化整体重建 client context（可改 `rebuild()`，onEnd 抛错会让 watch 退出）；测试替身对绝对路径 realpath 而真实 provider 不做；Windows 上 `directBinary` 直连 `libexec/git-core/git.exe` 会绕过 `cmd\git.exe` 对 PATH 的补充（B4d 实测，或 win32 默认关闭） | B4c 终审，2026-10-28 | 细节见 [b4c 计划](completed/b4c-性能.md)「决策记录」终审条目 |
 | P2 | Windows 上控制台「复制命令」与 blame 命令提示生成的是 POSIX shell 语法（单引号、`cd … &&`），需在 Git Bash 里运行；可按平台改成 PowerShell 引号 | B4d T4 审计，2026-10-29 | `src/host/git/write-support.ts` `shellQuote` |
 | P2 | Diff 里只改了行尾（CRLF↔LF）的行看起来与原行相同：Host 如实保留 `\r`，客户端不显示行尾标记 | B4d T4 审计，2026-10-29 | 可在行尾差异时显示 `CRLF`/`LF` 小标记（IntelliJ 行为） |
+| P2 | B4d 终审 Minor（5 条）：缓存的工作台在 git 消失后不切到「未找到 git」空状态；git 路径是 Host 全局的，只读会话也能改，并在其他仓库进行中的写之间生效（应按写操作取一次）；`GitBody` 的 `mounted` 引用在 StrictMode 下不恢复；客户端与 Host 的绝对路径判定跨平台不一致；搁架门控与并发探测缺组件级测试 | B4d 终审，2026-10-29 | 细节见 [b4d 计划](active/b4d-跨平台与安装升级.md)「决策记录」Final 条目 |
+| P1 | B 阶段差距待负责人裁定：更多提交选项（author/sign-off/GPG、跳过 hooks）未实现；筛选（日期/路径等）、分支收藏与最近、提交详情 GPG 徽标与「在 N 个分支中」、合并标签、提交页创建补丁与加入 .gitignore、按仓库覆盖设置均未做 | B4d T8 核对表，2026-10-29 | 见 [b4d 计划](active/b4d-跨平台与安装升级.md)「验证记录」T8 |
 
 ## 已完成
 

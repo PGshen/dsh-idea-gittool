@@ -240,6 +240,25 @@ describe('interactiveRebaseOperation.run', () => {
     expect(repo.git('log', '-1', '--format=%s', 'mid').trim()).toBe('c1')
   })
 
+  it('keeps --update-refs when the git version cannot be read (final review M7)', async () => {
+    const repo = makeRepo()
+    const [c1, c2] = linear(repo, 2)
+    repo.git('branch', 'mid', c1 ?? '')
+    const base = repo.git('rev-parse', 'HEAD~2').trim()
+    const real = contextFor(repo)
+    const ctx: WriteContext = {
+      ...real,
+      git: async (argv, options) => (argv.includes('--version') ? { exitCode: 1, stdout: '', stderr: 'boom' } : await real.git(argv, options)),
+    }
+    const head = repo.git('rev-parse', 'HEAD').trim()
+    const input = interactiveRebaseOperation.parse({
+      sessionId: 's', requestId: 'r', base, head, updateRefs: true,
+      entries: [{ sha: c1 ?? '', action: 'reword', message: 'c1 new' }, { sha: c2 ?? '', action: 'pick' }],
+    })
+    await interactiveRebaseOperation.run(ctx, input)
+    expect(repo.git('log', '-1', '--format=%s', 'mid').trim()).toBe('c1 new')
+  })
+
   it('stops at an edit (git exits 0), reports rebaseStop, then finishes on continue with later execs', async () => {
     const repo = makeRepo()
     const [c1, c2] = linear(repo, 2)

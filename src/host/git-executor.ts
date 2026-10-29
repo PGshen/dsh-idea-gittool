@@ -172,7 +172,7 @@ export interface GitRunnerDefaults {
    * B4d T2: a user-set git path (see git-executable.ts). When it returns a path, every command
    * runs exactly that program (checked before each use) and `directBinary` is not consulted.
    */
-  executable?: { override(): string | null } | undefined
+  executable?: { override(): string | null; verify?(): Promise<boolean> } | undefined
 }
 
 /**
@@ -316,6 +316,10 @@ export function createGitRunner(
   const resolveProgram = async (signal: AbortSignal): Promise<string> => {
     const override = defaults.executable?.override() ?? null
     if (override !== null) {
+      // A file replaced since it was validated is no longer the git the user chose (final review I1).
+      if (defaults.executable?.verify !== undefined && !(await defaults.executable.verify())) {
+        throw new Error(`${override} changed since it was set as the git path`)
+      }
       await subprocess.resolveExecutable(override, undefined, signal)
       return override
     }

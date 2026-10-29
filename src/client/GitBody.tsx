@@ -65,7 +65,8 @@ function GitBodyContent(props: GitBodyProps): ReactNode {
       const outcome = await applyGitPath(gitClient, sessionId, path, t)
       if (!outcome.ok) error = outcome.message
     }
-    await bootstrapCache.refresh(sessionId)
+    // A fresh bootstrap: one already in flight was read with the previous git (final review M2).
+    await bootstrapCache.reload(sessionId)
     if (!mounted.current) return
     setGitPathError(error)
     setGitPathBusy(false)
@@ -132,6 +133,7 @@ function GitBodyContent(props: GitBodyProps): ReactNode {
       client={gitClient}
       value={value}
       onRefresh={() => bootstrapCache.refresh(sessionId)}
+      onReload={() => bootstrapCache.reload(sessionId)}
       autoRefresh={autoRefresh}
       onToggleAutoRefresh={() => { writeSettings({ autoRefresh: !autoRefresh }) }}
       lastRefreshAt={lastRefreshAt}

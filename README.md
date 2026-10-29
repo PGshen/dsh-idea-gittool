@@ -61,7 +61,7 @@ pnpm dsh plugin --profile web add /绝对路径/dsh-idea-gittool-<版本>.tgz
 | 「Git Blame」文档查看器 | 关 |
 | git 路径 | 空（用 PATH 中的 git） |
 
-**git 路径**：填 git 可执行文件的绝对路径并点「应用」。插件会先检查它确实是 git、版本够用，通过后立即生效，不用重启 DSH；Host 只在内存里使用这个路径，每次打开 Git 标签时由页面重新交给 Host。留空并应用就回到 PATH 中的 git。
+**git 路径**：填 git 可执行文件的绝对路径并点「应用」。文件名必须是 `git`（Windows 为 `git.exe`），不能放在会话工作区里，也不能是网络路径（[ADR 0014](docs/decisions/0014-git路径的信任边界.md)）。插件会先检查它确实是 git、版本够用，通过后立即生效，不用重启 DSH；Host 只在内存里使用这个路径，每次打开 Git 标签时由页面重新交给 Host。留空并应用就回到 PATH 中的 git。
 
 ## 快捷键
 

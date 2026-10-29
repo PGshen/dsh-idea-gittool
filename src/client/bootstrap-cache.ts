@@ -13,6 +13,11 @@ export interface BootstrapCache {
   ensure(sessionId: string): void
   /** 强制刷新，返回采用后的 version（失败时为当前 version）。 */
   refresh(sessionId: string): Promise<number>
+  /**
+   * 一定发出一次新请求：有在飞的请求时等它结束再发（B4d 终审 M2）。用于 Host 状态变了而仓库 version
+   * 没变的场合（例如刚换了 git 路径），在飞的旧请求的结果不能代表新状态。
+   */
+  reload(sessionId: string): Promise<number>
 }
 
 export function createBootstrapCache(client: Pick<GitClient, 'bootstrap'>): BootstrapCache {
@@ -63,5 +68,9 @@ export function createBootstrapCache(client: Pick<GitClient, 'bootstrap'>): Boot
       void load(sessionId)
     },
     refresh: sessionId => load(sessionId),
+    async reload(sessionId) {
+      await inflight.get(sessionId)?.catch(() => undefined)
+      return await load(sessionId)
+    },
   }
 }

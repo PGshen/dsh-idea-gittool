@@ -121,7 +121,7 @@ export function gitSupports(version: ParsedGitVersion, feature: 'updateRefs' | '
 - **测试**：`path.win32` 下的 repo 根/子目录解析、含空格/引号/中文的路径、CRLF 输出解析。
 - **验证命令**：`make check`
 
-### T5：git 兼容测试（待开始）
+### T5：git 兼容测试（部分完成：2.39.5 实测通过；2.25 / 2.38 待负责人决定）
 
 - **目标**：AC5（按待确认 2）。
 - **涉及文件**：`scripts/compat/run-host-tests.sh`（用指定 git 跑 `test/host`）、`docs/runbooks/verification.md`。
@@ -154,10 +154,12 @@ export function gitSupports(version: ParsedGitVersion, feature: 'updateRefs' | '
 - 2026-10-29 — T2 — `src/host/git-executable.ts`（PATH / 设置路径、校验、`info()` 缓存）；执行器解析失败（非取消/超时）→ `git/not-found`，有设置路径时每条命令都跑它；`gitExecutable` 端点；bootstrap 带 `git`
 - 2026-10-29 — T3 — 设置项 `gitPath`（只收绝对路径，恢复默认时保留）；`git-path.ts`（客户端绝对路径检查、Host 拒绝原因文案、Host 采用后才保存）；`git-missing.tsx` 空状态（未找到 / 版本过低、安装说明、重新检测、设置路径）；设置页「git 路径」行（正在使用的路径与版本、未生效提示）；Git 标签挂载时把已存路径交给 Host；变基页在 git < 2.38 且范围内有其他分支时说明不会移动它们。L4（AC1「无需重启即恢复」）并入 T6 的隔离 DSH 走查
 - 2026-10-29 — T4 — 跨平台审计（清单见「验证记录」）；修了两处真实风险：win32 上 `validateRepoPath` 放过 `..\x`、`C:foo`；win32 默认关闭 `directBinary`。`isWithinRoot` 用 `path.win32`/`posix` 补测
+- 2026-10-29 — T5 — `scripts/compat/run-host-tests.sh` + `DSH_GIT_TEST_BINARY`；用本机 Apple Git 2.39.5（CommandLineTools）跑 `test/host`：首轮 9 个失败，其中 1 个是真实缺口（搁架三方取回用的 `merge-file --object-id` 需 2.43，已加门控），其余是测试绑死新版 git 输出（已改为按版本断言）；修后 2.39.5 与 2.50.1 都是 762/762
 
 ## 下一步
 
-- T5：git 兼容测试（本机能否拿到 2.25 / 2.38）。
+- T6：打包、安装、升级、卸载验证（隔离 HOME）。
+- 待负责人：是否允许在 scratchpad 编译 git 2.25.5 / 2.38.5（源码已下载到 scratchpad，编译被自动模式拦截），用于补跑 T5。
 
 ## 决策记录
 
@@ -179,6 +181,9 @@ export function gitSupports(version: ParsedGitVersion, feature: 'updateRefs' | '
 - T4 Ruling：`validateRepoPath` 按平台判定：win32 上 `\` 也是分隔符、任何 `C:` 前缀都拒绝；POSIX 上文件名里的 `\` 仍是合法字符。代价：无（git 在 Windows 上不产生含 `\` 的路径）。
 - T4 Ruling：沙箱根包含判断抽成纯函数 `isWithinRoot`，顺带修正 `/repo/..cache` 这类以 `..` 开头的子目录被误判为「在外面」的问题。
 - T4 Ruling：diff 行文本保留 CRLF 文件的 `\r`（如实反映内容，浏览器里不可见），只记录不改；「只改了行尾」的 diff 看起来像相同的行，登记 TODO。
+- T5 Ruling：搁架三方取回在 git < 2.43 上直接拒绝（`git/unsupported-version` + `feature`），而不是改写成「临时文件 + `merge-file -p` + `hash-object`」的降级：后者要把 blob 当文本读进 Node，会弄坏二进制文件。版本探测失败时不拦，让 git 自己报错。代价：2.25–2.42 的用户不能三方取回搁架（普通取回不受影响），客户端显示的是 Host 的英文消息。
+- T5 Ruling：兼容运行里依赖新版输出的测试改为按 `GIT_TEST_VERSION` 分支断言（不跳过）：`fetch` 计数（2.41）、搁架三方（2.43）；与版本无关的写法替换：`git var GIT_SEQUENCE_EDITOR` → shell 别名、`%aI` → `%at`、`directBinary` 期望值从 `GIT_BINARY` 的 `--exec-path` 推出。
+- T5 阻塞：编译 2.25.5 / 2.38.5 源码被自动模式（Code from External）拦截；按指令不绕过，记「未实测」，请负责人决定是否放行。下载的源码包在 scratchpad `compat/src/`。
 
 ## 意外与发现
 
@@ -186,7 +191,7 @@ export function gitSupports(version: ParsedGitVersion, feature: 'updateRefs' | '
 
 ## 阻塞
 
-- 无
+- T5：git 2.25 / 2.38 兼容实测需要在本机编译源码，自动模式拦截，等负责人决定（不阻塞 T6–T8）
 
 ## 验证记录
 

@@ -14,6 +14,8 @@ export const GIT_MIN_VERSION = '2.25.0'
 const FEATURE_MIN_VERSION = {
   /** `rebase --update-refs`. */
   updateRefs: { major: 2, minor: 38, patch: 0 },
+  /** `merge-file --object-id` (three-way unshelve; T5: 2.39.5 rejects it, 2.50.1 has it). */
+  mergeFileObjectId: { major: 2, minor: 43, patch: 0 },
 } as const satisfies Record<string, ParsedGitVersion>
 
 export type GitFeature = keyof typeof FEATURE_MIN_VERSION
@@ -46,4 +48,9 @@ export function isSupportedGitVersion(version: ParsedGitVersion): boolean {
 
 export function gitSupports(version: ParsedGitVersion, feature: GitFeature): boolean {
   return atLeast(version, FEATURE_MIN_VERSION[feature])
+}
+
+/** First release with `feature`, as `major.minor.patch`. */
+export function gitFeatureMinimum(feature: GitFeature): string {
+  return formatGitVersion(FEATURE_MIN_VERSION[feature])
 }

@@ -161,8 +161,9 @@ function probes(fake: ReturnType<typeof createFakeSubprocess>): number {
 }
 
 describe('createGitRunner directBinary (B4c T2)', () => {
+  // The binary the probe finds for GIT_BINARY (B4d T5: DSH_GIT_TEST_BINARY may name another git).
   const directGit = realpathSync(
-    join(spawnSync('git', ['--exec-path'], { encoding: 'utf8' }).stdout.trim(), 'git'),
+    join(spawnSync(GIT_BINARY, ['--exec-path'], { encoding: 'utf8' }).stdout.trim(), 'git'),
   )
 
   it('runs every command with the git binary under --exec-path after one probe', async () => {
@@ -285,12 +286,14 @@ describe('createGitRunner todoFromStdin (B3a T3)', () => {
     const fake = createFakeSubprocess()
     const ctx = bindWriteContext(createGitRunner(fake), repo.root, { kind: 'unconfined' }, new AbortController().signal)
 
-    const editor = await ctx.git(['var', 'GIT_SEQUENCE_EDITOR'], { stdin: 'pick x\n', todoFromStdin: true })
+    // A shell alias prints the variable on every git version (`git var GIT_SEQUENCE_EDITOR` needs ≥ 2.40, B4d T5).
+    const printEditor = ['-c', 'alias.seqed=!printf %s "$GIT_SEQUENCE_EDITOR"', 'seqed']
+    const editor = await ctx.git(printEditor, { stdin: 'pick x\n', todoFromStdin: true })
     expect(editor.stdout.trim()).toBe('cat >')
     expect(lastSpawn(fake).env?.GIT_SEQUENCE_EDITOR).toBe('cat >')
     expect(lastSpawn(fake).env?.GIT_EDITOR).toBe('true')
 
-    const plain = await ctx.git(['var', 'GIT_SEQUENCE_EDITOR'])
+    const plain = await ctx.git(printEditor)
     expect(plain.stdout.trim()).toBe('true')
   })
 

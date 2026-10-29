@@ -148,7 +148,8 @@ describe('interactiveRebaseOperation.run', () => {
     expect(value.stop).toBeUndefined()
     expect(subjects(repo, `${base}..HEAD`)).toEqual(['c1', 'c2 renamed', 'c3'])
     expect(repo.git('rev-parse', 'HEAD^{tree}').trim()).toBe(before)
-    expect(repo.git('log', '-1', '--format=%an <%ae> %aI', 'HEAD~1').trim()).toBe('Author <author@example.com> 2020-01-02T10:00:00Z')
+    // Epoch seconds: `%aI` prints `Z` or `+00:00` depending on the git version (B4d T5).
+    expect(repo.git('log', '-1', '--format=%an <%ae> %at', 'HEAD~1').trim()).toBe(`Author <author@example.com> ${String(Date.parse('2020-01-02T10:00:00Z') / 1000)}`)
   })
 
   it('rewords HEAD itself', async () => {

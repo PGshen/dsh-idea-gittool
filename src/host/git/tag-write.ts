@@ -1,11 +1,22 @@
 // Tags (plan b3b): create a lightweight or annotated tag on a commit from the log menu.
-import type { CreateTagValue, TagDeleteValue, TagPushValue } from '../../shared/protocol.ts'
+import type { CreateTagValue, TagDeleteValue, TagPushRejectedDetails, TagPushValue } from '../../shared/protocol.ts'
+import { redactCredentials } from '../console.ts'
 import type { WriteOperation } from '../git-executor.ts'
 import { GIT_BASE_ARGV, GitCommandFailure } from '../git-executor.ts'
 import { parseFullSha } from './integrate.ts'
-import { networkFailure } from './push.ts'
+import { networkFailure, parsePushPorcelain } from './push.ts'
 import { parseRemoteName } from './remote-write.ts'
-import { invalidPayload, parseCommitMessage, parseRefName, payloadRecord, query, readRemotes, redactedFailure } from './write-support.ts'
+import {
+  invalidPayload,
+  isAuthFailure,
+  isSandboxDenial,
+  parseCommitMessage,
+  parseRefName,
+  payloadRecord,
+  query,
+  readRemotes,
+  redactedFailure,
+} from './write-support.ts'
 
 export interface CreateTagInput {
   name: string
@@ -51,6 +62,18 @@ async function assertRemote(ctx: Parameters<typeof createTagOperation.run>[0], r
   if (!(await readRemotes(ctx)).includes(remote)) throw invalidPayload(`unknown remote "${remote}"`, { remote })
 }
 
+/** A rejected tag push with git's own reason (porcelain summary plus `remote:` lines), redacted. */
+function tagRejected(input: { name: string; remote: string }, summary: string, stderr: string): GitCommandFailure {
+  const remoteMessage = stderr.split('\n')
+    .filter(line => /^remote:\s*\S/u.test(line))
+    .slice(0, 5)
+    .map(line => redactCredentials(line.replace(/^remote:\s*/u, '').trim()))
+    .join('\n')
+  const details: TagPushRejectedDetails = { target: 'tag', name: input.name, remote: input.remote, summary: redactCredentials(summary), remoteMessage }
+  const reason = [details.summary, remoteMessage].filter(part => part !== '').join(' — ')
+  return new GitCommandFailure('git/rejected', `push of tag ${input.name} to ${input.remote} was rejected: ${reason}`, { ...details })
+}
+
 /** B3d: push one tag to a remote. */
 export const tagPushOperation: WriteOperation<{ name: string; remote: string }, Omit<TagPushValue, 'version'>> = {
   parse(payload) {
@@ -63,7 +86,12 @@ export const tagPushOperation: WriteOperation<{ name: string; remote: string }, 
     await assertRemote(ctx, input.remote)
     const ref = `refs/tags/${input.name}`
     const result = await ctx.git([...GIT_BASE_ARGV, 'push', '--porcelain', '--', input.remote, `${ref}:${ref}`], { mode: 'network' })
-    if (result.exitCode !== 0) throw networkFailure(result, ctx.repoRoot, ['push', input.remote, ref], 'git push')
+    const rejected = parsePushPorcelain(result.stdout).find(entry => entry.flag === '!')
+    const terminalArgs = ['push', input.remote, ref]
+    if (rejected !== undefined && !isSandboxDenial(`${result.stderr}\n${result.stdout}`) && !isAuthFailure(result.stderr)) {
+      throw tagRejected(input, rejected.summary, result.stderr)
+    }
+    if (result.exitCode !== 0) throw networkFailure(result, ctx.repoRoot, terminalArgs, 'git push')
     return { name: input.name, remote: input.remote }
   },
 }

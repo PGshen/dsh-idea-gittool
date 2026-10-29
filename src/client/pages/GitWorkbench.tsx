@@ -643,7 +643,7 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
       logStore.setFilter({ branches: [entry.name] })
     },
     openPush: () => { openPush({}) },
-    onOutcome: (outcome) => { setNotice(outcomeNotice(outcome)) },
+    onOutcome: (outcome, success) => { setNotice(outcomeNotice(outcome, success)) },
     currentBranch: () => (status === null || status.detached ? null : status.branch),
   }
   const branchRunner = useMemo(() => createBranchActionRunner({
@@ -656,7 +656,7 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
     onOutcome: (outcome) => { runnerDeps.current?.onOutcome(outcome) },
     currentBranch: () => runnerDeps.current?.currentBranch?.() ?? null,
   }), [actions])
-  const reportOutcome = useCallback((outcome: ActionOutcome<unknown>) => { setNotice(outcomeNotice(outcome)) }, [])
+  const reportOutcome = useCallback((outcome: ActionOutcome<unknown>, success?: LocalizedText) => { setNotice(outcomeNotice(outcome, success)) }, [])
   const runQuickAction = useCallback((id: QuickActionId, trigger: FocusTarget | null) => {
     setNotice(null)
     switch (id) {
@@ -1105,7 +1105,7 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
             name={overlay.name}
             loadRemotes={() => client.remoteList({ sessionId })}
             actions={actions}
-            onOutcome={(outcome) => { reportOutcome(outcome); void refreshAll() }}
+            onOutcome={(outcome, success) => { reportOutcome(outcome, success); void refreshAll() }}
             onClose={() => { overlays.closeIf('tagSheet') }}
           />
         ) : null}
@@ -1113,7 +1113,7 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
           <RemoteBranchDeleteSheet
             ref_={overlay.ref}
             actions={actions}
-            onOutcome={(outcome) => { reportOutcome(outcome); void refreshAll() }}
+            onOutcome={(outcome, success) => { reportOutcome(outcome, success); void refreshAll() }}
             onClose={() => { overlays.closeIf('remoteBranchDelete') }}
           />
         ) : null}
@@ -1123,7 +1123,7 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
             upstream={overlay.upstream}
             remoteBranches={(branches.value?.remote ?? []).map(entry => entry.name)}
             actions={actions}
-            onOutcome={(outcome) => { reportOutcome(outcome); void refreshAll() }}
+            onOutcome={(outcome, success) => { reportOutcome(outcome, success); void refreshAll() }}
             onClose={() => { overlays.closeIf('upstreamSheet') }}
           />
         ) : null}

@@ -37,6 +37,8 @@ export async function readWorktreeList(run: GitRunner, cwd: string, options: { s
       locked: lines.some(line => line === 'locked' || line.startsWith('locked ')),
       prunable: lines.some(line => line === 'prunable' || line.startsWith('prunable ')),
       bare: lines.includes('bare'),
+      // `worktree list` always prints the main worktree first.
+      main: entries.length === 0,
     })
   }
   return entries
@@ -123,6 +125,9 @@ export const worktreeRemoveOperation: WriteOperation<{ path: string; force: bool
     const entry = (await listOf(ctx)).find(candidate => candidate.path === path)
     if (entry === undefined) throw invalidPayload('not a worktree of this repository', { reason: 'not-a-worktree' })
     if (entry.current || entry.bare) throw invalidPayload('the current worktree cannot be removed', { reason: 'current-worktree' })
+    if (entry.main) throw invalidPayload('the main worktree cannot be removed', { reason: 'main-worktree' })
+    // `--force` once does not override a lock; refuse explicitly so the client can say why.
+    if (entry.locked) throw invalidPayload('the worktree is locked', { reason: 'worktree-locked' })
     const result = await ctx.git([...GIT_BASE_ARGV, 'worktree', 'remove', ...(input.force ? ['--force'] : []), '--', entry.path])
     if (result.exitCode !== 0) {
       if (/contains modified or untracked files|is dirty/iu.test(result.stderr)) {

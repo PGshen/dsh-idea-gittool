@@ -59,6 +59,9 @@ async function applyThreeWay(repo: TempRepo, payload: Record<string, unknown>): 
 
 const read = (repo: TempRepo, path: string): string => readFileSync(join(repo.root, path), 'utf8')
 
+const porcelainOf = (repo: TempRepo): string[] =>
+  repo.git('status', '--porcelain=v1', '--untracked-files=all').split('\n').filter(line => line !== '').sort()
+
 /** Two modified files (one staged), a binary change, an untracked file, and a change that stays. */
 function dirty(repo: TempRepo): void {
   repo.write('a.txt', 'a changed\n')
@@ -210,17 +213,34 @@ describe('shelfApply and shelfDrop', () => {
     repo.write('a.txt', 'a changed\n')
     const { entry } = await write(shelfCreateOperation, repo, { name: 'x', paths: ['a.txt'] })
     repo.write('a.txt', 'a different\n')
+    repo.write('b.txt', 'b staged\n')
+    repo.git('add', 'b.txt')
     const real = contextFor(repo)
+    const commands: string[][] = []
     const old: WriteContext = {
       ...real,
-      git: async (argv, options) =>
-        argv.includes('--version') ? { exitCode: 0, stdout: 'git version 2.42.0\n', stderr: '' } : await real.git(argv, options),
+      git: async (argv, options) => {
+        commands.push([...argv])
+        return argv.includes('--version') ? { exitCode: 0, stdout: 'git version 2.42.0\n', stderr: '' } : await real.git(argv, options)
+      },
     }
+    const refsBefore = repo.git('for-each-ref', '--format=%(refname) %(objectname)', SHELF_REF_PREFIX)
+    const indexBefore = repo.git('ls-files', '-s')
 
     const failure = await failureOf(shelfApplyOperation.run(old, shelfApplyOperation.parse({ sessionId: 's', requestId: 'r', id: entry.id, threeWay: true })))
 
     expect(failure).toMatchObject({ code: 'git/unsupported-version', details: { current: '2.42.0', minimum: '2.43.0', feature: 'mergeFileObjectId' } })
     expect(read(repo, 'a.txt')).toBe('a different\n')
+    // T1-T4 (B4d final review minor): the index and the shelf ref are untouched as well, and
+    // no writing git command ran before the gate.
+    expect(repo.git('ls-files', '-s')).toBe(indexBefore)
+    expect(repo.git('ls-files', '-u')).toBe('')
+    expect(repo.git('for-each-ref', '--format=%(refname) %(objectname)', SHELF_REF_PREFIX)).toBe(refsBefore)
+    expect(refsBefore).toContain(entry.id)
+    const writers = ['apply', 'merge-file', 'update-index', 'update-ref', 'read-tree', 'checkout', 'reset', 'rm', 'add']
+    expect(commands.some(argv => argv.includes('--version'))).toBe(true)
+    expect(commands.filter(argv => argv.some(arg => writers.includes(arg)))).toEqual([])
+    expect(porcelainOf(repo)).toEqual(['M  b.txt', ' M a.txt'].sort())
   })
 
   it('merges three-way over an unstaged local change and records the conflict as index stages (L4 finding)', async () => {

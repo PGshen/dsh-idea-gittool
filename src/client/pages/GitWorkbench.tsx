@@ -190,10 +190,12 @@ export function detailActionFor(
   currentSha: string | null,
   /** 选中是被筛选/排序重建清空的（log generation 变化）；刷新清空时保留正在看的详情。 */
   filterReset = true,
+  /** 刷新确认选中提交已不在历史中（log `selectionGone` 变化，例如交互式变基改写了它）。 */
+  selectionGone = false,
 ): DetailAction {
   const sha = selection.commit?.sha
   if (sha !== undefined) return sha === currentSha ? { kind: 'keep' } : { kind: 'select', sha }
-  if (selection.shas.length === 0 && currentSha !== null && filterReset) return { kind: 'clear' }
+  if (selection.shas.length === 0 && currentSha !== null && (filterReset || selectionGone)) return { kind: 'clear' }
   return { kind: 'keep' }
 }
 
@@ -310,6 +312,8 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
     () => createFileHistoryStore({ sessionId, load: (request, signal) => client.fileHistory(request, signal), diff: historyDiffStore }),
     [client, historyDiffStore, sessionId],
   )
+  // Overlay leave effects close it on the way out; unmounting (or a new store) must release it too.
+  useEffect(() => () => { historyStore.close() }, [historyStore])
   const historyScroll = useRef(0)
   const mergeLeaveGuard = useRef<((go: () => void, cancel?: () => void) => boolean) | null>(null)
   const mergeLeft = useRef<(path: string, next: WorkbenchOverlay | null) => void>(() => {})
@@ -420,11 +424,14 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
   }, [consoleOpen, consoleStore])
 
   const lastGeneration = useRef(logStore.getState().generation)
+  const lastSelectionGone = useRef(logStore.getState().selectionGone)
   const onSelect = useCallback((selection: LogSelection) => {
-    const generation = logStore.getState().generation
+    const { generation, selectionGone } = logStore.getState()
     const filterReset = generation !== lastGeneration.current
+    const gone = selectionGone !== lastSelectionGone.current
     lastGeneration.current = generation
-    const action = detailActionFor(selection, detailStore.getState().sha, filterReset)
+    lastSelectionGone.current = selectionGone
+    const action = detailActionFor(selection, detailStore.getState().sha, filterReset, gone)
     if (action.kind === 'keep') return
     setSelectedFile(undefined)
     if (action.kind === 'clear') detailStore.cancel()

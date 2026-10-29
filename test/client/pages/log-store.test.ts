@@ -489,6 +489,49 @@ describe('refresh', () => {
     expect(store.getState().selection).toEqual([])
     expect(store.getState().activeIndex).toBe(-1)
   })
+
+  it('counts a selection that a history rewrite removed (the reload covers where it could be)', async () => {
+    const { store } = harness([
+      page([commit('c', 'b'), commit('b', 'a'), commit('a')]),
+      // Interactive rebase rewrote b and c: their shas are gone, a is still there.
+      page([commit('c2', 'b2'), commit('b2', 'a'), commit('a')]),
+    ])
+    await store.loadFirstPage()
+    store.selectIndex(1)
+    expect(store.getState().selectionGone).toBe(0)
+    await store.refresh()
+    expect(store.getState().selection).toEqual([])
+    expect(store.getState().selectionGone).toBe(1)
+  })
+
+  it('does not count a selection that may only have moved below the reloaded rows', async () => {
+    const { store } = harness([
+      page([commit('b', 'a'), commit('a', 'z')], 'p2'),
+      // Two new commits on top push a below the reloaded depth; more history follows.
+      page([commit('n2', 'n1'), commit('n1', 'b')], 'r2'),
+    ], { pageSize: 2 })
+    await store.loadFirstPage()
+    store.selectIndex(1)
+    await store.refresh()
+    expect(store.getState().commits.map((c) => c.sha)).toEqual(['n2', 'n1'])
+    expect(store.getState().selection).toEqual([])
+    expect(store.getState().selectionGone).toBe(0)
+  })
+
+  it('does not count a selection that is still there or a plain refresh without selection', async () => {
+    const { store } = harness([
+      page([commit('a', 'b'), commit('b')]),
+      page([commit('a', 'b'), commit('b')]),
+      page([commit('x')]),
+    ])
+    await store.loadFirstPage()
+    store.selectIndex(1)
+    await store.refresh()
+    expect(store.getState().selectionGone).toBe(0)
+    store.setFilter({ branches: ['other'] })
+    await vi.waitFor(() => { expect(store.getState().loading).toBe(false) })
+    expect(store.getState().selectionGone).toBe(0)
+  })
 })
 
 describe('table rows', () => {

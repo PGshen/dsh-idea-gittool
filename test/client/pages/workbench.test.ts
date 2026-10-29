@@ -40,6 +40,12 @@ describe('detailActionFor', () => {
   it('刷新（非筛选重建）导致的选中清空不清详情，正在看的提交保留', () => {
     expect(detailActionFor({ shas: [], commit: null, commits: [] }, 'a', false)).toEqual({ kind: 'keep' })
   })
+
+  it('刷新确认选中提交已不在历史中（如交互式变基改写）时清掉详情', () => {
+    expect(detailActionFor({ shas: [], commit: null, commits: [] }, 'a', false, true)).toEqual({ kind: 'clear' })
+    // 多选中只有部分被改写：详情跟随剩下的焦点提交。
+    expect(detailActionFor({ shas: ['b'], commit: summary('b'), commits: [] }, 'a', false, true)).toEqual({ kind: 'select', sha: 'b' })
+  })
 })
 
 describe('diffFilesOf', () => {

@@ -424,10 +424,10 @@ export function createBranchActionRunner(deps: BranchActionRunnerDeps): BranchAc
         deps.copy(entry.ref)
         return
       case 'compareWithCurrent':
-        deps.openOverlay({ kind: 'compare', left: entry.name, right: 'HEAD', leftLabel: entry.name, rightLabel: deps.currentBranch?.() ?? 'HEAD' }, trigger)
+        deps.openOverlay({ kind: 'compare', left: entry.ref, right: 'HEAD', leftLabel: entry.name, rightLabel: deps.currentBranch?.() ?? 'HEAD' }, trigger)
         return
       case 'compareWithWorktree':
-        deps.openOverlay({ kind: 'compare', left: entry.name, right: null, leftLabel: entry.name, rightLabel: null }, trigger)
+        deps.openOverlay({ kind: 'compare', left: entry.ref, right: null, leftLabel: entry.name, rightLabel: null }, trigger)
         return
       case 'showInLog':
         deps.showInLog(entry)

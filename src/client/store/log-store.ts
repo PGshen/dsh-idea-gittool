@@ -117,6 +117,11 @@ export interface LogState {
   activeIndex: number
   /** 筛选/排序重建计数：表格据此回到顶部（AC4）。 */
   generation: number
+  /**
+   * 刷新后确认选中提交已不在历史中的次数（例如交互式变基改写了它）：工作台据此清掉详情。
+   * 只在重新加载的行足以覆盖它可能下移到的位置时才算「确认」，见 `load` 中 `isGone`。
+   */
+  selectionGone: number
   jumpError: LocalizedText | null
   /** 已加载到 2000 行上限，不再自动加载。 */
   atRowLimit: boolean
@@ -192,6 +197,7 @@ export function createLogStore(options: LogStoreOptions): LogStore {
     anchorIndex: -1,
     activeIndex: -1,
     generation: 0,
+    selectionGone: 0,
     jumpError: null,
     atRowLimit: false,
   }
@@ -302,6 +308,8 @@ export function createLogStore(options: LogStoreOptions): LogStore {
     seen = new Set()
     const keptSelection = reset ? [] : state.selection
     const keptActive = reset ? -1 : state.activeIndex
+    // Rows before the reload, to tell a selection that vanished from one that only moved down.
+    const previousIndex = reset ? new Map<string, number>() : new Map(state.commits.map((commit, index) => [commit.sha, index]))
     // 刷新要回到原来已加载的深度，否则深处的选中/滚动位置会被截掉（评审 I3）。
     const keptDepth = reset ? 0 : Math.min(maxRows, state.commits.length)
     setState({
@@ -339,17 +347,35 @@ export function createLogStore(options: LogStoreOptions): LogStore {
     await followEmptyPages(seq, integrate(first, true))
     if (seq !== requestSeq) return
     setState({ loading: false })
-    if (!reset && keptSelection.length > 0) restoreSelection(keptSelection)
+    if (!reset && keptSelection.length > 0) restoreSelection(keptSelection, previousIndex)
   }
 
-  /** 刷新后把还存在的选中项找回来。 */
-  function restoreSelection(shas: string[]): void {
-    const selection = shas.filter((sha) => state.commits.some((commit) => commit.sha === sha))
+  /**
+   * 刷新后把还存在的选中项找回来。没找回的提交若已确认不在历史中，递增 `selectionGone`。
+   * 确认的依据（不额外发请求）：一个仍存在的提交在新列表里最多下移「新出现的行数」位，
+   * 所以重新加载已到历史末尾，或已加载行数超过「原位置 + 新出现的行数」，却仍没有它，就是已被改写/删除；
+   * 否则它可能只是被新提交挤到了已加载范围之外，保持原行为（不清详情）。
+   */
+  function restoreSelection(shas: string[], previousIndex: ReadonlyMap<string, number>): void {
+    const loaded = new Set(state.commits.map((commit) => commit.sha))
+    const selection = shas.filter((sha) => loaded.has(sha))
+    const newcomers = state.commits.filter((commit) => !previousIndex.has(commit.sha)).length
+    const isGone = (sha: string): boolean => {
+      if (state.next === undefined) return true
+      const before = previousIndex.get(sha)
+      return before !== undefined && state.commits.length > before + newcomers
+    }
+    const gone = shas.some((sha) => !loaded.has(sha) && isGone(sha))
     const activeSha = selection[selection.length - 1]
     const activeIndex = activeSha === undefined
       ? -1
       : state.commits.findIndex((commit) => commit.sha === activeSha)
-    setState({ selection, activeIndex, anchorIndex: activeIndex })
+    setState({
+      selection,
+      activeIndex,
+      anchorIndex: activeIndex,
+      ...(gone ? { selectionGone: state.selectionGone + 1 } : {}),
+    })
   }
 
   /** 目标在已加载行里时直接选中：先按哈希前缀，再按 ref 名解析出的 sha。 */

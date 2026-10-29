@@ -105,6 +105,8 @@ export function BlameView(props: BlameViewProps): ReactNode {
       onKeyDown={(event) => {
         if (event.key !== 'Escape') return
         if (props.menu !== null) return
+        // Nothing to close and no level to go back to (the `git.blame` page): leave Esc to the host.
+        if (props.diff === null && onBack === undefined) return
         event.preventDefault()
         if (props.diff !== null) props.onCloseDiff()
         else onBack?.()

@@ -359,8 +359,8 @@ describe('B2 branch compare actions', () => {
     await runner.run('compareWithCurrent', login, null)
     await runner.run('compareWithWorktree', tag, null)
     expect(opened).toEqual([
-      { kind: 'compare', left: login.name, right: 'HEAD', leftLabel: login.name, rightLabel: 'main' },
-      { kind: 'compare', left: tag.name, right: null, leftLabel: tag.name, rightLabel: null },
+      { kind: 'compare', left: login.ref, right: 'HEAD', leftLabel: login.name, rightLabel: 'main' },
+      { kind: 'compare', left: tag.ref, right: null, leftLabel: tag.name, rightLabel: null },
     ])
   })
 })

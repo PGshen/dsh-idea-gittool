@@ -2,7 +2,7 @@
 
 本文件只描述**代码结构**和**依赖方向**，内容必须和代码保持一致（SOP §10）。产品与页面设计见 [产品设计 v0.2](design/2026-10-25-产品设计-v0.2.md)；技术方案见其中 §16 与 [DSH 集成可行性调研](references/dsh-integration-feasibility.md)。
 
-> 状态：2026-10-28，B3、B4a（设置页与 Blame 渲染器）、B4b（a11y 与样式变量）已合并——A1 只读（日志/提交图/详情/diff/分支/状态栏/控制台 + `.git` watch 刷新）、A2 提交闭环、A3 分支/贮藏/冲突（四个 Level 0 页、集成操作、操作控制、冲突列表、贮藏页）、B1 三栏合并（合并模型、合并 store、三栏合并窗口、冲突列表增强与审查更改；`mergeWindow` 默认开启）。B2 历史与 Blame（Host blame/fileHistory/compare 与 diff range、Blame 视图与 `git.blame` 页、文件历史页、比较页、覆盖层返回链、跨 tab 意图队列）。B3a 交互式变基（`rebasePlan`/`interactiveRebase`、共享 todo 规则、变基覆盖页、日志快捷动作；flag `interactiveRebase` 默认开启）与 B3b Diff 增强与提交菜单（并排/词级/忽略空白/完整文件、撤销提交/推送到此/新建标签/Fixup·Squash into/补丁导出与应用；`src/client/settings.ts` 记住 Diff 模式）、B3c 搁架与 Changelist（贮藏页「贮藏 | 搁架」分段、提交页按 Changelist 分组）、B3d Worktree 与远程（远程页、Worktree 页（flag `worktrees` 默认开启）、标签推送/删除、远程分支删除、upstream）。B4b：样式变量全量校正与静态检查（[ADR 0012](decisions/0012-样式变量快照与状态色文字混色.md)）、DOM 测试环境、分支树漫游、菜单键盘统一、模态 Tab 圈定、对比度修正、内容区动效。
+> 状态：2026-10-29，B3、B4a（设置页与 Blame 渲染器）、B4b（a11y 与样式变量）、B4c（性能）已合并——A1 只读（日志/提交图/详情/diff/分支/状态栏/控制台 + `.git` watch 刷新）、A2 提交闭环、A3 分支/贮藏/冲突（四个 Level 0 页、集成操作、操作控制、冲突列表、贮藏页）、B1 三栏合并（合并模型、合并 store、三栏合并窗口、冲突列表增强与审查更改；`mergeWindow` 默认开启）。B2 历史与 Blame（Host blame/fileHistory/compare 与 diff range、Blame 视图与 `git.blame` 页、文件历史页、比较页、覆盖层返回链、跨 tab 意图队列）。B3a 交互式变基（`rebasePlan`/`interactiveRebase`、共享 todo 规则、变基覆盖页、日志快捷动作；flag `interactiveRebase` 默认开启）与 B3b Diff 增强与提交菜单（并排/词级/忽略空白/完整文件、撤销提交/推送到此/新建标签/Fixup·Squash into/补丁导出与应用；`src/client/settings.ts` 记住 Diff 模式）、B3c 搁架与 Changelist（贮藏页「贮藏 | 搁架」分段、提交页按 Changelist 分组）、B3d Worktree 与远程（远程页、Worktree 页（flag `worktrees` 默认开启）、标签推送/删除、远程分支删除、upstream）。B4b：样式变量全量校正与静态检查（[ADR 0012](decisions/0012-样式变量快照与状态色文字混色.md)）、DOM 测试环境、分支树漫游、菜单键盘统一、模态 Tab 圈定、对比度修正、内容区动效。B4c：`scripts/bench`（Host 基准）与 `scripts/bench-client`（日志滚动 harness）、执行器 `directBinary`、CodeMirror 按需 chunk `lib/client.merge.js`（[ADR 0013](decisions/0013-客户端产物拆分按需chunk与标识符后压缩.md)）。
 > 分层规则 R1–R5 已写入 [`.dependency-cruiser.cjs`](../.dependency-cruiser.cjs)，由 `make check` 强制执行。
 
 ## 1. 仓库顶层
@@ -21,7 +21,7 @@ dsh-idea-gittool/
     shared/                 # 两端共用的纯类型与 RPC 协议
   test/                     # vitest 单测 + 产物 smoke；*.dom.test.tsx 在 happy-dom 下跑（辅助 test/client/dom.tsx，B4b）
   docs/                     # 知识库（设计、SOP、计划、ADR、references、runbooks）
-  scripts/                  # 文档检查等开发脚本；contrast-probe.mjs 是 L4 对比度测量（不进产物，B4b）
+  scripts/                  # 文档检查等开发脚本；contrast-probe.mjs 是 L4 对比度测量（不进产物，B4b）；bench/、bench-client/ 是性能基准（B4c）
   .githooks/                # pre-commit → make check-fast
 ```
 
@@ -47,7 +47,7 @@ dsh-idea-gittool/
 | `src/host/{write-queue,sandbox-gate}.ts` | 每仓库写队列（串行、`requestId` 去重）；写门禁 `resolveWriteAccess` 每次写请求重新判定并给出 confiner，只读原因带稳定 `reasonCode` | `src/shared/`、`git-executor.ts` |
 | `src/host/{watch,cache}.ts` | `.git` 关键目标经 `ctx.fs`（先 `resolve()` 再 `watch()`）防抖监听，另枚举 `refs/{heads,remotes,tags}` 的嵌套子目录逐个监听（≤256，超出降级），递增每仓库 version 使缓存失效；无 `fs` 时降级为 1s TTL + 客户端 3s 轮询 | `node:path`、`node:fs/promises`（只读枚举嵌套 refs 目录） |
 | `src/shared/` | `rebase-todo.ts`（B3a：todo 校验与生成，Host 执行与客户端预览共用的纯函数）；RPC 方法与 payload 类型（`RpcEndpointTypes` 逐端点穷举；`WRITE_ENDPOINTS` 为写端点子集；A3 契约在 T1 冻结）、文件状态与 diff 数据结构、错误码 | 无（只放两端都能内联的类型与常量） |
-| `build.mjs` | 产出 `lib/host.js` / `lib/client.js`，复刻 `window.__ModuleLoader__` 契约与 baseline externals | `package.json`；以 `src/` 为构建输入 |
+| `build.mjs` | 产出 `lib/host.js` / `lib/client.js` / 按需 chunk `lib/client.merge.js`（B4c），复刻 `window.__ModuleLoader__` 契约与 baseline externals | `package.json`；以 `src/` 为构建输入 |
 | `scripts/check_docs.py` | 文档链接、计划/ADR 章节、技术债编号、AGENTS.md 行数检查 | 无（仅 Python 标准库） |
 
 ## 3. 分层规则

@@ -2,6 +2,8 @@
 // 只接受 argv 数组（不经 shell），清掉继承的仓库选择器，输出超限就整体失败，
 // 绝不把半截输出交给解析层。
 
+import { tmpdir } from 'node:os'
+
 import type { SubprocessHandle, SubprocessRuntime } from '@deepseek-ai/dsh-subprocess'
 
 import { GIT_NETWORK_TIMEOUT_MS, GIT_WRITE_TIMEOUT_MS } from '../shared/protocol.ts'
@@ -157,6 +159,20 @@ export interface GitRunnerDefaults {
   timeoutMs?: number | undefined
   stdoutMaxBytes?: number | undefined
   stderrMaxBytes?: number | undefined
+  /**
+   * B4c T2: probe `git --exec-path` once and run the `git` binary found there. The PATH `git`
+   * can be a launcher (macOS `/usr/bin/git` goes through xcrun) that costs 5–40ms per spawn.
+   * Falls back to the PATH result when the probe finds nothing. The probe owns its deadline and
+   * cwd, so one caller's cancellation never fails the others; a probe that timed out or could not
+   * spawn is not cached. A cached binary is re-checked before each use (a `brew upgrade git`
+   * removes the old Cellar path) and re-probed when it is gone.
+   */
+  directBinary?: boolean | undefined
+}
+
+/** Name of the git binary inside `--exec-path`. */
+function directBinaryName(): string {
+  return process.platform === 'win32' ? 'git.exe' : 'git'
 }
 
 /** One git invocation boundary: argv + completely specified execution world. */
@@ -212,6 +228,95 @@ export function createGitRunner(
   const defaultTimeoutMs = defaults.timeoutMs ?? GIT_TIMEOUT_MS
   const defaultStdoutMaxBytes = defaults.stdoutMaxBytes ?? GIT_STDOUT_MAX_BYTES
   const defaultStderrMaxBytes = defaults.stderrMaxBytes ?? GIT_STDERR_MAX_BYTES
+  /** Shared direct-binary decision (B4c T2); cleared when a probe did not settle or the binary vanished. */
+  let directProgram: Promise<string> | undefined
+
+  /** The probe's own outcome: `settled: false` means "use this once, do not cache". */
+  const probeDirect = async (fallback: string): Promise<{ program: string; settled: boolean }> => {
+    const signal = AbortSignal.timeout(defaultTimeoutMs)
+    let child: SubprocessHandle
+    try {
+      // `--exec-path` does not depend on the repository: a fixed, existing cwd keeps a caller's
+      // missing directory from failing the probe for everybody (final review I3).
+      child = subprocess.spawn({
+        argv: [fallback, '--exec-path'],
+        cwd: tmpdir(),
+        env: GIT_READ_ENV,
+        signal,
+        graceMs: GIT_GRACE_MS,
+        stdio: { stdin: 'ignore', stdout: { maxBytes: 64 * 1024 }, stderr: { maxBytes: 64 * 1024 } },
+      })
+    } catch {
+      return { program: fallback, settled: false }
+    }
+    try {
+      const outcome = await child.done.catch(() => null)
+      // A killed or failed probe exits too: never settle the decision on such a run.
+      if (outcome === null || signal.aborted) return { program: fallback, settled: false }
+      const dir = outcome.exitCode === 0 ? (child.collected.stdout?.readFrom(0).text ?? '').trim() : ''
+      if (dir === '') return { program: fallback, settled: true }
+      try {
+        return { program: await subprocess.resolveExecutable(`${dir}/${directBinaryName()}`, undefined, signal), settled: true }
+      } catch {
+        return { program: fallback, settled: !signal.aborted }
+      }
+    } finally {
+      child.terminate()
+      await child.waitForExit().catch(() => false)
+    }
+  }
+
+  /** Wait for `promise` unless the caller's `signal` aborts first (the shared work keeps running). */
+  const untilAborted = <T>(promise: Promise<T>, signal: AbortSignal): Promise<T> =>
+    new Promise<T>((resolve, reject) => {
+      if (signal.aborted) {
+        reject(signal.reason)
+        return
+      }
+      const onAbort = (): void => { reject(signal.reason) }
+      signal.addEventListener('abort', onAbort, { once: true })
+      promise.then(resolve, reject).finally(() => { signal.removeEventListener('abort', onAbort) })
+    })
+
+  /** Bumped per probe, so a finished probe only clears the cache it created. */
+  let probeGeneration = 0
+
+  const sharedDirect = (): Promise<string> => {
+    if (directProgram === undefined) {
+      const generation = ++probeGeneration
+      const forget = (): void => {
+        if (probeGeneration === generation) directProgram = undefined
+      }
+      // Assigned before any await, so concurrent first callers share one probe.
+      directProgram = (async () => {
+        const fallback = await subprocess.resolveExecutable('git', undefined, AbortSignal.timeout(defaultTimeoutMs))
+        const { program, settled } = await probeDirect(fallback)
+        if (!settled) forget()
+        return program
+      })()
+      directProgram.catch(forget)
+    }
+    return directProgram
+  }
+
+  const resolveProgram = async (signal: AbortSignal): Promise<string> => {
+    if (defaults.directBinary !== true) return subprocess.resolveExecutable('git', undefined, signal)
+    const cached = directProgram
+    const program = await untilAborted(sharedDirect(), signal)
+    if (cached === undefined) return program
+    // A binary cached by an earlier probe may have been removed since (final review I2).
+    try {
+      await subprocess.resolveExecutable(program, undefined, signal)
+      return program
+    } catch (error) {
+      if (signal.aborted) throw error
+      if (directProgram === cached) {
+        directProgram = undefined
+        probeGeneration += 1
+      }
+      return untilAborted(sharedDirect(), signal)
+    }
+  }
 
   return async function runGit(argv, options) {
     const mode = options.mode ?? 'read'
@@ -247,7 +352,7 @@ export function createGitRunner(
 
     let program: string
     try {
-      program = await subprocess.resolveExecutable('git', undefined, lifetime)
+      program = await resolveProgram(lifetime)
     } catch (error) {
       throw new GitCommandFailure(
         classifyAbort(error).code,

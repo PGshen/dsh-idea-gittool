@@ -9,6 +9,7 @@ import type { LogQuery } from '../../src/host/git/log.ts'
 import { encodeLogCursor, parseLogCursor, readLog } from '../../src/host/git/log.ts'
 import { createTempRepo } from './fixtures.ts'
 import { createFakeSubprocess } from './fake-subprocess.ts'
+import { GIT_BINARY } from './git-binary.ts'
 
 const cleanups: Array<() => void> = []
 
@@ -194,7 +195,7 @@ describe('readLog', () => {
     await readLog(run, repo.root, query)
 
     const argv = fake.spawns.at(-1)?.spec.argv ?? []
-    expect(argv[0]).toBe('git')
+    expect(argv[0]).toBe(GIT_BINARY)
     expect(argv).toContain('log')
     expect(argv).toContain('--max-count=2')
     expect(argv).toContain('--no-ext-diff')

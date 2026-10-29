@@ -8,6 +8,7 @@ import { createGitRunner } from '../../src/host/git-executor.ts'
 import { readBranches } from '../../src/host/git/branches.ts'
 import { createTempRepo } from './fixtures.ts'
 import { createFakeSubprocess } from './fake-subprocess.ts'
+import { GIT_BINARY } from './git-binary.ts'
 
 const cleanups: Array<() => void> = []
 
@@ -142,7 +143,7 @@ describe('readBranches', () => {
     await readBranches(run, repo.root)
 
     const argv = fake.spawns.at(-1)?.spec.argv ?? []
-    expect(argv[0]).toBe('git')
+    expect(argv[0]).toBe(GIT_BINARY)
     expect(argv).toContain('for-each-ref')
     expect(argv).toContain('refs/heads')
     expect(argv).toContain('refs/remotes')

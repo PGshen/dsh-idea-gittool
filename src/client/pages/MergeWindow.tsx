@@ -21,8 +21,11 @@ import { useMergeState } from '../store/merge-store.ts'
 import type { MergeAction, MergeStore, MergeStoreState } from '../store/merge-store.ts'
 import { Button } from '../ui/Button.tsx'
 import { useInitialFocus } from './integrate-parts.tsx'
-import { createMergePane, createScrollLock, gutterAction, mapLine, resultEditable, revealLine, scrollToLine, topLine } from './merge-editor.ts'
+// B4c T3: CodeMirror is an on-demand chunk; only types and CodeMirror-free helpers are imported here.
+import { loadMergeEditor, loadedMergeEditor } from './merge-editor-loader.ts'
+import type { MergeEditor } from './merge-editor-loader.ts'
 import type { MergePane, MergePaneClasses, MergePaneHandle } from './merge-editor.ts'
+import { resultEditable } from './merge-pane-state.ts'
 import { useMergeFullscreen } from './merge-fullscreen.ts'
 import type { SidebarFullscreen } from './merge-fullscreen.ts'
 import { adjacentPath, createMergeWindowController, focusIsLost, isStrayEscape, mergeKeyCommand, refocusAfterGutter, shouldRefocusAfterWrite } from './merge-window-controller.ts'
@@ -98,6 +101,8 @@ export interface MergeWindowViewProps {
   handlers: MergeWindowHandlers
   windowRef?: Ref<HTMLDivElement>
   paneRefs?: Partial<Record<MergePane, Ref<HTMLDivElement>>>
+  /** B4c T3: the CodeMirror chunk failed to load; the panes stay empty until a retry succeeds. */
+  editor?: { failed: boolean; onRetry: () => void }
   onKeyDown?: (event: KeyboardEvent<HTMLDivElement>) => void
 }
 
@@ -143,6 +148,12 @@ export function MergeWindowView(props: MergeWindowViewProps): ReactNode {
     body = (
       <>
         {sides.note === null ? null : <p className={css.note} data-rebase-note>{sides.note}</p>}
+        {props.editor?.failed === true ? (
+          <p className={css.error} role="alert" data-merge-editor-failed>
+            {t('merge.editorFailed')}{' '}
+            <Button data-merge-editor-retry onClick={props.editor.onRetry}>{t('merge.retry')}</Button>
+          </p>
+        ) : null}
         <div className={css.panes}>
           {pane('left', sides.left.name, `${sides.left.name} · ${sides.left.technical}`)}
           {pane('result', t('merge.pane.result'), t('merge.pane.result.title'))}
@@ -349,66 +360,86 @@ function MergeFileSession(props: MergeWindowProps): ReactNode {
   const leftLabels = { accept: t('merge.chunk.accept', { label: sides.left.label }), ignore: t('merge.chunk.ignore', { label: sides.left.label }) }
   const rightLabels = { accept: t('merge.chunk.accept', { label: sides.right.label }), ignore: t('merge.chunk.ignore', { label: sides.right.label }) }
   const labelKey = [leftLabels.accept, leftLabels.ignore, rightLabels.accept, rightLabels.ignore, sides.left.name, sides.right.name, t('merge.pane.result')].join('\u0000')
+  const [editorLoad, setEditorLoad] = useState<{ failed: boolean; attempt: number }>({ failed: false, attempt: 0 })
   useEffect(() => {
-    const model = store.getState().model
     const hosts = { left: leftRef.current, result: resultRef.current, right: rightRef.current }
-    if (file === null || model === null || hosts.left === null || hosts.result === null || hosts.right === null) return undefined
-    const [leftAccept, leftIgnore, rightAccept, rightIgnore, leftName, rightName, resultName] = labelKey.split('\u0000') as [string, string, string, string, string, string, string]
-    const classes = paneClasses()
-    const lock = createScrollLock()
-    const handles: Partial<Record<MergePane, MergePaneHandle>> = {}
-    const onScroll = (pane: MergePane) => (): void => {
-      const source = handles[pane]
-      const current = store.getState().model
-      if (source === undefined || current === null || !lock.begin(pane)) return
-      const line = topLine(source.view)
-      for (const other of PANES) {
-        const target = handles[other]
-        if (other !== pane && target !== undefined) scrollToLine(target.view, mapLine(current, pane, other, line))
+    if (file === null || store.getState().model === null || hosts.left === null || hosts.result === null || hosts.right === null) return undefined
+    /** Create the three editors once the CodeMirror chunk is available; returns their teardown. */
+    const mountPanes = (editor: MergeEditor): (() => void) | undefined => {
+      const { createMergePane, createScrollLock, gutterAction, mapLine, revealLine, scrollToLine, topLine } = editor
+      const model = store.getState().model
+      if (model === null || hosts.left === null || hosts.result === null || hosts.right === null) return undefined
+      const [leftAccept, leftIgnore, rightAccept, rightIgnore, leftName, rightName, resultName] = labelKey.split('\u0000') as [string, string, string, string, string, string, string]
+      const classes = paneClasses()
+      const lock = createScrollLock()
+      const handles: Partial<Record<MergePane, MergePaneHandle>> = {}
+      const onScroll = (pane: MergePane) => (): void => {
+        const source = handles[pane]
+        const current = store.getState().model
+        if (source === undefined || current === null || !lock.begin(pane)) return
+        const line = topLine(source.view)
+        for (const other of PANES) {
+          const target = handles[other]
+          if (other !== pane && target !== undefined) scrollToLine(target.view, mapLine(current, pane, other, line))
+        }
+      }
+      const onGutter = (kind: 'accept' | 'ignore', chunk: { id: number; side: 'left' | 'right' }, modifier: boolean): void => {
+        // Mouse presses keep the editor's focus (mousedown is prevented); only a focused button needs a successor.
+        const active = globalThis.document?.activeElement
+        gutterFocus.current = active instanceof HTMLElement && active.dataset['chunkAction'] !== undefined
+          ? { pane: chunk.side, chunk: chunk.id, kind }
+          : null
+        controller.run(gutterAction(kind, chunk.id, chunk.side, modifier))
+      }
+      handles.left = createMergePane({
+        parent: hosts.left, pane: 'left', doc: model.leftLines.join(''), editable: false, ariaLabel: leftName, classes,
+        labels: { accept: leftAccept, ignore: leftIgnore }, onGutter, onScroll: onScroll('left'),
+      })
+      handles.result = createMergePane({
+        parent: hosts.result, pane: 'result', doc: model.result, editable: resultEditable(store.getState().status), ariaLabel: resultName, classes,
+        onEdits: (edits) => {
+          for (const edit of edits) store.edit(edit.from, edit.to, edit.insert)
+          // Safety net: an edit the store did not take (not ready) must not stay only in the editor.
+          const latest = store.getState().model
+          const result = handles.result
+          if (latest !== null && result !== undefined && latest.result !== result.view.state.doc.toString()) {
+            result.update(latest, controller.getState().currentChunk)
+          }
+        },
+        onScroll: onScroll('result'),
+      })
+      handles.right = createMergePane({
+        parent: hosts.right, pane: 'right', doc: model.rightLines.join(''), editable: false, ariaLabel: rightName, classes,
+        labels: { accept: rightAccept, ignore: rightIgnore }, onGutter, onScroll: onScroll('right'),
+      })
+      panes.current = handles
+      for (const handle of Object.values(handles)) handle.update(model, controller.getState().currentChunk)
+      controller.setReveal((id) => {
+        const chunk = store.getState().model?.chunks[id]
+        if (chunk !== undefined && handles.result !== undefined) revealLine(handles.result.view, chunk.resultRange.start)
+      })
+      if (nextUnresolved(model, null, 'next') !== null) controller.navigate('next')
+      return () => {
+        controller.setReveal(null)
+        panes.current = null
+        for (const handle of Object.values(handles)) handle.destroy()
       }
     }
-    const onGutter = (kind: 'accept' | 'ignore', chunk: { id: number; side: 'left' | 'right' }, modifier: boolean): void => {
-      // Mouse presses keep the editor's focus (mousedown is prevented); only a focused button needs a successor.
-      const active = globalThis.document?.activeElement
-      gutterFocus.current = active instanceof HTMLElement && active.dataset['chunkAction'] !== undefined
-        ? { pane: chunk.side, chunk: chunk.id, kind }
-        : null
-      controller.run(gutterAction(kind, chunk.id, chunk.side, modifier))
+    let unmounted = false
+    let teardown: (() => void) | undefined
+    const ready = loadedMergeEditor()
+    if (ready !== undefined) teardown = mountPanes(ready)
+    else {
+      loadMergeEditor().then(
+        (editor) => { if (!unmounted) teardown = mountPanes(editor) },
+        () => { if (!unmounted) setEditorLoad((current) => ({ failed: true, attempt: current.attempt })) },
+      )
     }
-    handles.left = createMergePane({
-      parent: hosts.left, pane: 'left', doc: model.leftLines.join(''), editable: false, ariaLabel: leftName, classes,
-      labels: { accept: leftAccept, ignore: leftIgnore }, onGutter, onScroll: onScroll('left'),
-    })
-    handles.result = createMergePane({
-      parent: hosts.result, pane: 'result', doc: model.result, editable: resultEditable(store.getState().status), ariaLabel: resultName, classes,
-      onEdits: (edits) => {
-        for (const edit of edits) store.edit(edit.from, edit.to, edit.insert)
-        // Safety net: an edit the store did not take (not ready) must not stay only in the editor.
-        const latest = store.getState().model
-        const result = handles.result
-        if (latest !== null && result !== undefined && latest.result !== result.view.state.doc.toString()) {
-          result.update(latest, controller.getState().currentChunk)
-        }
-      },
-      onScroll: onScroll('result'),
-    })
-    handles.right = createMergePane({
-      parent: hosts.right, pane: 'right', doc: model.rightLines.join(''), editable: false, ariaLabel: rightName, classes,
-      labels: { accept: rightAccept, ignore: rightIgnore }, onGutter, onScroll: onScroll('right'),
-    })
-    panes.current = handles
-    for (const handle of Object.values(handles)) handle.update(model, controller.getState().currentChunk)
-    controller.setReveal((id) => {
-      const chunk = store.getState().model?.chunks[id]
-      if (chunk !== undefined && handles.result !== undefined) revealLine(handles.result.view, chunk.resultRange.start)
-    })
-    if (nextUnresolved(model, null, 'next') !== null) controller.navigate('next')
     return () => {
-      controller.setReveal(null)
-      panes.current = null
-      for (const handle of Object.values(handles)) handle.destroy()
+      unmounted = true
+      teardown?.()
     }
-  }, [controller, file, hasModel, labelKey, store])
+  }, [controller, file, hasModel, labelKey, store, editorLoad.attempt])
   const model = state.model
   const currentChunk = ui.currentChunk
   useEffect(() => {
@@ -542,6 +573,7 @@ function MergeFileSession(props: MergeWindowProps): ReactNode {
       handlers={handlers}
       windowRef={windowRef}
       paneRefs={{ left: leftRef, result: resultRef, right: rightRef }}
+      editor={{ failed: editorLoad.failed, onRetry: () => { setEditorLoad((current) => ({ failed: false, attempt: current.attempt + 1 })) } }}
       onKeyDown={onKeyDown}
     />
   )

@@ -11,6 +11,7 @@ import { createGitConsole } from '../../src/host/console.ts'
 import { parseStatusPorcelainV2Z, readStatus } from '../../src/host/git/status.ts'
 import { canonicalPath, createTempRepo } from './fixtures.ts'
 import { createFakeSubprocess } from './fake-subprocess.ts'
+import { GIT_BINARY } from './git-binary.ts'
 
 const cleanups: Array<() => void> = []
 
@@ -308,7 +309,7 @@ describe('readStatus', () => {
     // status is no longer the last spawn (the stash count follows it); find it by subcommand.
     const last = fake.spawns.find(spawn => spawn.spec.argv.includes('status'))
     expect(last?.spec.cwd).toBe(repo.root)
-    expect(last?.spec.argv[0]).toBe('git')
+    expect(last?.spec.argv[0]).toBe(GIT_BINARY)
     expect(last?.spec.argv).toContain('--porcelain=v2')
     expect(last?.spec.argv).toContain('-z')
     expect(last?.spec.argv).toContain('--branch')

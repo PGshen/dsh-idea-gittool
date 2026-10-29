@@ -1,4 +1,5 @@
-import { mkdtempSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, realpathSync, rmSync } from 'node:fs'
+import { spawnSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -17,6 +18,7 @@ import {
   writeExecutableScript,
 } from './fixtures.ts'
 import { createFakeSubprocess, lastSpawn } from './fake-subprocess.ts'
+import { GIT_BINARY } from './git-binary.ts'
 
 const cleanups: Array<() => void> = []
 
@@ -53,7 +55,7 @@ describe('createGitRunner', () => {
     expect(canonicalPath(result.stdout.trim())).toBe(canonicalPath(repo.root))
 
     const spec = lastSpawn(fake)
-    expect(spec.argv[0]).toBe('git')
+    expect(spec.argv[0]).toBe(GIT_BINARY)
     expect(spec.argv.slice(1)).toEqual(['rev-parse', '--show-toplevel'])
     expect(spec.cwd).toBe(repo.root)
     expect(spec.stdio.stdin).toBe('ignore')
@@ -151,6 +153,129 @@ describe('createGitRunner', () => {
     await delay(60)
     controller.abort()
     await assertion
+  })
+})
+
+function probes(fake: ReturnType<typeof createFakeSubprocess>): number {
+  return fake.spawns.filter((spawn) => spawn.spec.argv.slice(1).join(' ') === '--exec-path').length
+}
+
+describe('createGitRunner directBinary (B4c T2)', () => {
+  const directGit = realpathSync(
+    join(spawnSync('git', ['--exec-path'], { encoding: 'utf8' }).stdout.trim(), 'git'),
+  )
+
+  it('runs every command with the git binary under --exec-path after one probe', async () => {
+    const repo = makeRepo()
+    const fake = createFakeSubprocess()
+    const run = createGitRunner(fake, { directBinary: true })
+
+    await run(['rev-parse', 'HEAD'], { cwd: repo.root })
+    await run(['status', '--porcelain'], { cwd: repo.root })
+
+    expect(probes(fake)).toBe(1)
+    const commands = fake.spawns.filter((spawn) => spawn.spec.argv[1] !== '--exec-path')
+    expect(commands.map((spawn) => spawn.spec.argv[0])).toEqual([directGit, directGit])
+  })
+
+  it('keeps the PATH git when --exec-path has no git binary', async () => {
+    const repo = makeRepo()
+    const dir = makeTempDir()
+    const shim = writeExecutableScript(
+      dir,
+      'git-shim.sh',
+      `#!/bin/sh\nif [ "$1" = "--exec-path" ]; then echo ${dir}/empty; exit 0; fi\nexec git "$@"\n`,
+    )
+    const fake = createFakeSubprocess({ executable: shim })
+    const run = createGitRunner(fake, { directBinary: true })
+
+    const result = await run(['rev-parse', '--show-toplevel'], { cwd: repo.root })
+    await run(['status'], { cwd: repo.root })
+
+    expect(result.exitCode).toBe(0)
+    expect(lastSpawn(fake).argv[0]).toBe(shim)
+    expect(probes(fake)).toBe(1)
+  })
+
+  /** A PATH git whose `--exec-path` (after `delaySec`) names `dir`; other commands run the real git. */
+  function shimGit(dir: string, execPath: string, delaySec = 0): string {
+    return writeExecutableScript(
+      dir,
+      'git-shim.sh',
+      `#!/bin/sh\nif [ "$1" = "--exec-path" ]; then sleep ${String(delaySec)}; echo ${execPath}; exit 0; fi\nexec ${GIT_BINARY} "$@"\n`,
+    )
+  }
+
+  it('final review I2: a cached direct binary that disappears (git upgraded) is re-probed, not fatal', async () => {
+    const repo = makeRepo()
+    const dir = makeTempDir()
+    const core = join(dir, 'git-core')
+    mkdirSync(core)
+    const direct = writeExecutableScript(core, 'git', `#!/bin/sh\nexec ${GIT_BINARY} "$@"\n`)
+    const shim = shimGit(dir, core)
+    const fake = createFakeSubprocess({ executable: shim })
+    const run = createGitRunner(fake, { directBinary: true })
+
+    await run(['status'], { cwd: repo.root })
+    expect(lastSpawn(fake).argv[0]).toBe(realpathSync(direct))
+    rmSync(direct)
+    const after = await run(['rev-parse', '--show-toplevel'], { cwd: repo.root })
+
+    expect(after.exitCode).toBe(0)
+    expect(lastSpawn(fake).argv[0]).toBe(shim)
+    expect(probes(fake)).toBe(2)
+  })
+
+  it('final review I3: one caller timing out during the shared probe does not fail the others', async () => {
+    const repo = makeRepo()
+    const dir = makeTempDir()
+    const fake = createFakeSubprocess({ executable: shimGit(dir, join(dir, 'none'), 0.5) })
+    const run = createGitRunner(fake, { directBinary: true })
+
+    const impatient = run(['status'], { cwd: repo.root, timeoutMs: 100 })
+    const patient = run(['rev-parse', '--show-toplevel'], { cwd: repo.root })
+
+    await expect(impatient).rejects.toMatchObject({ code: 'git/timeout' })
+    await expect(patient).resolves.toMatchObject({ exitCode: 0 })
+    expect(probes(fake)).toBe(1)
+  })
+
+  it('final review I3: a first caller with a missing cwd does not break the probe for the others', async () => {
+    const repo = makeRepo()
+    const fake = createFakeSubprocess()
+    const run = createGitRunner(fake, { directBinary: true })
+
+    await expect(run(['status'], { cwd: join(repo.root, 'missing-dir') })).rejects.toBeInstanceOf(GitCommandFailure)
+    await run(['status'], { cwd: repo.root })
+
+    expect(lastSpawn(fake).argv[0]).toBe(directGit)
+  })
+
+  it('a probe that times out on its own is not cached and runs again next time', async () => {
+    const repo = makeRepo()
+    const dir = makeTempDir()
+    const fake = createFakeSubprocess({ executable: shimGit(dir, join(dir, 'none'), 2) })
+    const run = createGitRunner(fake, { directBinary: true, timeoutMs: 300 })
+
+    await expect(run(['status'], { cwd: repo.root })).rejects.toMatchObject({ code: 'git/timeout' })
+    // The probe has its own 300ms deadline; once it has ended unsettled, the next call probes again.
+    await delay(400)
+    fake.executable = GIT_BINARY
+    await run(['status'], { cwd: repo.root })
+
+    expect(probes(fake)).toBe(2)
+    expect(lastSpawn(fake).argv[0]).toBe(directGit)
+  })
+
+  it('is off by default: commands use the resolved executable without probing', async () => {
+    const repo = makeRepo()
+    const fake = createFakeSubprocess()
+    const run = createGitRunner(fake)
+
+    await run(['status'], { cwd: repo.root })
+
+    expect(probes(fake)).toBe(0)
+    expect(lastSpawn(fake).argv[0]).toBe(GIT_BINARY)
   })
 })
 

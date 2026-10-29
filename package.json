@@ -35,11 +35,13 @@
     "build": "node build.mjs",
     "dev": "node build.mjs --watch",
     "smoke": "node test/bundle.smoke.mjs",
+    "bench": "node --experimental-transform-types --no-warnings scripts/bench/host.ts",
+    "bench:client": "node scripts/bench-client/build.mjs",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "layers": "depcruise src --config .dependency-cruiser.cjs",
     "test": "vitest run --exclude '.claude/**' --exclude '.evidence/**' --exclude '**/node_modules/**'",
-    "check": "pnpm run lint && pnpm run typecheck && pnpm run layers && pnpm run test",
+    "check": "pnpm run lint && pnpm run typecheck && pnpm run layers && pnpm run test && pnpm run build && pnpm run smoke",
     "check:fast": "pnpm run lint && pnpm run typecheck"
   },
   "devDependencies": {

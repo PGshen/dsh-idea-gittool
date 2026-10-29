@@ -6,6 +6,8 @@ import { chmodSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync 
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 
+import { GIT_BINARY } from './git-binary.ts'
+
 /** One git invocation result, non-throwing so conflict setups are expressible. */
 export interface GitResult {
   status: number
@@ -57,7 +59,7 @@ export function writeExecutableScript(directory: string, name: string, body: str
 export function createTempRepo(options: { initialCommit?: boolean } = {}): TempRepo {
   const root = realpathSync(createTempDir('dsh-git-repo-'))
   const run = (args: string[], throwOnError: boolean): GitResult => {
-    const result = spawnSync('git', args, {
+    const result = spawnSync(GIT_BINARY, args, {
       cwd: root,
       env: TEST_GIT_ENV,
       encoding: 'utf8',

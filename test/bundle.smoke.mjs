@@ -1,8 +1,10 @@
 // 产物 smoke：不依赖浏览器，也不依赖 DSH。
 // 校验 lib/client.js 的 __ModuleLoader__ 包装契约与 lib/host.js 的 apply 导出。
 // 契约来源：docs/references/dsh-integration-feasibility.md §5.4（TD-1 要盯住的部分）。
+import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import vm from 'node:vm'
+import { gzipSync } from 'node:zlib'
 
 const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
 // factory(require) 里的 require 就是宿主注入的 baseline 模块表；未知请求必须失败。
@@ -21,6 +23,16 @@ const PLATFORM_MODULES = new Set([
 ])
 const errors = []
 const fail = (message) => errors.push(message)
+
+// Stand-in for a baseline module: every export is an identity function, so module-level calls such
+// as React's `memo(Component)` succeed while the factory runs (B4c final review: `{}` threw there
+// and silently skipped every check after it).
+const baselineStub = () => new Proxy({}, { get: (_target, key) => (key === 'then' ? undefined : (value) => value) })
+
+// 设计 §16.8 包体积预算：client.js ≤ 250 KB gzip（B4c T3）。
+const CLIENT_GZIP_MAX = 250 * 1024
+const clientGzip = gzipSync(readFileSync(new URL('../lib/client.js', import.meta.url))).length
+if (clientGzip > CLIENT_GZIP_MAX) fail(`lib/client.js gzip ${clientGzip} 字节，超出预算 ${CLIENT_GZIP_MAX}`)
 
 // ---- client bundle ----
 let registration
@@ -48,7 +60,7 @@ if (registration === undefined) {
     const mod = registration.factory((name) => {
       requested.push(name)
       if (!PLATFORM_MODULES.has(name)) throw new Error(`未预期的 require：${name}`)
-      return {}
+      return baselineStub()
     })
     if (mod === null || typeof mod !== 'object') {
       fail('client factory 没有返回模块对象')
@@ -79,10 +91,10 @@ if (registration === undefined) {
     }
     sandbox.document = fakeDocument
     try {
-      registration.factory(() => ({}))
+      registration.factory(baselineStub)
       const first = styles[0]
       if (first !== undefined) first.textContent = 'stale'
-      registration.factory(() => ({}))
+      registration.factory(baselineStub)
       if (styles.length !== 1) fail(`factory 重复执行后应只有 1 个插件 <style>，实际 ${styles.length}`)
       else if (styles[0].textContent === 'stale' || styles[0].textContent === '') fail('factory 重复执行（HMR）没有更新插件 <style> 内容')
     } finally {
@@ -94,6 +106,43 @@ if (registration === undefined) {
   }
 }
 
+// ---- merge-window chunk (B4c T3) ----
+// DSH client-modules serves `client.<name>.js` next to client.js and loads it through the factory's
+// `require.async`; the chunk registers itself with the same id plus `chunk`.
+const MERGE_CHUNK = 'client.merge.js'
+const mainSource = readFileSync(new URL('../lib/client.js', import.meta.url), 'utf8')
+if (!mainSource.includes(`require.async("./${MERGE_CHUNK}")`)) fail(`client.js 没有通过 require.async 加载 ${MERGE_CHUNK}`)
+if (mainSource.includes('cm-editor') || mainSource.includes('merge-editor.ts')) fail('client.js 仍然包含 CodeMirror 或合并编辑器源码')
+// The package revision DSH computes from client.js must move when only the chunk changed.
+let chunkSource
+try {
+  chunkSource = readFileSync(new URL(`../lib/${MERGE_CHUNK}`, import.meta.url), 'utf8')
+} catch {
+  fail(`缺少 lib/${MERGE_CHUNK}`)
+}
+if (chunkSource !== undefined) {
+  const recorded = /^\/\/ client\.merge\.js ([0-9a-f]{12})$/mu.exec(mainSource)?.[1]
+  const actual = createHash('sha256').update(chunkSource).digest('hex').slice(0, 12)
+  if (recorded !== actual) fail(`client.js 记录的 chunk 哈希 ${recorded} 与 lib/${MERGE_CHUNK} 的 ${actual} 不一致`)
+  let chunkRegistration
+  const chunkWindow = { __ModuleLoader__: { load: (value) => { chunkRegistration = value } } }
+  // CodeMirror probes `document.documentElement.style` when its modules initialise.
+  vm.runInNewContext(chunkSource, { window: chunkWindow, console, document: { documentElement: { style: {} } } })
+  if (chunkRegistration === undefined) fail(`lib/${MERGE_CHUNK} 没有调用 window.__ModuleLoader__.load`)
+  else {
+    if (chunkRegistration.id !== pkg.name) fail(`chunk id 是 ${chunkRegistration.id}，应为 ${pkg.name}`)
+    if (chunkRegistration.chunk !== MERGE_CHUNK) fail(`chunk 字段是 ${chunkRegistration.chunk}，应为 ${MERGE_CHUNK}`)
+    const chunkRequested = []
+    const chunkExports = chunkRegistration.factory((name) => {
+      chunkRequested.push(name)
+      if (!PLATFORM_MODULES.has(name)) throw new Error(`未预期的 require：${name}`)
+      return baselineStub()
+    })
+    if (typeof chunkExports?.createMergePane !== 'function') fail(`${MERGE_CHUNK} 没有导出 createMergePane`)
+    if (chunkRequested.some(name => !PLATFORM_MODULES.has(name))) fail(`${MERGE_CHUNK} require 了非基线模块：${chunkRequested.join(', ')}`)
+  }
+}
+
 // ---- host bundle ----
 const host = await import(new URL('../lib/host.js', import.meta.url))
 if (typeof host.apply !== 'function') fail('lib/host.js 没有导出 apply 函数')
@@ -102,4 +151,4 @@ if (errors.length > 0) {
   console.error(`bundle smoke 失败：\n- ${errors.join('\n- ')}`)
   process.exit(1)
 }
-console.log('bundle smoke 通过')
+console.log(`bundle smoke 通过（client.js gzip ${(clientGzip / 1024).toFixed(1)} KB）`)

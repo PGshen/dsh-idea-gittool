@@ -27,10 +27,11 @@
 | 命令 | 作用 |
 |---|---|
 | `make setup` | 启用 git hooks；有 `package.json` 时安装依赖 |
-| `make check` | **唯一的质量关口**：lint、类型检查、分层契约、测试、文档检查。合并前必须全部通过 |
+| `make check` | **唯一的质量关口**：lint、类型检查、分层契约、测试、构建 + 产物 smoke、文档检查。合并前必须全部通过 |
 | `make check-fast` | pre-commit 运行的快速子集（文档检查 + lint/类型检查） |
 | `pnpm build` / `pnpm dev` | 构建双面产物（`lib/host.js`、`lib/client.js`）；`dev` 为 watch 模式 |
-| `pnpm smoke` | 不依赖浏览器的产物契约校验（需先 `build`） |
+| `pnpm smoke` | 不依赖浏览器的产物契约校验（需先 `build`；含体积门槛与按需 chunk） |
+| `pnpm bench` / `pnpm bench:client` | L5 性能基准（10k 合成仓库 Host 延迟 / 日志滚动渲染 harness），不进 `make check` |
 
 代码骨架在 M0 计划中建立；之后新增构建/挂载命令时，必须同步更新本表和 runbooks。
 运行和自验证的方法见 [docs/runbooks/verification.md](docs/runbooks/verification.md)，环境搭建见 [docs/runbooks/dev-setup.md](docs/runbooks/dev-setup.md)。

@@ -29,6 +29,7 @@ import type { WriteOperations } from '../../src/host/rpc.ts'
 import { createRpcHandler } from '../../src/host/rpc.ts'
 import { createTempRepo } from './fixtures.ts'
 import { createFakeSubprocess, lastSpawn } from './fake-subprocess.ts'
+import { GIT_BINARY } from './git-binary.ts'
 
 const cleanups: Array<() => void> = []
 afterEach(() => {
@@ -113,8 +114,8 @@ describe('createGitRunner / write modes', () => {
     const result = await run(['rev-parse', 'HEAD'], { cwd: repo.root, mode: 'write', confine })
 
     expect(result.exitCode).toBe(0)
-    expect(seen).toEqual([['git', 'rev-parse', 'HEAD']])
-    expect(lastSpawn(fake).argv).toEqual(['env', 'git', 'rev-parse', 'HEAD'])
+    expect(seen).toEqual([[GIT_BINARY, 'rev-parse', 'HEAD']])
+    expect(lastSpawn(fake).argv).toEqual(['env', GIT_BINARY, 'rev-parse', 'HEAD'])
   })
 
   it('maps a confine failure to git/sandbox-denied without spawning', async () => {

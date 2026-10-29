@@ -15,7 +15,7 @@
 
 | 优先级 | 事项 | 来源 | 备注 |
 |---|---|---|---|
-| P1 | B4 打磨，拆成 4 份按序做：B4a 设置页 + Blame 渲染器（2026-10-28 已完成，见下方「已完成」）；B4b a11y 与样式变量（2026-10-28 已完成）；B4c 性能；B4d 跨平台/安装升级/文档（含 git 路径设置） | [设计决策 v0.2](../design/2026-10-25-产品设计决策-v0.2.md) §4 | 2026-10-28 负责人同意拆分；B4a、B4b 已完成，下一份 B4c |
+| P1 | B4 打磨，拆成 4 份按序做：B4a 设置页 + Blame 渲染器（2026-10-28 已完成，见下方「已完成」）；B4b a11y 与样式变量（2026-10-28 已完成）；B4c 性能（2026-10-29 已完成）；B4d 跨平台/安装升级/文档（含 git 路径设置） | [设计决策 v0.2](../design/2026-10-25-产品设计决策-v0.2.md) §4 | 2026-10-28 负责人同意拆分；B4a、B4b、B4c 已完成；B4d 已批准、进行中：[b4d-跨平台与安装升级](active/b4d-跨平台与安装升级.md) |
 | P2 | 筛选/仓库栏/分支右键菜单改用 ui-primitives `MenuSurface`/`Menu` | A1 走查，2026-10-25 | 当前按 [ADR 0006](../decisions/0006-浮层菜单材质例外.md) 手写菜单材质，迁移后废弃该 ADR |
 | P2 | 向 DSH 反馈：`workspace-write` 的 Seatbelt profile 放行 `DARWIN_USER_CACHE_DIR`，否则 osxkeychain 凭据助手在 confine 下不可用 | A2 T1 spike，2026-10-26 | 见 [references §13](../references/dsh-integration-feasibility.md)「写执行与沙箱」；只反馈不改 DSH 仓库，由负责人决定是否提 |
 | P2 | 控制台抽屉显示 `ConsoleRecord.stdinBytes`（「stdin: N bytes」），让走 stdin 的路径/提交信息在控制台里可见其存在 | A3 T1，2026-10-26 | Host 已记录字段；A3 未做 UI |
@@ -43,12 +43,15 @@
 | P2 | B2 终审 Minor（10 条）：Blame 未提交行双击应显示 HEAD→工作区（含已暂存）；修订版 Blame「文件不存在」文案区分修订并给「文件历史」按钮；文件历史第 2 页起合并条目路径退回新名（游标带当前路径）；文档头部 bootstrap 未到时误报「不在仓库」；`openTab` 失败后意图残留在队列；分支比较传 `entry.ref` 而非 `entry.name`（同名标签）；被该提交删除的文件禁用「与工作区比较」；窄头部 `⋯` 点动作/外部/Esc 收起；`git.blame` 页无返回时不吞 Esc；GitWorkbench 卸载时 `historyStore.close()` | B2 终审，2026-10-27 | 细节见 [b2 计划](completed/b2-历史与Blame.md)「决策记录」终审条目 |
 | P2 | B4a 终审 Minor（8 条）：Blame 渲染器正文按读完的文本长度作 key（同长度改动可能不刷新、多页文件 blame 请求两次），应改用 `useResource(...).value?.version`；bootstrap 失败或无 `absolutePath` 时正文空白；定义未声明 `wrap: true` 但回退原文读 `wrap`；草稿存在但不可用时不自动应用、Host 判草稿过期时却会；PageUp/PageDown 步长取创建时条数，改设置后与刷新页面后不一致（应固定常量或视口行数）；没打开过日志也会因改条数立即拉一次日志；改刷新间隔立即触发一次刷新、`GitBody` 订阅全部设置；`settings.ts` 读存储中途失败时静默回默认且不通知、写失败后不再写回存储 | B4a 终审，2026-10-28 | 细节见 [b4a 计划](completed/b4a-设置页与Blame渲染器.md)「决策记录」评审条目 |
 | P2 | B4b 终审 Minor（6 条）：搜索中对分组头/目录按 ← 会切换被搜索强制展开的存储折叠状态；分支抽屉与推送被拒页滑入方向变为竖向；提交 ▾ 菜单开着时开关被禁用、Esc 还焦失败；菜单内 Tab 的还焦与 APG 不同；`tabbablesOf` 不认 `contenteditable`/`display:none`；reduced-motion 检查不逐个动画核对 | B4b 终审，2026-10-28 | 细节见 [b4b 计划](completed/b4b-a11y与样式变量.md)「决策记录」终审条目 |
-| P2 | `test/client/graph/layout.test.ts`「lays out 2000 branchy rows in under 50ms」在全量 `make check` 高负载下偶发超时（实测 58ms），单独跑稳定通过；与 TD-16 同类，考虑放宽阈值或改为相对基准 | B4a 合并后 `make check`，2026-10-28 | 重跑全绿；B4a 未改布局算法 |
+| P2 | 「提交后跳到日志」在 10k 仓库上偶发提示「已加载的 100 行中未找到「<新提交>」」，而新提交其实在首行：疑为提交使 version 前进、触发第二次日志重载，`logStore.refresh()` 的结果被丢弃后 `jumpTo` 先执行 | B4c T6 L4，2026-10-28 | `src/client/pages/GitWorkbench.tsx:503`；B4c 未改日志 store，非本计划回归（B4a L4 在小仓库上通过） |
+| P2 | B4c 终审 Minor（6 条）：chunk 加载失败后因文件/文案变化重载成功时失败提示不消失；加载期间 pane 容器重挂会用旧宿主节点；`LogRow` memo 后「相对日期」只在行 props 变化时刷新；`pnpm dev` 下 chunk 变化整体重建 client context（可改 `rebuild()`，onEnd 抛错会让 watch 退出）；测试替身对绝对路径 realpath 而真实 provider 不做；Windows 上 `directBinary` 直连 `libexec/git-core/git.exe` 会绕过 `cmd\git.exe` 对 PATH 的补充（B4d 实测，或 win32 默认关闭） | B4c 终审，2026-10-28 | 细节见 [b4c 计划](completed/b4c-性能.md)「决策记录」终审条目 |
 
 ## 已完成
 
 | 完成日期 | 事项 | 计划 |
 |---|---|---|
+| 2026-10-28 | `layout.test.ts`「2000 行 < 50ms」高负载偶发超时：阈值改为 200ms 只防数量级回退（满载实测 52–62ms），真实渲染预算由 B4c 客户端 harness 测量 | [b4c](completed/b4c-性能.md) T5 |
+| 2026-10-29 | B4c 性能：10k 合成仓库基准 `pnpm bench`（§16.8 各项达标，bootstrap 稳态 285→15ms）与 2000 行日志滚动 harness `pnpm bench:client`（每步中位 5.4→0.4ms）；Host 与测试直连真实 git 绕过 xcrun 转发层；CodeMirror 拆成按需 chunk `lib/client.merge.js` 并压缩标识符（client.js gzip 305→175 KB，[ADR 0013](../decisions/0013-客户端产物拆分按需chunk与标识符后压缩.md)）；`LogRow` memo；`make check` 约 488s→30s 并纳入 build + smoke；TD-16 与 layout 计时假失败处理；整分支终审 C1/I2/I3 已修，负责人验收通过 | [b4c](completed/b4c-性能.md) |
 | 2026-10-28 | B4b a11y 与样式变量：DSH 变量全量校正与样式检查（变量快照、无字面色、reduced-motion、`outline:none` 例外、状态/静态色文字混色，[ADR 0012](../decisions/0012-样式变量快照与状态色文字混色.md)）；happy-dom DOM 测试（TD-18）；分支树单一 Tab 停靠点；全部手写菜单键盘统一、不可用项可聚焦并读出原因；模态对话框 Tab 圈定；两套主题对比度实测达标；内容区动效；验收走查的贮藏选择/写后还焦、合并窗口 gutter 还焦；整分支终审 I1 已修，负责人验收通过（顺带处理：分支树 roving、合并窗口 label-in-name 误报、「应用非冲突更改 ▾」外部点击、A1–A3 样式变量、干净文件状态点文案、变基列表标签对比度） | [b4b](completed/b4b-a11y与样式变量.md) |
 | 2026-10-28 | B4a 设置页与 Blame 渲染器：设置模型（单键 localStorage、逐字段校验、跨标签页同步）、仓库栏 ⋯「设置…」弹层（自动刷新/间隔、日志每页条数、日期格式、紧凑模式、默认 Diff、提交后跳日志、自动打开冲突列表、合并自动应用非冲突更改）、可选「Git Blame」文档渲染器（随设置注册/注销，不接管 DSH 专用查看器的后缀）；⋯ 菜单覆盖层焦点返还修复；整分支评审修复 I1–I3(a)，负责人验收通过 | [b4a](completed/b4a-设置页与Blame渲染器.md) |
 | 2026-10-28 | B3 高级操作（拆成 4 份，按序合并）：B3a 交互式变基（变基覆盖页、日志快捷动作、edit 停下）；B3b Diff 增强（并排/词级/忽略空白/完整文件）与完整提交菜单（撤销提交、推送到此、新建标签、Fixup/Squash into、补丁导出与应用）；B3c 搁架（受限 ref 下的提交对象，ADR 0011）与 Changelist；B3d 远程页、标签推送/删除、远程分支删除、upstream、Worktree 页；每份整分支终审 + L4 走查各一轮修复，负责人统一验收通过，`interactiveRebase`、`worktrees` 默认开启 | [b3a](completed/b3a-交互式变基.md)、[b3b](completed/b3b-Diff增强与提交菜单.md)、[b3c](completed/b3c-搁架与Changelist.md)、[b3d](completed/b3d-Worktree与远程.md) |

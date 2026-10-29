@@ -4,11 +4,11 @@ SOP 的第 4 阶段（自验证）要求：**每条验收标准都有实际运�
 
 | 层级 | 方法 | 什么时候用 |
 |---|---|---|
-| L1 | `make check` | 每个任务都要跑；当前包含文档检查 + lint + 类型 + 分层契约 + 单测 |
+| L1 | `make check` | 每个任务都要跑；当前包含文档检查 + lint + 类型 + 分层契约 + 单测 + 构建与产物 smoke（B4c 起） |
 | L2 | 针对性测试（`pnpm vitest run test/host/...`），用临时 git 仓库做集成 | 验证解析、门禁、刷新等内部流程 |
 | L3 | 直接调用 RPC 处理器，或浏览器 Network 面板查看 `/dsh-git` 请求/响应 | 验证 Host 契约与错误封装 |
 | L4 | 在本地 DSH Web GUI 中操作并截图 | 验证 tab、覆盖页、文档头部动作、只读横幅（单测看不出布局） |
-| L5 | 真实仓库矩阵冒烟（`make smoke`，M0 后补，不进默认 `make check`） | 10k 提交、脏工作区、冲突中、仓库根在沙箱外、Windows CRLF |
+| L5 | 性能基准（`pnpm bench`、`pnpm bench:client`，B4c）与真实仓库矩阵（B4d 补），都不进默认 `make check` | 10k 提交、脏工作区、冲突中、仓库根在沙箱外、Windows CRLF |
 
 ## 记录证据
 
@@ -229,3 +229,26 @@ git checkout -q feature && git rebase main   # stops at topic1; after continue, 
 - 暗色：`document.body.setAttribute('data-ds-dark-theme', '')` 后再测一遍，测完移除（DSH 的明暗切换就是这个属性）。
 - 阈值（设计 §15.5）：正文 ≥4.5，次要文字/状态字母/徽标 ≥3，图形线 ≥3。成功/警告色与 `--dsw-static-*` 直接当文字色在浅色下只有约 2.2:1，样式检查会拦，改用 `color-mix(in oklab, var(<hue>) 60%, var(--dsw-alias-label-primary))`。
 - 切换 Git tab 内的页面可用 `[...document.querySelectorAll('[role="tab"]')].find(t => t.textContent.startsWith('提交')).click()`；走查构建要在独立 worktree 里做（负责人的 web profile 链接到主 checkout 的 `lib/`，在主 checkout 构建会热更进负责人的 3080）。
+
+## 性能基准（B4c，L5）
+
+两个脚本都不进 `make check`，结果写进计划「验证记录」，原始 JSON 与截图放 `.evidence/<计划 id>/`。
+
+### Host：`pnpm bench`
+
+- 在系统临时目录用 `git fast-import` 生成 10k 合成仓库（`scripts/bench/fixture.mjs`，同参数逐字节一致：每 50 个提交一次合并、20 个 topic 分支、50 个标签、4500 行的 `big.txt`、>256 KiB 的 `huge.txt`、20 个已修改 + 5 个未跟踪文件），用完删除。`BENCH_COMMITS=300 pnpm bench` 可快速试跑。
+- 直接调真实 RPC 处理器（`test/host` 的 subprocess 替身跑真实 git，执行器参数与 `src/host/index.ts` 一致，含 `directBinary`），每项 1 次预热 + 7 次计时；每个样本用新处理器（不吃缓存），bootstrap 另测「同一处理器、时钟每次前进 3s」的稳态轮询。
+- 对照设计 §16.8：bootstrap 稳态 ≤ 50ms、log 首页 ≤ 500ms、commit ≤ 200ms、单文件 diff ≤ 300ms（>256 KiB 必须 `truncated`）、branches ≤ 100ms、单响应 ≤ 4 MiB；其余项只记录，超 500ms 要说明。任一门槛项超标时退出码 1。
+- **用 `pnpm bench` 跑，不要直接 `node`**：在 pnpm 启动的进程里，macOS `/usr/bin/git`（xcrun 转发器）每次启动多付约 40ms，这正是开发期 `pnpm dsh web` 的真实环境（references §17）。
+
+### 客户端：`pnpm bench:client`
+
+- 构建 `scripts/bench-client/`（真实 `LogPage` + 2000 行合成提交、每 7 个一次合并）到 `.evidence/b4c/harness/`；用静态服务器（如 `python3 -m http.server <端口> --bind 127.0.0.1`，在该目录下运行）打开 `index.html`，控制台执行 `await harness.measure()` 与 `await harness.measure({ compact: true })`。
+- 每步：设 `scrollTop`、派发 scroll、用 `MessageChannel` 让出一次、强制布局；共 300 步滚到底。判定：中位 ≤ 2ms、最大 ≤ 18ms、行 DOM ≤ 60、`staleSteps`（渲染出的行没覆盖当前滚动位置的步数）必须为 0——不为 0 说明没有真的滚动（例如选错了滚动容器：滚动容器是 `role="grid"` 元素本身）。
+- 后台/隐藏的页面没有 rAF，判断以前台可见页的数据为准。
+
+### L4 补充（隔离 DSH）
+
+- 首屏：关掉 Git 标签后，在页面里挂一个 capture 阶段的 keydown 监听记下 Cmd+Shift+G 的时刻，用 1ms 轮询记录「获取」按钮（仓库栏）与 grid 内 >10 行出现的时刻（MutationObserver 在这里不可靠）。
+- 内存：`performance.memory.usedJSHeapSize`，Git 标签关闭时为基线，再加载满 2000 行、5 次双击打开/Esc 关闭 >256 KiB 的 diff（单击文件只选中，双击才打开 diff）。
+- 按需 chunk：`performance.getEntriesByType('resource')` 过滤 `client.merge`，打开合并窗口前应为 0 个、打开后 1 个、再次打开不增加。带 `rev` 的 chunk URL 会被缓存，移走 `lib/client.merge.js` 模拟不出加载失败。

@@ -30,6 +30,8 @@ export interface WorkbenchSettings {
   blameRenderer: boolean
   /** B3c: commit page groups changes by changelist (toggled on that page, not in the sheet). */
   changelistGrouping: boolean
+  /** B4d: absolute path of the git the Host should run; null → git on the Host's PATH. */
+  gitPath: string | null
 }
 
 export const DEFAULT_SETTINGS: Readonly<WorkbenchSettings> = Object.freeze({
@@ -44,6 +46,7 @@ export const DEFAULT_SETTINGS: Readonly<WorkbenchSettings> = Object.freeze({
   mergeAutoApplyNonConflicting: false,
   blameRenderer: false,
   changelistGrouping: false,
+  gitPath: null,
 })
 
 export const REFRESH_INTERVAL_MIN_SEC = 1
@@ -56,6 +59,11 @@ function oneOf<T>(value: unknown, allowed: readonly T[], fallback: T): T {
 
 function bool(value: unknown, fallback: boolean): boolean {
   return typeof value === 'boolean' ? value : fallback
+}
+
+/** POSIX `/…`, Windows `C:\…` / `C:/…`, or UNC `\\server\…` (the Host checks again with its own platform rules). */
+export function isAbsoluteGitPath(path: string): boolean {
+  return path.startsWith('/') || /^[A-Za-z]:[\\/]/u.test(path) || path.startsWith('\\\\')
 }
 
 /** Rounds and clamps to 1..10 seconds; anything but a finite number gives the default. */
@@ -85,6 +93,7 @@ export function parseSettings(raw: unknown): WorkbenchSettings {
     mergeAutoApplyNonConflicting: bool(source.mergeAutoApplyNonConflicting, d.mergeAutoApplyNonConflicting),
     blameRenderer: bool(source.blameRenderer, d.blameRenderer),
     changelistGrouping: bool(source.changelistGrouping, d.changelistGrouping),
+    gitPath: typeof source.gitPath === 'string' && isAbsoluteGitPath(source.gitPath) ? source.gitPath : null,
   }
 }
 
@@ -158,10 +167,13 @@ export function writeSettings(patch: Partial<WorkbenchSettings>): WorkbenchSetti
   return store(merged)
 }
 
-/** Back to the defaults; the commit page's changelist grouping is not a sheet setting and stays. */
+/**
+ * Back to the defaults. The commit page's changelist grouping is not a sheet setting, and the git
+ * path says where git lives rather than a preference (B4d): both stay.
+ */
 export function resetSettings(): WorkbenchSettings {
-  const { changelistGrouping } = readSettings()
-  return store({ ...DEFAULT_SETTINGS, changelistGrouping })
+  const { changelistGrouping, gitPath } = readSettings()
+  return store({ ...DEFAULT_SETTINGS, changelistGrouping, gitPath })
 }
 
 type StorageEventTarget = {

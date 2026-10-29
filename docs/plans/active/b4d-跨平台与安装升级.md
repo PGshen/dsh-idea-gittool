@@ -105,7 +105,7 @@ export function gitSupports(version: ParsedGitVersion, feature: 'updateRefs' | '
 - **测试**：找不到 git、有效/无效路径、`--version` 输出非 git、切换路径后命令使用新路径、重新检测。
 - **验证命令**：`pnpm vitest run test/host/git-executor.test.ts`、`make check`
 
-### T3：客户端空状态与设置项（待开始）
+### T3：客户端空状态与设置项（完成）
 
 - **目标**：AC1、AC3 的客户端部分。
 - **涉及文件**：`src/client/settings.ts`（`gitPath: string | null`）、`src/client/pages/SettingsSheet.tsx`、`src/client/GitBody.tsx`（空状态分支）、`src/client/locales/*.ts`、对应 `*.dom.test.tsx`。
@@ -152,10 +152,11 @@ export function gitSupports(version: ParsedGitVersion, feature: 'updateRefs' | '
 
 - 2026-10-29 — T1 — `src/host/git-version.ts`（解析、最低 2.25.0、`updateRefs` 门控）；协议加 `git/not-found`、`git/unsupported-version`、`GitExecutableInfo`；仓库 bootstrap 在 git < 2.25 时返回 `git/unsupported-version`；交互式变基在 git < 2.38 时不传 `--update-refs`
 - 2026-10-29 — T2 — `src/host/git-executable.ts`（PATH / 设置路径、校验、`info()` 缓存）；执行器解析失败（非取消/超时）→ `git/not-found`，有设置路径时每条命令都跑它；`gitExecutable` 端点；bootstrap 带 `git`
+- 2026-10-29 — T3 — 设置项 `gitPath`（只收绝对路径，恢复默认时保留）；`git-path.ts`（客户端绝对路径检查、Host 拒绝原因文案、Host 采用后才保存）；`git-missing.tsx` 空状态（未找到 / 版本过低、安装说明、重新检测、设置路径）；设置页「git 路径」行（正在使用的路径与版本、未生效提示）；Git 标签挂载时把已存路径交给 Host；变基页在 git < 2.38 且范围内有其他分支时说明不会移动它们。L4（AC1「无需重启即恢复」）并入 T6 的隔离 DSH 走查
 
 ## 下一步
 
-- T3：客户端空状态（`git/not-found`、`git/unsupported-version`）与设置页「git 路径」。
+- T4：跨平台审计与单元测试。
 
 ## 决策记录
 
@@ -169,6 +170,10 @@ export function gitSupports(version: ParsedGitVersion, feature: 'updateRefs' | '
 - T2 Ruling：有设置路径时每条命令前用 `resolveExecutable(path)` 复核、原样运行该路径，不再走 `directBinary` 探测（用户指定的就是要跑的程序）。代价：若用户指向 macOS 的 `/usr/bin/git` 会重新付 xcrun 开销。
 - T2 Ruling：`info().path` 报 PATH 解析出的 `git`，而不是 `directBinary` 实际运行的 `--exec-path` 下的程序。代价：设置页显示的路径与真实子进程 argv[0] 可能不同（同一个 git 安装）。
 - T2 Ruling：已有测试「spawn lookup failure → `git/exec-failed`」改为 `git/not-found`——这正是设计 §16.7 要的行为变化。控制台仍显示 `git <参数>`，不显示程序路径；AC2「使用该路径」以子进程 argv[0] 断言。
+- T3 Ruling：「恢复默认」保留 `gitPath`（与 Changelist 分组一样）：它描述 git 装在哪里，不是偏好；清空要在设置页留空后点「应用」。代价：想一键清掉路径的用户要多一步。
+- T3 Ruling：已存路径只在 Git 标签挂载时交给 Host 一次（之后的改动走设置页/空状态）；挂载时没有设置就不发请求，Host 保持 PATH。代价：Host 重启而页面不刷新时，直到下次挂载才恢复设置路径（设置页会显示「未生效」提示）。
+- T3 Ruling：设置页与空状态共用 `GitPathField`；空状态在没有已存路径、也没有错误时先只给「设置 git 路径…」按钮，点开后输入框获得焦点。
+- T3 Ruling：AC3「说明文案可见」落在变基页：git < 2.38 且范围内有其他分支时显示一句说明（列出分支名），没有其他分支时不显示（不相关）。
 
 ## 意外与发现
 

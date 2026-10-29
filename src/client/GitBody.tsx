@@ -1,5 +1,5 @@
 // Git tab 的正文：bootstrap 快照 + 轮询；仓库内渲染 A1 工作台（日志/详情/diff/分支/控制台）。
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
@@ -7,11 +7,13 @@ import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots
 import type { BootstrapCache } from './bootstrap-cache.ts'
 import type { GitClient } from './git-client.ts'
 import css from './GitBody.module.css'
+import { GitMissingView } from './git-missing.tsx'
+import { applyGitPath, gitMissingOf, gitPathErrorText } from './git-path.ts'
 import { I18nProvider, useT } from './i18n.tsx'
 import { GitWorkbench } from './pages/GitWorkbench.tsx'
 import { createPoller } from './polling.ts'
 import { ReadOnlyBanner } from './read-only-banner.tsx'
-import { refreshIntervalMs, useSettings, writeSettings } from './settings.ts'
+import { readSettings, refreshIntervalMs, useSettings, writeSettings } from './settings.ts'
 import { useBootstrap } from './use-bootstrap.ts'
 
 export interface GitBodyInjected {
@@ -44,8 +46,36 @@ function GitBodyContent(props: GitBodyProps): ReactNode {
   const value = useBootstrap(bootstrapCache, sessionId)
   const failure = bootstrapCache.getFailure(sessionId)
   // B4a: auto refresh and its interval are settings (persisted; the status bar toggle writes them).
-  const { autoRefresh, refreshIntervalSec } = useSettings()
+  const { autoRefresh, refreshIntervalSec, gitPath } = useSettings()
   const [lastRefreshAt, setLastRefreshAt] = useState<number | null>(null)
+  const [gitPathBusy, setGitPathBusy] = useState(false)
+  const [gitPathError, setGitPathError] = useState<string | null>(null)
+  const mounted = useRef(true)
+  useEffect(() => () => { mounted.current = false }, [])
+
+  /** B4d: hand `path` (or the stored setting when undefined) to the Host, then re-read bootstrap. */
+  const sendGitPath = async (path?: string): Promise<void> => {
+    setGitPathBusy(true)
+    let error: string | null = null
+    if (path === undefined) {
+      const stored = readSettings().gitPath
+      const result = await gitClient.gitExecutable({ sessionId, path: stored })
+      if (!result.ok) error = gitPathErrorText(result.error, t)
+    } else {
+      const outcome = await applyGitPath(gitClient, sessionId, path, t)
+      if (!outcome.ok) error = outcome.message
+    }
+    await bootstrapCache.refresh(sessionId)
+    if (!mounted.current) return
+    setGitPathError(error)
+    setGitPathBusy(false)
+  }
+
+  // The Host keeps a set git path in memory only (decision 1): hand it over again on every mount.
+  useEffect(() => {
+    if (readSettings().gitPath !== null) void sendGitPath()
+    // Mount only: later changes go through the settings sheet or the empty state.
+  }, [])
 
   useEffect(() => {
     if (value !== null) setLastRefreshAt(Date.now())
@@ -60,6 +90,20 @@ function GitBodyContent(props: GitBodyProps): ReactNode {
     poller.start()
     return () => poller.stop()
   }, [autoRefresh, bootstrapCache, refreshIntervalSec, sessionId, visible])
+
+  const missing = gitMissingOf(failure)
+  if (value === null && missing !== null) {
+    return (
+      <GitMissingView
+        missing={missing}
+        gitPath={gitPath}
+        busy={gitPathBusy}
+        error={gitPathError}
+        onRedetect={() => { void sendGitPath() }}
+        onApply={(path) => { void sendGitPath(path) }}
+      />
+    )
+  }
 
   if (value === null) {
     return (

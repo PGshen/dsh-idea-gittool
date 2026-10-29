@@ -27,6 +27,22 @@ function control(html: string, name: string): string {
 }
 
 describe('SettingsSheetView', () => {
+  it('shows the git in use and a path field (B4d T3)', () => {
+    const html = render({ git: { path: '/usr/bin/git', version: '2.50.1', raw: 'git version 2.50.1', source: 'path' } })
+    expect(control(html, 'gitPath')).toContain('aria-label="git 可执行文件路径"')
+    expect(html).toContain('正在使用：/usr/bin/git（Git 2.50.1，来自 PATH）')
+    expect(html).not.toContain('data-git-path-inactive')
+  })
+
+  it('warns when the stored path is not the one the Host uses (B4d T3)', () => {
+    const html = render({
+      settings: { ...DEFAULT_SETTINGS, gitPath: '/opt/git/bin/git' },
+      git: { path: '/usr/bin/git', version: '2.50.1', raw: 'git version 2.50.1', source: 'path' },
+    })
+    expect(control(html, 'gitPath')).toContain('value="/opt/git/bin/git"')
+    expect(html).toContain('data-git-path-inactive')
+  })
+
   it('lists every sheet setting as a labelled dialog', () => {
     const html = render()
     expect(html).toContain('role="dialog"')

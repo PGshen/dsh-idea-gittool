@@ -65,6 +65,7 @@ import { MergePage } from './MergePage.tsx'
 import { PullPage } from './PullPage.tsx'
 import { ResetSheet } from './ResetSheet.tsx'
 import { SettingsSheet } from './SettingsSheet.tsx'
+import { applyGitPath } from '../git-path.ts'
 import { UpdateProjectPage } from './UpdateProjectPage.tsx'
 import { commitActionEffect } from './commit-actions.ts'
 import type { CommitActionId } from './commit-actions.ts'
@@ -1286,7 +1287,17 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
             onClose={() => { overlays.closeIf('reset') }}
           />
         )}
-        {overlay?.kind !== 'settings' ? null : <SettingsSheet onClose={() => { overlays.closeIf('settings') }} />}
+        {overlay?.kind !== 'settings' ? null : (
+          <SettingsSheet
+            onClose={() => { overlays.closeIf('settings') }}
+            git={value.git}
+            onGitPath={async (path) => {
+              const outcome = await applyGitPath(client, sessionId, path, t)
+              if (outcome.ok) void onRefresh()
+              return outcome.ok ? null : outcome.message
+            }}
+          />
+        )}
         {overlay?.kind !== 'fetch' ? null : (
           <FetchSheet
             loadRemotes={() => client.pushPreview(sessionId)}

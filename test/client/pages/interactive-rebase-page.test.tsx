@@ -83,6 +83,14 @@ describe('InteractiveRebasePageView', () => {
     expect(render(state({ plan: plan({ supportsUpdateRefs: false }) }))).not.toContain('--update-refs')
   })
 
+  it('explains why other branches will not move on a git older than 2.38 (B4d T3)', () => {
+    expect(render(state({ plan: plan({ supportsUpdateRefs: false }) }))).toContain('当前 Git 低于 2.38，变基不会移动指向这些提交的其他分支（mid）。')
+    expect(render(state())).not.toContain('当前 Git 低于 2.38')
+    const lonely = plan({ supportsUpdateRefs: false })
+    lonely.commits = lonely.commits.map(commit => ({ ...commit, branches: [] }))
+    expect(render(state({ plan: lonely }))).not.toContain('当前 Git 低于 2.38')
+  })
+
   it('shows the message editor for a reword row and the todo preview with readable message lines', () => {
     const rows = setAction(fromPlan(plan()), 1, 'reword')
     const html = render(state({ rows, invalid: null }), { selected: 1, showPreview: true })

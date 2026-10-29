@@ -240,6 +240,9 @@ function ConsoleRow({ entry, expanded, onToggle, onCopy }: ConsoleRowProps): Rea
         {record.repeat !== undefined && record.repeat > 1
           ? <span className={css.repeat} data-repeat={record.repeat} title={t('console.repeat', { count: record.repeat })}>×{record.repeat}</span>
           : null}
+        {record.stdinBytes === undefined
+          ? null
+          : <span className={css.stdin} data-stdin-bytes={record.stdinBytes} title={t('console.stdin.title')}>{t('console.stdin', { count: record.stdinBytes })}</span>}
         <span className={css.duration}>{formatDuration(record.durationMs)}</span>
         <span className={`${css.exit} ${failed ? css.exitFailed : ''}`}>{render(t, exitLabel(record))}</span>
         {truncated ? <span className={css.truncated} data-truncated="true">{t('console.truncated')}</span> : null}

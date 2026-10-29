@@ -237,6 +237,13 @@
   font-size: 11px;
 }
 
+.stdin {
+  flex: none;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
 .repeat {
   flex: none;
   color: var(--dsw-alias-label-tertiary);

@@ -12,6 +12,7 @@ import { createConsoleStore } from '../../../src/client/console/console-store.ts
 import type { ConsoleState } from '../../../src/client/console/console-store.ts'
 import { CONSOLE_BUFFER_SIZE } from '../../../src/shared/protocol.ts'
 import type { ConsoleRecord } from '../../../src/shared/protocol.ts'
+import { enT, withLocale } from '../i18n-helpers.tsx'
 import { failedRecord, record } from './console-fixtures.ts'
 
 function stateOf(records: ConsoleRecord[], patch: (keys: string[]) => Partial<ConsoleState> = () => ({}), truncated = false): ConsoleState {
@@ -140,5 +141,32 @@ describe('ConsoleDrawer 重复折叠（评审 I5）', () => {
     expect(html).toContain('data-repeat="4"')
     expect(html).toContain('×4')
     expect((html.match(/data-repeat=/g) ?? []).length).toBe(1)
+  })
+})
+
+describe('ConsoleDrawer stdin 字节数（T1-T4）', () => {
+  it('记录带 stdinBytes 时显示「stdin: N 字节」，不带时不显示', () => {
+    const html = render(stateOf([
+      record({ argv: ['commit', '-F', '-'], stdinBytes: 128 }),
+      record({ at: '2026-10-25T04:03:10.000Z', argv: ['status'] }),
+    ]))
+    expect(html).toContain('data-stdin-bytes="128"')
+    expect(html).toContain('stdin: 128 字节')
+    expect((html.match(/data-stdin-bytes=/g) ?? []).length).toBe(1)
+  })
+
+  it('stdinBytes 为 0 也显示（命令确实走了 stdin），英文界面用 bytes', () => {
+    const html = renderToStaticMarkup(withLocale(
+      <ConsoleDrawer
+        state={stateOf([record({ stdinBytes: 0 })])}
+        onClose={() => {}}
+        onClear={() => {}}
+        onPausedChange={() => {}}
+        onToggleExpanded={() => {}}
+      />,
+      enT,
+    ))
+    expect(html).toContain('data-stdin-bytes="0"')
+    expect(html).toContain('stdin: 0 bytes')
   })
 })

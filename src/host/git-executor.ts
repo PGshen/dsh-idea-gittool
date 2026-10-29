@@ -168,6 +168,20 @@ export interface GitRunnerDefaults {
    * removes the old Cellar path) and re-probed when it is gone.
    */
   directBinary?: boolean | undefined
+  /**
+   * B4d T2: a user-set git path (see git-executable.ts). When it returns a path, every command
+   * runs exactly that program (checked before each use) and `directBinary` is not consulted.
+   */
+  executable?: { override(): string | null; verify?(): Promise<boolean> } | undefined
+}
+
+/**
+ * Whether the Host runs git's `--exec-path` binary directly (B4c T2). Off on Windows (B4d T4): Git
+ * for Windows' `cmd\\git.exe` puts `usr\\bin` (the `sh`/`cat` behind GIT_SEQUENCE_EDITOR, ssh,
+ * credential helpers) on PATH, and `mingw64\\libexec\\git-core\\git.exe` started directly does not.
+ */
+export function directBinaryByDefault(platform: NodeJS.Platform = process.platform): boolean {
+  return platform !== 'win32'
 }
 
 /** Name of the git binary inside `--exec-path`. */
@@ -300,6 +314,15 @@ export function createGitRunner(
   }
 
   const resolveProgram = async (signal: AbortSignal): Promise<string> => {
+    const override = defaults.executable?.override() ?? null
+    if (override !== null) {
+      // A file replaced since it was validated is no longer the git the user chose (final review I1).
+      if (defaults.executable?.verify !== undefined && !(await defaults.executable.verify())) {
+        throw new Error(`${override} changed since it was set as the git path`)
+      }
+      await subprocess.resolveExecutable(override, undefined, signal)
+      return override
+    }
     if (defaults.directBinary !== true) return subprocess.resolveExecutable('git', undefined, signal)
     const cached = directProgram
     const program = await untilAborted(sharedDirect(), signal)
@@ -354,8 +377,10 @@ export function createGitRunner(
     try {
       program = await resolveProgram(lifetime)
     } catch (error) {
+      // Not an abort → there is no git to run (design §16.7 `git/not-found`, B4d T2).
+      const aborted = classifyAbort(error).code
       throw new GitCommandFailure(
-        classifyAbort(error).code,
+        aborted === 'git/exec-failed' && options.signal?.aborted !== true ? 'git/not-found' : aborted,
         `git executable unavailable: ${messageOf(error)}`,
         { argv: [...argv], cwd: options.cwd },
       )

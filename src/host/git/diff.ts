@@ -100,18 +100,24 @@ export interface ParsedPatch {
 }
 
 /** Validate a client path: repo-relative POSIX, no traversal, never inside `.git`. */
-export function validateRepoPath(path: unknown): string {
+export function validateRepoPath(path: unknown, platform: NodeJS.Platform = process.platform): string {
   if (typeof path !== 'string' || path === '') throw invalidPayload('path must be a non-empty string')
   if (path.length > MAX_PATH_LENGTH) throw invalidPayload('path is too long')
   if (path.includes('\0')) throw invalidPayload('path must not contain NUL')
-  if (path.startsWith('/') || /^[A-Za-z]:[\\/]/.test(path)) {
+  // B4d T4: on Windows `\` separates segments and any `C:` prefix (even `C:foo`) names a drive.
+  const windows = platform === 'win32'
+  if (path.startsWith('/') || (windows ? /^[A-Za-z]:/ : /^[A-Za-z]:[\\/]/).test(path)) {
     throw invalidPayload('path must be repository-relative')
   }
-  for (const segment of path.split('/')) {
+  for (const segment of path.split(windows ? /[\\/]/u : '/')) {
     if (segment === '' || segment === '.' || segment === '..') {
       throw invalidPayload('path must not contain empty, "." or ".." segments')
     }
     if (segment.toLowerCase() === '.git') throw invalidPayload('path must not address .git')
+    // Windows also opens `.git` as `.git.`, `.git ` and `GIT~1`, and `:` names a stream (final review M6).
+    if (windows && (segment.includes(':') || /^\.git[. ]*$/iu.test(segment) || /^git~\d+$/iu.test(segment))) {
+      throw invalidPayload('path must not address .git')
+    }
   }
   return path
 }

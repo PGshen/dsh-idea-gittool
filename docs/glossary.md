@@ -22,3 +22,10 @@
 | Blame 视图 | Blame view | 独立的只读逐行注解页，不是编辑器内联 blame |
 | spike | spike | 一次性的技术验证，目标是回答问题并记录结论，不追求产品完成度 |
 | feature flag | feature flag | 高风险功能（三栏合并、交互式变基、Worktree）的默认开关 |
+| 搁架 | shelf | 把选中的改动按名字存进插件专用的 ref（提交对象），回滚工作区，之后再取回（可三方合并）；与 git 贮藏并列 |
+| git 路径 | git executable / `gitPath` | Host 实际运行的 git 程序：默认 PATH 中的 `git`；设置里的绝对路径经校验后只在 Host 进程内存中采用（`src/host/git-executable.ts`） |
+| 特性门控 | feature gate | 只有部分 git 版本才有的能力（`GitFeature`，如 `updateRefs`、`mergeFileObjectId`）集中在 `src/host/git-version.ts` 判断，低版本上隐藏或拒绝该功能 |
+| 直连 git | direct binary | 直接运行 `git --exec-path` 下的 git 二进制，绕过 macOS xcrun 等启动器（`directBinary`，Windows 上默认关闭） |
+| 按需 chunk | on-demand chunk | 与 `client.js` 同目录的 `client.<名字>.js`，经 `require.async` 按需加载；目前只有合并窗口的 `client.merge.js` |
+| 隔离 HOME | isolated HOME | 验证安装/升级时用临时目录当 `HOME` 启动 DSH，复制 profile，不碰负责人的 `~/.dsh` |
+| 真实仓库矩阵 | repository matrix | L5 验证：生成多种形态的仓库（10k 提交、冲突中、浅克隆、worktree、空仓库……），逐个走主要流程（`pnpm matrix`） |

@@ -3,7 +3,7 @@
 // 任何一环缺失或不成立都 fail closed（返回只读），绝不静默放宽。
 
 import { realpath } from 'node:fs/promises'
-import { isAbsolute, relative, resolve } from 'node:path'
+import nodePath, { resolve } from 'node:path'
 
 import type { SandboxExecutionPolicy, SandboxPolicy } from '@deepseek-ai/dsh-sandbox'
 import type { Session, SessionId } from '@deepseek-ai/dsh-session'
@@ -195,9 +195,18 @@ async function isInside(root: string, target: string): Promise<boolean> {
     canonicalize(root),
     canonicalize(target),
   ])
-  const path = relative(canonicalRoot, canonicalTarget)
+  return isWithinRoot(canonicalRoot, canonicalTarget)
+}
+
+/**
+ * Pure containment check (B4d T4): `api` is `node:path` for this platform, or `path.win32`/`posix`
+ * in tests. Compares segments (`/repo/..cache` is inside `/repo`); win32 `relative` already ignores
+ * case and separator style, and answers an absolute path across drives.
+ */
+export function isWithinRoot(root: string, target: string, api: Pick<typeof nodePath, 'relative' | 'isAbsolute' | 'sep'> = nodePath): boolean {
+  const path = api.relative(root, target)
   if (path === '') return true
-  return !path.startsWith('..') && !isAbsolute(path)
+  return path !== '..' && !path.startsWith(`..${api.sep}`) && !api.isAbsolute(path)
 }
 
 /** realpath when the path exists, absolute resolve otherwise (dormant directories). */

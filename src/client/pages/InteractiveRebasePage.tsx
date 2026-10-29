@@ -251,6 +251,12 @@ function footerOf(props: InteractiveRebasePageViewProps, t: Translate): ReactNod
           {t('rebase.updateRefs')}
         </label>
       ) : null}
+      {plan !== null && !plan.supportsUpdateRefs && plan.commits.some(commit => commit.branches.length > 0) ? (
+        // B4d: an older git cannot move the other branches; say so instead of silently hiding the option.
+        <p className={css.reason} data-rebase-update-refs-unsupported="">
+          {t('rebase.updateRefs.unsupported', { branches: [...new Set(plan.commits.flatMap(commit => commit.branches))].join(', ') })}
+        </p>
+      ) : null}
       {props.failure === null ? null : <p className={css.error} role="alert">{t('rebase.failed', { message: props.failure })}</p>}
       <div className={css.actions}>
         <Button onClick={props.onTogglePreview} aria-pressed={props.showPreview}>{props.showPreview ? t('rebase.preview.hide') : t('rebase.preview.show')}</Button>

@@ -44,6 +44,7 @@ describe('parseSettings', () => {
       mergeAutoApplyNonConflicting: false,
       blameRenderer: false,
       changelistGrouping: false,
+      gitPath: null,
     })
     for (const raw of [undefined, null, 'x', 3, [1]]) expect(parseSettings(raw), String(raw)).toEqual(DEFAULT_SETTINGS)
   })
@@ -77,6 +78,7 @@ describe('parseSettings', () => {
       mergeAutoApplyNonConflicting: true,
       blameRenderer: true,
       changelistGrouping: true,
+      gitPath: '/opt/git/bin/git',
     })
     expect(parsed).toEqual({
       autoRefresh: false,
@@ -90,6 +92,7 @@ describe('parseSettings', () => {
       mergeAutoApplyNonConflicting: true,
       blameRenderer: true,
       changelistGrouping: true,
+      gitPath: '/opt/git/bin/git',
     })
     expect(parseSettings({ logPageSize: 50 }).logPageSize).toBe(50)
   })
@@ -119,6 +122,17 @@ describe('stored settings', () => {
     const next = writeSettings({ compact: true, refreshIntervalSec: 99 })
     expect(next).toEqual({ ...DEFAULT_SETTINGS, diffMode: 'split', compact: true, refreshIntervalSec: 10 })
     expect(JSON.parse(storage.values[SETTINGS_KEY] ?? '{}')).toEqual({ diffMode: 'split', future: 1, compact: true, refreshIntervalSec: 10 })
+  })
+
+  it('keeps an absolute git path and drops anything else (B4d T3)', () => {
+    expect(parseSettings({ gitPath: '/usr/local/bin/git' }).gitPath).toBe('/usr/local/bin/git')
+    expect(parseSettings({ gitPath: 'C:\\Git\\cmd\\git.exe' }).gitPath).toBe('C:\\Git\\cmd\\git.exe')
+    for (const bad of ['git', '', 3, null, {}]) expect(parseSettings({ gitPath: bad }).gitPath, String(bad)).toBeNull()
+  })
+
+  it('resetSettings keeps the git path: it is where git lives, not a preference (B4d T3)', () => {
+    vi.stubGlobal('localStorage', memoryStorage({ [SETTINGS_KEY]: JSON.stringify({ compact: true, gitPath: '/opt/git' }) }))
+    expect(resetSettings()).toEqual({ ...DEFAULT_SETTINGS, gitPath: '/opt/git' })
   })
 
   it('resetSettings restores the defaults but keeps the changelist grouping toggle', () => {

@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { chmodSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -14,6 +14,7 @@ import type { SandboxMode } from '@deepseek-ai/dsh-sandbox'
 import type {
   BlameValue,
   BootstrapValue,
+  GitExecutableInfo,
   CompareValue,
   RebasePlanValue,
   FileHistoryValue,
@@ -40,6 +41,8 @@ import type { GitRpcHandler, RpcDeps } from '../../src/host/rpc.ts'
 import { createRpcHandler } from '../../src/host/rpc.ts'
 import { createTempDir, createTempRepo, removeTempDir } from './fixtures.ts'
 import { createFakeSubprocess } from './fake-subprocess.ts'
+import { createGitExecutable } from '../../src/host/git-executable.ts'
+import { GIT_BINARY } from './git-binary.ts'
 
 const cleanups: Array<() => void> = []
 
@@ -194,6 +197,93 @@ describe('createRpcHandler / bootstrap', () => {
 
     expect(bootstrap.repoRoot).toBe(repo.root)
     expect(bootstrap.gitVersion).toBeUndefined()
+  })
+
+  it('fails bootstrap with git/unsupported-version below 2.25 (B4d T1)', async () => {
+    const repo = makeRepo()
+    const real = createGitRunner(createFakeSubprocess())
+    const handler = createRpcHandler({
+      runner: async (argv, options) => {
+        if (argv.includes('--version')) return { exitCode: 0, stdout: 'git version 2.24.1\n', stderr: '' }
+        return real(argv, options)
+      },
+      sandboxPolicy: () => policySource(repo.root),
+    })
+
+    const failure = errorOf(await handler('bootstrap', { sessionId: 'session-1' }, SIGNAL))
+
+    expect(failure.code).toBe('git/unsupported-version')
+    expect(failure.details).toEqual({ current: '2.24.1', minimum: '2.25.0' })
+  })
+
+  it('fails bootstrap with git/not-found when PATH has no git (B4d T2)', async () => {
+    const repo = makeRepo()
+    const fake = createFakeSubprocess({ executable: null })
+    const gitExecutable = createGitExecutable(fake)
+    const handler = createRpcHandler({
+      runner: createGitRunner(fake, { executable: gitExecutable }),
+      gitExecutable,
+      sandboxPolicy: () => policySource(repo.root),
+    })
+
+    expect(errorOf(await handler('bootstrap', { sessionId: 'session-1' }, SIGNAL)).code).toBe('git/not-found')
+  })
+
+  it('reports the git in use and lets gitExecutable switch it (B4d T2)', async () => {
+    const repo = makeRepo()
+    const fake = createFakeSubprocess()
+    const gitExecutable = createGitExecutable(fake)
+    const handler = createRpcHandler({
+      runner: createGitRunner(fake, { executable: gitExecutable }),
+      gitExecutable,
+      sandboxPolicy: () => policySource(repo.root),
+    })
+
+    const before = okValue<BootstrapValue>(await handler('bootstrap', { sessionId: 'session-1' }, SIGNAL))
+    expect(before.git).toMatchObject({ path: GIT_BINARY, source: 'path' })
+    expect(before.gitVersion).toBe(before.git?.version)
+
+    const set = okValue<GitExecutableInfo>(await handler('gitExecutable', { sessionId: 'session-1', path: GIT_BINARY }, SIGNAL))
+    expect(set).toMatchObject({ path: realpathSync(GIT_BINARY), source: 'setting' })
+    const after = okValue<BootstrapValue>(await handler('bootstrap', { sessionId: 'session-1' }, SIGNAL))
+    expect(after.git?.source).toBe('setting')
+
+    expect(errorOf(await handler('gitExecutable', { sessionId: 'session-1', path: 42 }, SIGNAL)).code).toBe('git/invalid-payload')
+    expect(errorOf(await handler('gitExecutable', { sessionId: 'session-1', path: 'git' }, SIGNAL)).details).toMatchObject({ reason: 'not-absolute' })
+  })
+
+  it('refuses a git path inside the sandbox workspace (final review I1)', async () => {
+    const repo = makeRepo()
+    const fake = createFakeSubprocess()
+    const gitExecutable = createGitExecutable(fake)
+    const handler = createRpcHandler({
+      runner: createGitRunner(fake, { executable: gitExecutable }),
+      gitExecutable,
+      sandboxPolicy: () => policySource(repo.root),
+    })
+    repo.write('tools/git', '#!/bin/sh\necho "git version 2.50.0"\n')
+    chmodSync(join(repo.root, 'tools/git'), 0o755)
+
+    const failure = errorOf(await handler('gitExecutable', { sessionId: 'session-1', path: join(repo.root, 'tools/git') }, SIGNAL))
+
+    expect(failure.details).toMatchObject({ reason: 'inside-workspace' })
+  })
+
+  it('reports an old PATH git through gitExecutable before reading any status (final review M5)', async () => {
+    const repo = makeRepo()
+    const bin = createTempDir('old-git-')
+    cleanups.push(() => removeTempDir(bin))
+    const oldGit = join(bin, 'git')
+    writeFileSync(oldGit, `#!/bin/sh\nif [ "$1" = "--version" ]; then echo "git version 2.24.1"; exit 0; fi\nexec "${GIT_BINARY}" "$@"\n`)
+    chmodSync(oldGit, 0o755)
+    const fake = createFakeSubprocess({ executable: oldGit })
+    const gitExecutable = createGitExecutable(fake)
+    const handler = createRpcHandler({ runner: createGitRunner(fake, { executable: gitExecutable }), gitExecutable, sandboxPolicy: () => policySource(repo.root) })
+
+    const failure = errorOf(await handler('bootstrap', { sessionId: 'session-1' }, SIGNAL))
+
+    expect(failure).toMatchObject({ code: 'git/unsupported-version', details: { current: '2.24.1', minimum: '2.25.0' } })
+    expect(fake.spawns.some(spawn => spawn.spec.argv.includes('status'))).toBe(false)
   })
 
   it('defaults the write policy to fail-closed read-only', async () => {

@@ -86,3 +86,5 @@ DSH 升级 pnpm 大版本时，同步升级全局 pnpm 并重复上面的重建�
 
 当前不需要密钥。运行插件时 Host 会主动设置 `GIT_TERMINAL_PROMPT=0`、`LC_ALL=C` 等 git 环境变量（见设计 §16.4），不依赖 `.env`。
 若将来需要本地变量，放不进 git 的 `.env`，并提供 `.env.example`。
+
+用打包产物（tarball）安装、升级、卸载与隔离 HOME 的做法见 [install-upgrade](install-upgrade.md)。

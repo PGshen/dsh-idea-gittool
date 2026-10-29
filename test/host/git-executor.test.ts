@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 // 真实 git 仓库 + 进程 spawn 在并发 worker 下偶尔超过默认 5s，这里按文件放宽。
 vi.setConfig({ testTimeout: 30_000 })
 
-import { GitCommandFailure, bindWriteContext, createGitRunner, instrumentGitRunner } from '../../src/host/git-executor.ts'
+import { GitCommandFailure, bindWriteContext, createGitRunner, directBinaryByDefault, instrumentGitRunner } from '../../src/host/git-executor.ts'
 import { createGitConsole } from '../../src/host/console.ts'
 import {
   canonicalPath,
@@ -99,7 +99,7 @@ describe('createGitRunner', () => {
     expect(result.stderr.length).toBeGreaterThan(0)
   })
 
-  it('maps a spawn lookup failure to git/exec-failed', async () => {
+  it('maps a spawn lookup failure to git/not-found (B4d T2)', async () => {
     const repo = makeRepo()
     const fake = createFakeSubprocess()
     fake.resolveExecutable = async () => {
@@ -108,7 +108,7 @@ describe('createGitRunner', () => {
     const run = createGitRunner(fake)
 
     await expect(run(['status'], { cwd: repo.root })).rejects.toMatchObject({
-      code: 'git/exec-failed',
+      code: 'git/not-found',
     })
   })
 
@@ -161,8 +161,9 @@ function probes(fake: ReturnType<typeof createFakeSubprocess>): number {
 }
 
 describe('createGitRunner directBinary (B4c T2)', () => {
+  // The binary the probe finds for GIT_BINARY (B4d T5: DSH_GIT_TEST_BINARY may name another git).
   const directGit = realpathSync(
-    join(spawnSync('git', ['--exec-path'], { encoding: 'utf8' }).stdout.trim(), 'git'),
+    join(spawnSync(GIT_BINARY, ['--exec-path'], { encoding: 'utf8' }).stdout.trim(), 'git'),
   )
 
   it('runs every command with the git binary under --exec-path after one probe', async () => {
@@ -285,12 +286,14 @@ describe('createGitRunner todoFromStdin (B3a T3)', () => {
     const fake = createFakeSubprocess()
     const ctx = bindWriteContext(createGitRunner(fake), repo.root, { kind: 'unconfined' }, new AbortController().signal)
 
-    const editor = await ctx.git(['var', 'GIT_SEQUENCE_EDITOR'], { stdin: 'pick x\n', todoFromStdin: true })
+    // A shell alias prints the variable on every git version (`git var GIT_SEQUENCE_EDITOR` needs ≥ 2.40, B4d T5).
+    const printEditor = ['-c', 'alias.seqed=!printf %s "$GIT_SEQUENCE_EDITOR"', 'seqed']
+    const editor = await ctx.git(printEditor, { stdin: 'pick x\n', todoFromStdin: true })
     expect(editor.stdout.trim()).toBe('cat >')
     expect(lastSpawn(fake).env?.GIT_SEQUENCE_EDITOR).toBe('cat >')
     expect(lastSpawn(fake).env?.GIT_EDITOR).toBe('true')
 
-    const plain = await ctx.git(['var', 'GIT_SEQUENCE_EDITOR'])
+    const plain = await ctx.git(printEditor)
     expect(plain.stdout.trim()).toBe('true')
   })
 
@@ -474,5 +477,13 @@ describe('instrumentGitRunner', () => {
 
     const [record] = gitConsole.recent().records
     expect(record).toMatchObject({ stdoutTruncated: true, exitCode: null })
+  })
+})
+
+describe('directBinaryByDefault (B4d T4)', () => {
+  it('is off on Windows, where cmd\\git.exe sets up PATH for git\'s own sh and helpers', () => {
+    expect(directBinaryByDefault('win32')).toBe(false)
+    expect(directBinaryByDefault('darwin')).toBe(true)
+    expect(directBinaryByDefault('linux')).toBe(true)
   })
 })

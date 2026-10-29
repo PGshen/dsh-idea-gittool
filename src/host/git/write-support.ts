@@ -10,6 +10,8 @@ import { COMMIT_MESSAGE_MAX_BYTES, WRITE_PATHS_MAX } from '../../shared/protocol
 import { redactCredentials, truncateConsoleOutput } from '../console.ts'
 import type { GitRunResult, GitRunner, WriteContext } from '../git-executor.ts'
 import { GIT_BASE_ARGV, GitCommandFailure, failureFromExit } from '../git-executor.ts'
+import type { GitFeature, ParsedGitVersion } from '../git-version.ts'
+import { formatGitVersion, gitFeatureMinimum, gitSupports, parseGitVersion } from '../git-version.ts'
 import { validateRepoPath } from './diff.ts'
 import { detectOperation, detectOperationIn, readRebaseStop, resolveGitDir } from './status.ts'
 
@@ -87,6 +89,24 @@ export function parseRefName(value: unknown, label: string): string {
 /** A read-mode runner over the write context (queries never need confinement). */
 export function readRunner(ctx: WriteContext): GitRunner {
   return (argv) => ctx.git(argv, { mode: 'read' })
+}
+
+/** The version of the git this context runs (B4d); null when `--version` gives nothing usable. */
+export async function gitVersionOf(ctx: WriteContext): Promise<ParsedGitVersion | null> {
+  const probe = await ctx.git(['--version'], { mode: 'read' })
+  return probe.exitCode === 0 ? parseGitVersion(probe.stdout) : null
+}
+
+/**
+ * `git/unsupported-version` (with `feature`) when this git is known to lack `feature`; an unknown
+ * version lets git try, so a probe failure never blocks an operation (B4d T5).
+ */
+export async function requireGitFeature(ctx: WriteContext, feature: GitFeature): Promise<void> {
+  const version = await gitVersionOf(ctx)
+  if (version === null || gitSupports(version, feature)) return
+  const current = formatGitVersion(version)
+  const minimum = gitFeatureMinimum(feature)
+  throw new GitCommandFailure('git/unsupported-version', `this needs git ${minimum} or later (this is ${current})`, { current, minimum, feature })
 }
 
 /** Run a read-only query in the repository. */

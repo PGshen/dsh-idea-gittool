@@ -6,11 +6,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { SHELF_REF_PREFIX } from '../../src/shared/protocol.ts'
 import { GitCommandFailure, createGitRunner } from '../../src/host/git-executor.ts'
+import type { WriteContext } from '../../src/host/git-executor.ts'
 import { readShelfList, readShelfPatch, shelfApplyOperation, shelfCreateOperation, shelfDropOperation } from '../../src/host/git/shelf.ts'
 import { createFakeSubprocess } from './fake-subprocess.ts'
 import { createTempRepo } from './fixtures.ts'
 import type { TempRepo } from './fixtures.ts'
 import { contextFor } from './remote-fixtures.ts'
+import { gitTestSupports } from './git-binary.ts'
 
 vi.setConfig({ testTimeout: 60_000 })
 
@@ -43,6 +45,16 @@ async function failureOf(promise: Promise<unknown>): Promise<GitCommandFailure> 
     throw error
   }
   throw new Error('expected a failure')
+}
+
+/**
+ * A three-way apply. git < 2.43 has no `merge-file --object-id`: assert that the Host refuses it and
+ * answer null, so a compatibility run checks the refusal instead (B4d T5).
+ */
+async function applyThreeWay(repo: TempRepo, payload: Record<string, unknown>): Promise<Awaited<ReturnType<typeof shelfApplyOperation.run>> | null> {
+  if (gitTestSupports('mergeFileObjectId')) return await write(shelfApplyOperation, repo, { ...payload, threeWay: true })
+  expect(await failureOf(write(shelfApplyOperation, repo, { ...payload, threeWay: true }))).toMatchObject({ code: 'git/unsupported-version' })
+  return null
 }
 
 const read = (repo: TempRepo, path: string): string => readFileSync(join(repo.root, path), 'utf8')
@@ -187,9 +199,28 @@ describe('shelfApply and shelfDrop', () => {
     expect(failure).toMatchObject({ code: 'git/conflict', details: { reason: 'shelf-not-clean' } })
     expect(read(repo, 'a.txt')).toBe('a different\n')
     repo.git('commit', '-qam', 'diverge')
-    const merged = await write(shelfApplyOperation, repo, { id: entry.id, threeWay: true, keep: true })
+    const merged = await applyThreeWay(repo, { id: entry.id, keep: true })
+    if (merged === null) return
     expect(merged).toMatchObject({ applied: true, conflicts: ['a.txt'], kept: true })
     expect(read(repo, 'a.txt')).toContain('<<<<<<<')
+  })
+
+  it('refuses a three-way apply on git older than 2.43 before touching files (B4d T5)', async () => {
+    const repo = makeRepo()
+    repo.write('a.txt', 'a changed\n')
+    const { entry } = await write(shelfCreateOperation, repo, { name: 'x', paths: ['a.txt'] })
+    repo.write('a.txt', 'a different\n')
+    const real = contextFor(repo)
+    const old: WriteContext = {
+      ...real,
+      git: async (argv, options) =>
+        argv.includes('--version') ? { exitCode: 0, stdout: 'git version 2.42.0\n', stderr: '' } : await real.git(argv, options),
+    }
+
+    const failure = await failureOf(shelfApplyOperation.run(old, shelfApplyOperation.parse({ sessionId: 's', requestId: 'r', id: entry.id, threeWay: true })))
+
+    expect(failure).toMatchObject({ code: 'git/unsupported-version', details: { current: '2.42.0', minimum: '2.43.0', feature: 'mergeFileObjectId' } })
+    expect(read(repo, 'a.txt')).toBe('a different\n')
   })
 
   it('merges three-way over an unstaged local change and records the conflict as index stages (L4 finding)', async () => {
@@ -197,7 +228,8 @@ describe('shelfApply and shelfDrop', () => {
     repo.write('a.txt', 'a changed\n')
     const { entry } = await write(shelfCreateOperation, repo, { name: 'x', paths: ['a.txt'] })
     repo.write('a.txt', 'a different\n')
-    const merged = await write(shelfApplyOperation, repo, { id: entry.id, threeWay: true, keep: true })
+    const merged = await applyThreeWay(repo, { id: entry.id, keep: true })
+    if (merged === null) return
     expect(merged).toMatchObject({ applied: true, conflicts: ['a.txt'] })
     expect(read(repo, 'a.txt')).toContain('a different')
     expect(read(repo, 'a.txt')).toContain('a changed')
@@ -219,7 +251,8 @@ describe('shelfApply and shelfDrop', () => {
     repo.commit('main a')
     repo.gitResult('merge', 'side')
     rmSync(join(repo.root, '.git', 'MERGE_HEAD'))
-    const merged = await write(shelfApplyOperation, repo, { id: entry.id, threeWay: true })
+    const merged = await applyThreeWay(repo, { id: entry.id })
+    if (merged === null) return
     expect(merged).toMatchObject({ applied: true, conflicts: ['b.txt'], kept: true })
     expect((await readShelfList(run, repo.root)).map(item => item.id)).toEqual([entry.id])
     expect(read(repo, 'b.txt')).toContain('b mine')

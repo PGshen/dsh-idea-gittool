@@ -28,8 +28,11 @@ export interface RecordedSpawn {
 /** Minimal `ctx.subprocess` surface consumed by the git executor. */
 export interface FakeSubprocess {
   readonly spawns: readonly RecordedSpawn[]
-  /** Executable returned by `resolveExecutable` (defaults to the real git binary, see git-binary.ts). */
-  executable: string
+  /**
+   * Executable returned by `resolveExecutable('git')` (defaults to the real git binary, see
+   * git-binary.ts); null simulates a PATH without git (B4d).
+   */
+  executable: string | null
   resolveExecutable: (
     command: string,
     env?: Readonly<Record<string, string>>,
@@ -42,11 +45,11 @@ export interface FakeSubprocess {
  * `withholdStdin`: simulate a seam that spawns but hands back no `stdin` writable even though
  * `'pipe'` was requested (the child's fd 0 is an open pipe nobody can write to).
  */
-export function createFakeSubprocess(options: { executable?: string; withholdStdin?: boolean } = {}): FakeSubprocess {
+export function createFakeSubprocess(options: { executable?: string | null; withholdStdin?: boolean } = {}): FakeSubprocess {
   const spawns: RecordedSpawn[] = []
   const fake: FakeSubprocess = {
     spawns,
-    executable: options.executable ?? GIT_BINARY,
+    executable: options.executable === undefined ? GIT_BINARY : options.executable,
     async resolveExecutable(command, _env, signal) {
       signal?.throwIfAborted()
       // Like the real provider for absolute paths: they must exist and be executable (B4c T2).
@@ -54,6 +57,7 @@ export function createFakeSubprocess(options: { executable?: string; withholdStd
         accessSync(command, constants.X_OK)
         return realpathSync(command)
       }
+      if (fake.executable === null) throw new Error(`${command}: command not found`)
       return fake.executable
     },
     spawn: (spec) => {

@@ -140,7 +140,7 @@ export function createBenchRepo(dir: string, options?: { commits?: number /* 10_
 
 ## 下一步
 
-- 无。2026-10-29 负责人验收通过，计划移入 `completed/`，rebase 到 main 后 `--no-ff` 合并；下一份是 [b4d](../active/b4d-跨平台与安装升级.md)。
+- 无。2026-10-29 负责人验收通过，计划移入 `completed/`，rebase 到 main 后 `--no-ff` 合并；下一份是 [b4d](b4d-跨平台与安装升级.md)。
 
 ## 决策记录
 

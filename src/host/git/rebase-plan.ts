@@ -8,6 +8,7 @@ import type { RebaseBlockedReason, RebasePlanCommit, RebasePlanRequest, RebasePl
 import { REBASE_PLAN_MAX_COMMITS } from '../../shared/protocol.ts'
 import type { GitRunResult, GitRunner } from '../git-executor.ts'
 import { GIT_BASE_ARGV, failureFromExit } from '../git-executor.ts'
+import { gitSupports, parseGitVersion } from '../git-version.ts'
 import { resolveRevision } from './revision.ts'
 import { invalidPayload } from './write-support.ts'
 
@@ -15,22 +16,16 @@ import { invalidPayload } from './write-support.ts'
 const PLAN_FIELDS = ['%H', '%h', '%P', '%an', '%ae', '%aI', '%s', '%B']
 const PLAN_FORMAT = PLAN_FIELDS.join('%x00')
 const PLAN_STDOUT_MAX_BYTES = 16 * 1024 * 1024
-/** First git release with `rebase --update-refs`. */
-const UPDATE_REFS_MIN_VERSION = [2, 38] as const
-
 export interface ReadRebasePlanOptions {
   signal?: AbortSignal | undefined
   /** `git --version` number (`2.50.1`); undefined → `--update-refs` treated as unsupported. */
   gitVersion?: string | undefined
 }
 
-/** Whether `version` (`2.50.1`, `2.38.0.windows.1`) is at least 2.38. */
+/** Whether `version` (`2.50.1`, `2.38.0.windows.1`) has `rebase --update-refs` (2.38). */
 export function supportsUpdateRefs(version: string | undefined): boolean {
-  const match = /^(\d+)\.(\d+)/u.exec(version ?? '')
-  if (match === null) return false
-  const major = Number(match[1])
-  const minor = Number(match[2])
-  return major > UPDATE_REFS_MIN_VERSION[0] || (major === UPDATE_REFS_MIN_VERSION[0] && minor >= UPDATE_REFS_MIN_VERSION[1])
+  const parsed = parseGitVersion(version ?? '')
+  return parsed !== null && gitSupports(parsed, 'updateRefs')
 }
 
 export async function readRebasePlan(

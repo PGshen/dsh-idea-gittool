@@ -19,6 +19,7 @@ import {
 import { contextFor, createRemoteSetup, pushFromOther, scriptedContext } from './remote-fixtures.ts'
 import type { RemoteSetup } from './remote-fixtures.ts'
 import type { TempRepo } from './fixtures.ts'
+import { gitTestAtLeast } from './git-binary.ts'
 
 // Each test spawns dozens of git processes (clones, pushes); allow for a loaded machine.
 vi.setConfig({ testTimeout: 90_000 })
@@ -83,20 +84,23 @@ describe('parseFetchPorcelain', () => {
 })
 
 describe('fetch', () => {
+  /** `fetch --porcelain` (git ≥ 2.41) gives the count; older git falls back without one (B4d T5). */
+  const counted = (updatedRefs: number): { updatedRefs?: number } => (gitTestAtLeast(2, 41) ? { updatedRefs } : {})
+
   it('fetches new branches, prunes deleted ones and counts updated refs', async () => {
     const remote = setup()
     remote.other.git('push', '-q', 'origin', 'HEAD:refs/heads/x', 'HEAD:refs/heads/y')
     const first = await runOn(fetchOperation, contextFor(remote.local), { remote: 'origin', prune: false })
-    expect(first).toEqual({ updatedRefs: 2 })
+    expect(first).toEqual(counted(2))
     expect(remote.local.git('branch', '-r')).toContain('origin/x')
 
     remote.other.git('push', '-q', 'origin', ':refs/heads/x')
     const pruned = await runOn(fetchOperation, contextFor(remote.local), { remote: 'origin', prune: true })
-    expect(pruned).toEqual({ updatedRefs: 1 })
+    expect(pruned).toEqual(counted(1))
     expect(remote.local.git('branch', '-r')).not.toContain('origin/x')
 
     const all = await runOn(fetchOperation, contextFor(remote.local), { remote: null, prune: false })
-    expect(all).toEqual({ updatedRefs: 0 })
+    expect(all).toEqual(counted(0))
   })
 
   it('validates the remote', async () => {

@@ -7,7 +7,7 @@
 // carrier tree so `gc` keeps it. Bytes never pass through JavaScript strings, so encodings, textconv, diff
 // prefixes and sizes cannot corrupt an entry (B3c review C2/I1). Restoring goes through the index
 // (`update-index --index-info` + `checkout-index`); a three-way unshelve merges each file with
-// `merge-file --object-id` and records conflicts as index stages 1/2/3.
+// `merge-file --object-id` (git ≥ 2.43, B4d T5) and records conflicts as index stages 1/2/3.
 //
 // Order of a shelve: capture → verify the paths did not change meanwhile → write the ref → roll the
 // paths back to HEAD. A failure before the ref write leaves everything as it was.
@@ -36,6 +36,7 @@ import {
   query,
   readPathStates,
   redactedFailure,
+  requireGitFeature,
 } from './write-support.ts'
 
 const SHELF_ID_PATTERN = /^[0-9a-z-]{1,64}$/u
@@ -348,6 +349,9 @@ export const shelfApplyOperation: WriteOperation<ShelfApplyInput, Omit<ShelfAppl
         paths: unclean.map(file => file.path),
       })
     }
+
+    // Three-way needs `merge-file --object-id`; refuse before any file changes (B4d T5).
+    if (unclean.length > 0) await requireGitFeature(ctx, 'mergeFileObjectId')
 
     const empty = await emptyBlob(read)
     const conflicts: string[] = []

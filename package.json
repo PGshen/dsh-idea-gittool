@@ -1,6 +1,6 @@
 {
   "name": "dsh-idea-gittool",
-  "version": "0.1.0",
+  "version": "1.0.0-rc.1",
   "type": "module",
   "description": "IntelliJ 风格 Git 工作台：DSH Web 右侧栏双面 bundle 插件",
   "main": "lib/host.js",
@@ -10,7 +10,9 @@
     "./package.json": "./package.json"
   },
   "files": [
-    "lib",
+    "lib/host.js",
+    "lib/client.js",
+    "lib/client.*.js",
     "cordis.patch.yml",
     "README.md"
   ],
@@ -37,6 +39,7 @@
     "smoke": "node test/bundle.smoke.mjs",
     "bench": "node --experimental-transform-types --no-warnings scripts/bench/host.ts",
     "bench:client": "node scripts/bench-client/build.mjs",
+    "matrix": "node --experimental-transform-types --no-warnings scripts/matrix/host.ts",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "layers": "depcruise src --config .dependency-cruiser.cjs",

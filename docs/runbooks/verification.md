@@ -252,3 +252,16 @@ git checkout -q feature && git rebase main   # stops at topic1; after continue, 
 - 首屏：关掉 Git 标签后，在页面里挂一个 capture 阶段的 keydown 监听记下 Cmd+Shift+G 的时刻，用 1ms 轮询记录「获取」按钮（仓库栏）与 grid 内 >10 行出现的时刻（MutationObserver 在这里不可靠）。
 - 内存：`performance.memory.usedJSHeapSize`，Git 标签关闭时为基线，再加载满 2000 行、5 次双击打开/Esc 关闭 >256 KiB 的 diff（单击文件只选中，双击才打开 diff）。
 - 按需 chunk：`performance.getEntriesByType('resource')` 过滤 `client.merge`，打开合并窗口前应为 0 个、打开后 1 个、再次打开不增加。带 `rev` 的 chunk URL 会被缓存，移走 `lib/client.merge.js` 模拟不出加载失败。
+
+## git 版本兼容（B4d T5，L5）
+
+- 最低支持 git 2.25.0（`src/host/git-version.ts`）；只有部分版本才有的特性集中在同一文件的特性表里（`rebase --update-refs` 2.38、`merge-file --object-id` 2.43），低版本上隐藏或拒绝该功能并说明，不散落判断版本。
+- `scripts/compat/run-host-tests.sh <git 的绝对路径>`：用指定的 git 跑一遍 `test/host`（环境变量 `DSH_GIT_TEST_BINARY`，`test/host/git-binary.ts` 读取；路径无效时直接报错，不会悄悄换成别的 git）。不进 `make check`。
+- 依赖较新 git 输出的测试按 `GIT_TEST_VERSION` 分支断言（如 `fetch --porcelain` 的计数、三方取回搁架的拒绝），兼容运行检查的是降级路径，而不是被跳过。
+- 旧版本 git 放在临时目录（scratchpad 或系统临时目录），不装进系统 PATH；macOS 上 Command Line Tools 自带的 `/Library/Developer/CommandLineTools/usr/bin/git` 可能比 Xcode 的新旧不同，可直接拿来跑。日志放 `.evidence/<计划 id>/compat-<版本>.log`。
+
+## 真实仓库矩阵（B4d T7，L5）
+
+- `pnpm matrix`：在系统临时目录生成 12 种仓库（不用任何真实仓库数据，用完删除），用真实 RPC 处理器按 Git 标签的顺序走一遍：bootstrap → 日志首页 → 最新与最早一行的提交详情 → 第一个文件的 diff → status；写门禁放行时再提交一个文件并 `reset --soft` 撤销。结果表打印到终端，JSON 写到 `.evidence/b4d/matrix.json`；任何一种不符合预期时退出码 1。`MATRIX_COMMITS=300 pnpm matrix` 可快速试跑。
+- 种类：10k 合成提交、脏工作区（修改/暂存/未跟踪/重命名）、合并冲突进行中、仓库根在沙箱外（期望只读）、子目录会话、CRLF + `core.autocrlf`、浅克隆、`.worktrees/` 下的 linked worktree（工作区为主仓库，可写）、工作区外主仓库的 linked worktree（期望只读 `repo-outside-workspace`）、空仓库、非仓库目录、路径含空格/中文/引号。
+- 沙箱用直通的 confine 替身：矩阵查的是 git 行为；真实沙箱下的写入在 L4 里看（例如空仓库的第一个提交）。

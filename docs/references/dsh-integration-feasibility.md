@@ -1098,3 +1098,21 @@ B2 L4 另外两条宿主事实（2026-10-27，3081 实测）：
 | chunk 用 `window.__ModuleLoader__.load({ id: <包名>, chunk: '<文件名>', factory: (require) => {…} })` 注册；主包在 factory 里用 `require.async('./<文件名>')` 加载，返回 chunk factory 的导出；同一 URL 并发请求只拉一次；chunk 的 `require` 同样只能拿基线模块 | ✅ 源码 | `packages/client/modules/src/client/system.ts` `makeRequire`/`importChunk`（:324–390）、`manifest.ts` `ClientBundleRequire`/`ClientBundleRegistration`（:348–368）；官方 preset 的写法见 `packages/client/tsdown.client.ts:446-470,664` |
 | chunk URL 带的是整个包的版本号，版本由 **`client.js` 的 `mtimeMs`/`ctimeMs`/`size`** 计算（`artifactRevision`，不读内容）；只改 chunk、不重写 `client.js` 时版本不前进。本插件在 `client.js` banner 之后写一行 `// client.merge.js <chunk 哈希>`，并在 watch 模式下 chunk 变化时重建 `client.js` | ✅ 源码（2026-10-28 终审更正：起初误写为按内容） | `packages/client/modules/src/index.ts` `artifactRevision`（:221）、`captureArtifactBaseline`（:963）、`chunkUrl`；`build.mjs` `emitClientBundle` |
 | macOS 的 `/usr/bin/git` 是 Xcode 命令行转发器（内部 xcrun），每次启动约 8ms；在 pnpm 启动的进程里约 45ms（原因未完全查清，去掉 PATH 即恢复）。`$(git --exec-path)/git` 是真实二进制，约 2.6ms。Host 执行器的 `directBinary` 只解析一次并直接用它 | ✅ 2026-10-28 实测 | b4c 计划「意外与发现」；`src/host/git-executor.ts` `directBinary` |
+
+## 18. git 版本差异（B4d T5，2026-10-29，本机实测 Apple Git 2.39.5（CommandLineTools）对照 2.50.1）
+
+- `git merge-file --object-id`：2.39.5 报 `unknown option 'object-id'`，2.50.1 有。发布说明记为 2.43 引入；插件按 2.43 门控（搁架三方取回在更低版本上返回 `git/unsupported-version`，`details.feature = 'mergeFileObjectId'`）。2.40–2.42 未实测。
+- `git var GIT_SEQUENCE_EDITOR`：2.39.5 退出 129（只认 `-l` 与少数变量）。测试改用 shell 别名打印环境变量。
+- `git log --format=%aI`：2.39.5 对 UTC 输出 `+00:00`，2.50.1 输出 `Z`；比较日期时用 `%at`。
+- `git fetch --porcelain`：2.41 引入；2.39.5 报用法错误（退出 129），插件去掉它重跑（A3 起已有的降级），返回不带 `updatedRefs`。
+- Command Line Tools 的 `--exec-path`（`usr/libexec/git-core`）里的 `git` 是指向 `../../bin/git` 的符号链接，`directBinary` 解析后就是 PATH 上那个文件。
+- 2.25.x、2.38.x 未实测：从 kernel.org 下载源码后的本地编译被自动模式拦截，等负责人决定（见 b4d 计划 T5）。
+
+## 19. 打包安装、升级、卸载与 engines 检查（B4d T6，2026-10-29，DSH 0.2.1-rc.2 实测）
+
+- `dsh plugin --profile <p> <参数…>` 把参数原样交给 profile 目录里的 pnpm。`add <tarball 绝对路径>` 写 `dependencies` 为 `file:<路径>`，并把包名加进 `dsh.profile.bundles`；`remove` 两处都去掉。都要重启 `dsh web` 才生效。
+- 对同一个包再次 `add` 新 tarball 就是升级：pnpm 整体替换包目录，旧版本多出的文件不会残留。
+- `engines.dsh` 不满足时安装前就被拒：报插件与当前 DSH 不兼容（运行可能崩溃或丢数据），自动还原 `package.json`、lockfile 与 `node_modules`，并给出按精确版本豁免的命令 `dsh plugin --profile <p> allow-version <包>@<版本> --dsh-version <DSH 版本> --accept-risk`。
+- 换 HOME 运行时 pnpm 的默认 store 跟着换，与复制来的 `node_modules` 记录的 `storeDir` 不一致就报错。pnpm 11 认环境变量 `pnpm_config_store_dir`，不认 `npm_config_store_dir`。
+- 卸载后 DSH 会恢复之前打开的、类型已不存在的右侧栏标签，显示通用占位「这类内容还没有可用的查看方式。」。
+

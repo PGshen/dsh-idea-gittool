@@ -18,6 +18,8 @@ export const RPC_ENDPOINTS = [
   'commit',
   'diff',
   'console',
+  // B4d：设置/重新检测 Host 使用的 git（只改进程内存）。
+  'gitExecutable',
   // A2 写端点与推送预览（写端点名避开读端点 `commit`）。
   'commitFiles',
   'amendMessage',
@@ -182,9 +184,30 @@ export const GIT_ERROR_CODES = [
   'git/stale-target',
   /** 新建/重命名的目标分支已存在：{@link BranchExistsDetails}。 */
   'git/branch-exists',
+  // B4d（设计 §16.7）
+  /** 解析不到 git 可执行文件（PATH 中没有，或设置的路径失效）；客户端显示「未找到 git 命令」。 */
+  'git/not-found',
+  /** git 低于最低版本：{@link UnsupportedVersionDetails}；客户端显示升级提示。 */
+  'git/unsupported-version',
 ] as const
 
 export type GitErrorCode = (typeof GIT_ERROR_CODES)[number]
+
+/** `git/unsupported-version` 的 details（B4d）：版本号都是 `major.minor.patch`。 */
+export interface UnsupportedVersionDetails {
+  current: string
+  minimum: string
+}
+
+/** Host 实际使用的 git（B4d）：`source` 说明路径来自 PATH 解析还是用户设置。 */
+export interface GitExecutableInfo {
+  path: string
+  /** `major.minor.patch`，如 `2.50.1`。 */
+  version: string
+  /** 原始 `git --version` 输出（去掉末尾换行）。 */
+  raw: string
+  source: 'path' | 'setting'
+}
 
 export interface GitError {
   code: GitErrorCode
@@ -358,6 +381,13 @@ export interface BootstrapValue {
   gitVersion?: string
   /** 该仓库正在执行或排队的写操作数；>0 时客户端显示「等待当前操作完成」（A2 追加）。 */
   pendingWrites?: number
+  /** Host 实际使用的 git（B4d）；探测失败时省略。 */
+  git?: GitExecutableInfo
+}
+
+/** 设置 git 路径（B4d）：绝对路径，或 null 回到 PATH；每次都重新检测，「重新检测」即重发当前设置。 */
+export interface GitExecutableRequest extends RpcRequest {
+  path: string | null
 }
 
 // ---------------------------------------------------------------------------
@@ -1776,6 +1806,7 @@ export type UnresolveConflictValue = ResolveConflictValue
  */
 export interface RpcEndpointTypes {
   bootstrap: { request: RpcRequest; value: BootstrapValue }
+  gitExecutable: { request: GitExecutableRequest; value: GitExecutableInfo }
   status: { request: RpcRequest; value: StatusValue }
   log: { request: LogRequest; value: LogValue }
   branches: { request: RpcRequest; value: BranchesValue }

@@ -1,6 +1,6 @@
 // Settings sheet (design §13, plan B4a T2): every viewer preference of the workbench, applied on change.
 // Values live in localStorage (settings.ts); other mounted views follow through useSettings().
-import { useRef } from 'react'
+import { useRef, useState } from 'react'
 import type { ReactNode, Ref } from 'react'
 import { useT } from '../i18n.tsx'
 import type { Translate } from '../i18n.tsx'
@@ -13,6 +13,8 @@ import {
   writeSettings,
 } from '../settings.ts'
 import type { WorkbenchSettings } from '../settings.ts'
+import type { GitExecutableInfo } from '../../shared/protocol.ts'
+import { GitPathField } from '../git-missing.tsx'
 import { Button } from '../ui/Button.tsx'
 import { SheetFrame, escapeHandler, useInitialFocus } from './integrate-parts.tsx'
 import css from './SettingsSheet.module.css'
@@ -46,9 +48,27 @@ export interface SettingsSheetViewProps {
   onChange: (patch: Partial<WorkbenchSettings>) => void
   onReset: () => void
   onClose: () => void
+  /** B4d: the git the Host runs (bootstrap `git`). */
+  git?: GitExecutableInfo | undefined
+  gitPathBusy?: boolean
+  gitPathError?: string | null
+  onGitPath?: (path: string) => void
 }
 
-export function SettingsSheetView({ t, settings, rootRef, onChange, onReset, onClose }: SettingsSheetViewProps): ReactNode {
+export function SettingsSheetView({
+  t,
+  settings,
+  rootRef,
+  onChange,
+  onReset,
+  onClose,
+  git,
+  gitPathBusy = false,
+  gitPathError = null,
+  onGitPath,
+}: SettingsSheetViewProps): ReactNode {
+  // The stored path is not what the Host runs (Host restarted, or the path stopped validating).
+  const gitPathInactive = settings.gitPath !== null && git !== undefined && git.source !== 'setting'
   const change = (name: SettingControl, value: string | boolean): void => {
     const patch = settingsPatchFor(name, value)
     if (Object.keys(patch).length > 0) onChange(patch)
@@ -117,6 +137,23 @@ export function SettingsSheetView({ t, settings, rootRef, onChange, onReset, onC
         <section className={css.group}>
           {toggle('blameRenderer', t('settings.blameRenderer'), t('settings.blameRenderer.hint'))}
         </section>
+        <section className={css.group}>
+          <div className={css.row}>
+            <span className={css.label}>{t('settings.gitPath')}</span>
+            <GitPathField value={settings.gitPath} busy={gitPathBusy} error={gitPathError} onApply={path => onGitPath?.(path)} />
+            {git === undefined ? null : (
+              <p className={css.hint}>
+                {t('settings.gitPath.current', {
+                  path: git.path,
+                  version: git.version,
+                  source: t(git.source === 'setting' ? 'settings.gitPath.source.setting' : 'settings.gitPath.source.path'),
+                })}
+              </p>
+            )}
+            {gitPathInactive ? <p className={css.hint} data-git-path-inactive="">{t('settings.gitPath.inactive')}</p> : null}
+            <p className={css.hint}>{t('settings.gitPath.hint')}</p>
+          </div>
+        </section>
         <p className={css.hint}>{t('settings.storageNote')}</p>
       </div>
       <footer className={css.footer}>
@@ -127,10 +164,19 @@ export function SettingsSheetView({ t, settings, rootRef, onChange, onReset, onC
   )
 }
 
-export function SettingsSheet({ onClose }: { onClose: () => void }): ReactNode {
+export interface SettingsSheetProps {
+  onClose: () => void
+  git?: GitExecutableInfo | undefined
+  /** B4d: hand a path to the Host; resolves to the rejection text, or null once adopted. */
+  onGitPath?: (path: string) => Promise<string | null>
+}
+
+export function SettingsSheet({ onClose, git, onGitPath }: SettingsSheetProps): ReactNode {
   const t = useT()
   const settings = useSettings()
   const rootRef = useRef<HTMLDivElement | null>(null)
+  const [gitPathBusy, setGitPathBusy] = useState(false)
+  const [gitPathError, setGitPathError] = useState<string | null>(null)
   useInitialFocus(rootRef)
   return (
     <SettingsSheetView
@@ -140,6 +186,16 @@ export function SettingsSheet({ onClose }: { onClose: () => void }): ReactNode {
       onChange={(patch) => { writeSettings(patch) }}
       onReset={() => { resetSettings() }}
       onClose={onClose}
+      git={git}
+      gitPathBusy={gitPathBusy}
+      gitPathError={gitPathError}
+      onGitPath={onGitPath === undefined ? undefined : (path) => {
+        setGitPathBusy(true)
+        void onGitPath(path).then((error) => {
+          setGitPathError(error)
+          setGitPathBusy(false)
+        })
+      }}
     />
   )
 }

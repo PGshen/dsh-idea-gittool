@@ -13,7 +13,7 @@
 | 里程碑 | B 阶段收尾（TODO 清理） |
 | 设计依据 | 各条目原计划的「决策记录」终审条目（b1、b2、b3b、b3d、b4d 计划）；[TODO](../TODO.md) |
 | 分支 | `t1-todo-fixes` |
-| 批准记录 | 2026-10-29 负责人：TODO 分类中「又急又容易」与「不急但容易」两组本次一起做 |
+| 批准记录 | 2026-10-29 负责人：TODO 分类中「又急又容易」与「不急但容易」两组本次一起做；2026-10-29 负责人接受 3 处计划外公共接口新增，要求做整分支评审 |
 
 ## 目标
 
@@ -83,7 +83,7 @@
 ## 决策记录
 
 - 2026-10-29 — 4 组按区域并行，每组独立 worktree 分支，避免同一 checkout 内互相干扰 `make check`；计划文件只由主会话修改。
-- 2026-10-29 — **需负责人确认（计划外的公共接口新增）**：`WorktreeEntry.main`、`TagPushRejectedDetails`（T1）；`StaleTargetDetails.target` 新增 `'git-path'`（T4，修并发 bug 所必需）。均为新增、向后兼容，只在插件 Host/Client 之间使用。
+- 2026-10-29 — **负责人已接受（计划外的公共接口新增）**：`WorktreeEntry.main`、`TagPushRejectedDetails`（T1）；`StaleTargetDetails.target` 新增 `'git-path'`（T4，修并发 bug 所必需）。均为新增、向后兼容，只在插件 Host/Client 之间使用。
 - 2026-10-29 — T2 草稿清理：操作仍在进行时，只在 git 成功或位置（HEAD/变基步号/CHERRY_PICK_HEAD/REVERT_HEAD）推进后清理；操作已结束时照常清理（草稿再也匹配不上）。
 - 2026-10-29 — T2 保存失败重新询问只用于外部导航（挂起的智能操作询问），窗口自己的返回/切换文件保持只显示错误。
 - 2026-10-29 — T2 冲突来源由客户端 `conflict-store` 记录 `origin`（Host 搁架三方合并不留标记）；块计数失败缓存按「本轮 + 路径」而非 stages（失败时拿不到 stages），新轮次或文件改动时失效。

@@ -1583,7 +1583,10 @@ export interface StashEntry {
   branch: string | null
   /** ISO 8601。 */
   date: string
-  /** 已跟踪改动文件数；条目超过 {@link STASH_FILE_COUNT_LIMIT} 时省略。 */
+  /**
+   * 文件数 = 已跟踪改动（`^1..sha`）+ 未跟踪文件（`-u` 贮藏的 `^3`），与 `stashFiles` 两个列表之和一致；
+   * 条目超过 {@link STASH_FILE_COUNT_LIMIT} 时省略。
+   */
   fileCount?: number
 }
 

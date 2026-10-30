@@ -71,6 +71,14 @@ dsh web
 
 Web 侧边栏 **Plugins → Add plugin** 也接受同一个 URL，或本地 tgz 的绝对路径。
 
+**网络到 GitHub 附件 CDN 不通时**（pnpm 日志 `HEAD https://release-assets.githubusercontent.com/… ECONNRESET`、`fetch failed`）：这不是版本或插件问题。让收件人用浏览器/代理下载 tgz，按 `SHA256SUMS` 校验后本地安装：
+
+```bash
+dsh plugin --profile web add /绝对路径/dsh-idea-gittool-<版本>.tgz
+```
+
+需要代理时在命令前加 `HTTPS_PROXY=… HTTP_PROXY=…`，pnpm 会继承。给中国大陆用户分发时，优先考虑把 tgz 放到他们能访问的下载地址（对象存储、内网文件服务），或后续发布 npm 走 npmmirror 镜像。
+
 ## 撤回
 
 | 情况 | 做法 |

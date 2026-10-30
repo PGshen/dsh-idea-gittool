@@ -29,6 +29,15 @@ dsh plugin --profile web add https://github.com/PGshen/dsh-idea-gittool/releases
 - 版本不匹配时安装会被拒绝，换匹配当前 DSH 的版本；确认要冒险时按提示用 `dsh plugin --profile web allow-version …` 按精确版本豁免。
 - 版本不匹配的表现、隔离验证方法与发布流程见 [install-upgrade](docs/runbooks/install-upgrade.md) 与 [release](docs/runbooks/release.md)。
 
+**从 GitHub 下载不动时**（`fetch failed`、`release-assets.githubusercontent.com` 连接被重置）：先用浏览器或代理下载 tgz，校验后改为本地安装：
+
+```bash
+shasum -a 256 dsh-idea-gittool-1.0.0-rc.1.tgz   # 与 Release 页的 SHA256SUMS 对照
+dsh plugin --profile web add /绝对路径/dsh-idea-gittool-1.0.0-rc.1.tgz
+```
+
+需要代理时也可以只给这条命令加环境变量，例如 `HTTPS_PROXY=http://127.0.0.1:7890 HTTP_PROXY=http://127.0.0.1:7890 dsh plugin --profile web add <URL>`；Web 的 Add plugin 走同一套 pnpm 配置。
+
 ## 打开
 
 - 右侧栏引导页里的「Git 工作台」卡片；
@@ -103,6 +112,7 @@ dsh plugin --profile web add https://github.com/PGshen/dsh-idea-gittool/releases
 | 设置页提示「这里设置的路径没有生效」 | 在设置里重新点「应用」，看具体原因（不存在、不可执行、不是 git、版本过低） |
 | 一直是只读 | 看横幅里的原因；多数是会话权限为只读，或仓库/`.git` 不在工作区内 |
 | 安装时提示与 DSH 版本不兼容 | 换用匹配当前 DSH 的插件版本；确实要装时按提示用 `dsh plugin allow-version` 为这个精确版本豁免 |
+| 安装时提示 `fetch failed`，日志里反复 `HEAD https://release-assets.githubusercontent.com/… ECONNRESET` | 到 GitHub Release 附件 CDN 的网络不通，不是版本问题。挂代理后重试；或先用浏览器下载 tgz、校验 `shasum -a 256`，再用绝对路径安装（见安装一节） |
 | 卸载后右侧栏还有一个「Git」标签，显示「这类内容还没有可用的查看方式」 | 这是 DSH 恢复的旧标签，直接关掉 |
 | 想知道插件跑了什么 git 命令 | 状态栏打开 Git 控制台；命令可复制（复制出的是 POSIX shell 写法，Windows 上在 Git Bash 里运行） |
 

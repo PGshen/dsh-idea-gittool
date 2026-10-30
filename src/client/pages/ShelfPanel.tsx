@@ -146,21 +146,28 @@ export interface ShelfPanelProps {
 export function ShelfPanel(props: ShelfPanelProps): ReactNode {
   const t = useT()
   const state = useShelfState(props.store)
-  const [notClean, setNotClean] = useState(false)
-  const [confirmingDrop, setConfirmingDrop] = useState(false)
+  // Plan t2 T2: both bars belong to the entry they were raised for. A refresh can move the selection
+  // to another entry (the old one vanished, or results arrived out of order); the bars then hide and
+  // their buttons act on the recorded id, never on whatever is selected now.
+  const [notCleanId, setNotCleanId] = useState<string | null>(null)
+  const [confirmingDropId, setConfirmingDropId] = useState<string | null>(null)
   const [message, setMessage] = useState<LocalizedText | null>(null)
   const [running, setRunning] = useState(false)
   const { store } = props
   useEffect(() => { void store.refresh() }, [store, props.version])
   const id = state.selectedId
-  const apply = async (keep: boolean, threeWay: boolean, trigger: FocusTarget | null): Promise<void> => {
+  useEffect(() => {
+    setNotCleanId(null)
+    setConfirmingDropId(null)
+  }, [id])
+  const apply = async (id: string | null, keep: boolean, threeWay: boolean, trigger: FocusTarget | null): Promise<void> => {
     if (id === null) return
     setRunning(true)
     setMessage(null)
     const outcome = await props.actions.run('shelfApply', { id, keep, threeWay }, { target: `shelf:${id}`, trigger })
     setRunning(false)
     if (outcome.kind === 'done') {
-      setNotClean(false)
+      setNotCleanId(null)
       const value: ShelfApplyValue = outcome.value
       setMessage({ key: value.conflicts.length > 0 ? 'shelf.applied.conflicts' : 'shelf.applied', params: { count: value.conflicts.length } })
       props.onApplied()
@@ -169,17 +176,18 @@ export function ShelfPanel(props: ShelfPanelProps): ReactNode {
       return
     }
     if (outcome.kind === 'conflict' || (outcome.kind === 'failed' && outcome.error.code === 'git/conflict')) {
-      setNotClean(true)
+      // Only raise the bar while the refused entry is still the one shown.
+      if (store.getState().selectedId === id) setNotCleanId(id)
       return
     }
     setMessage(failureText(outcome))
   }
-  const drop = async (trigger: FocusTarget | null): Promise<void> => {
+  const drop = async (id: string | null, trigger: FocusTarget | null): Promise<void> => {
     if (id === null) return
     setRunning(true)
     const outcome = await props.actions.run('shelfDrop', { id }, { target: `shelf:${id}`, trigger })
     setRunning(false)
-    setConfirmingDrop(false)
+    setConfirmingDropId(null)
     setMessage(outcome.kind === 'done' ? null : failureText(outcome))
     void store.refresh()
   }
@@ -190,15 +198,15 @@ export function ShelfPanel(props: ShelfPanelProps): ReactNode {
       now={Date.now()}
       busy={props.busy || running}
       blockReason={props.blockReason}
-      notClean={notClean}
-      confirmingDrop={confirmingDrop}
+      notClean={notCleanId !== null && notCleanId === id}
+      confirmingDrop={confirmingDropId !== null && confirmingDropId === id}
       message={message}
-      onSelect={(next) => { setNotClean(false); setConfirmingDrop(false); setMessage(null); void store.select(next) }}
-      onApply={(keep, trigger) => { void apply(keep, false, trigger) }}
-      onApplyThreeWay={(trigger) => { void apply(true, true, trigger) }}
-      onAskDrop={() => { setConfirmingDrop(true) }}
-      onCancelDrop={() => { setConfirmingDrop(false) }}
-      onDrop={(trigger) => { void drop(trigger) }}
+      onSelect={(next) => { setNotCleanId(null); setConfirmingDropId(null); setMessage(null); void store.select(next) }}
+      onApply={(keep, trigger) => { void apply(id, keep, false, trigger) }}
+      onApplyThreeWay={(trigger) => { if (notCleanId === id) void apply(notCleanId, true, true, trigger) }}
+      onAskDrop={() => { setConfirmingDropId(id) }}
+      onCancelDrop={() => { setConfirmingDropId(null) }}
+      onDrop={(trigger) => { if (confirmingDropId === id) void drop(confirmingDropId, trigger) }}
       onRetry={() => { void store.refresh() }}
     />
   )

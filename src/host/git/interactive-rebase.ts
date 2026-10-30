@@ -112,6 +112,7 @@ export const interactiveRebaseOperation: WriteOperation<
       const todo = buildTodo(input.entries, {
         messageBlob: index => blobs.get(index) ?? '',
         branches: updateRefs ? sha => branches.get(sha) ?? [] : undefined,
+        root: input.base === null,
       })
       const result = await ctx.git(
         [

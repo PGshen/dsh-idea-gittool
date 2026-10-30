@@ -203,6 +203,21 @@ describe('interactiveRebaseOperation.run', () => {
     expect(subjects(repo)).toEqual(['c1', 'root renamed'])
   })
 
+  it('keeps a branch on a dropped root commit where it was under --root (t2 T1)', async () => {
+    const repo = makeRepo()
+    linear(repo, 2)
+    const [root, c1, c2] = repo.git('rev-list', '--reverse', 'HEAD').trim().split('\n')
+    repo.git('branch', 'side', root ?? '')
+    const branch = repo.git('rev-parse', '--abbrev-ref', 'HEAD').trim()
+    await rebase(repo, null, [
+      { sha: root ?? '', action: 'drop' }, { sha: c1 ?? '', action: 'pick' }, { sha: c2 ?? '', action: 'pick' },
+    ], { updateRefs: true })
+    expect(repo.git('rev-parse', 'side').trim()).toBe(root)
+    expect(repo.git('rev-parse', '--abbrev-ref', 'HEAD').trim()).toBe(branch)
+    expect(subjects(repo)).toEqual(['c1', 'c2'])
+    expect(repo.git('ls-tree', '--name-only', 'HEAD').trim().split('\n').sort()).toEqual(['f1.txt', 'f2.txt'])
+  })
+
   it('moves other branches with updateRefs and leaves them without it', async () => {
     const repo = makeRepo()
     const [c1, c2] = linear(repo, 2)

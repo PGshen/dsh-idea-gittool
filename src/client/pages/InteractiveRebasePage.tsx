@@ -9,7 +9,7 @@ import { REBASE_ACTIONS, REBASE_PLAN_MAX_COMMITS } from '../../shared/protocol.t
 import type { FocusTarget } from '../focus.ts'
 import { useT } from '../i18n.tsx'
 import type { Translate } from '../localized-text.ts'
-import { MESSAGE_PLACEHOLDER, groupMessage, groups, move, previewTodo, setAction, setMessage } from '../rebase/rebase-model.ts'
+import { MESSAGE_PLACEHOLDER, groupMessage, groups, move, previewTodo, setAction, setMessage, stayingBranches } from '../rebase/rebase-model.ts'
 import type { RebasePreset, RebaseRow } from '../rebase/rebase-model.ts'
 import type { ActionOutcome, ActionStore } from '../store/action-store.ts'
 import { createRebaseStore, useRebaseState } from '../store/rebase-store.ts'
@@ -234,6 +234,7 @@ function messageEditor(props: InteractiveRebasePageViewProps, t: Translate): Rea
 function footerOf(props: InteractiveRebasePageViewProps, t: Translate): ReactNode {
   const { state } = props
   const plan = state.plan
+  const staying = plan === null ? [] : stayingBranches(plan, state.rows, { updateRefs: state.updateRefs && plan.supportsUpdateRefs })
   return (
     <div className={css.footer}>
       {state.rewritesPushed ? (
@@ -250,6 +251,12 @@ function footerOf(props: InteractiveRebasePageViewProps, t: Translate): ReactNod
           <input type="checkbox" checked={state.updateRefs} onChange={(event) => { props.onUpdateRefs(event.target.checked) }} />
           {t('rebase.updateRefs')}
         </label>
+      ) : null}
+      {staying.length > 0 ? (
+        // t2 T1: under --root git would move these onto an empty root commit, so they keep their old commit.
+        <p className={css.reason} data-rebase-stays-put="">
+          {t('rebase.updateRefs.staysPut', { branches: staying.join(', ') })}
+        </p>
       ) : null}
       {plan !== null && !plan.supportsUpdateRefs && plan.commits.some(commit => commit.branches.length > 0) ? (
         // B4d: an older git cannot move the other branches; say so instead of silently hiding the option.

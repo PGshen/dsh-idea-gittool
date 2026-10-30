@@ -13,6 +13,7 @@ import {
   rewritesPushed,
   setAction,
   setMessage,
+  stayingBranches,
   toEntries,
   validate,
 } from '../../../src/client/rebase/rebase-model.ts'
@@ -142,5 +143,25 @@ describe('previewTodo', () => {
       '',
     ].join('\n'))
     expect(previewTodo(withBranch, rows, { updateRefs: false })).not.toContain('update-ref')
+  })
+})
+
+describe('stayingBranches (t2 T1)', () => {
+  const rootPlan = (): RebasePlanValue => ({ ...plan([commit('a', { branches: ['side'] }), commit('b', { branches: ['mid'] }), commit('c')]), base: null })
+
+  it('lists branches on leading drops of a --root rebase with --update-refs, and the preview leaves them out', () => {
+    const value = rootPlan()
+    const rows = setAction(setAction(fromPlan(value), 0, 'drop'), 1, 'drop')
+    expect(stayingBranches(value, rows, { updateRefs: true })).toEqual(['side', 'mid'])
+    expect(previewTodo(value, rows, { updateRefs: true })).not.toContain('update-ref')
+  })
+
+  it('is empty without --root, without --update-refs or when a kept commit comes first', () => {
+    const value = rootPlan()
+    const dropped = setAction(fromPlan(value), 0, 'drop')
+    expect(stayingBranches(value, dropped, { updateRefs: false })).toEqual([])
+    expect(stayingBranches({ ...value, base: '0'.repeat(40) }, dropped, { updateRefs: true })).toEqual([])
+    expect(previewTodo({ ...value, base: '0'.repeat(40) }, dropped, { updateRefs: true })).toContain('update-ref refs/heads/side')
+    expect(stayingBranches(value, setAction(fromPlan(value), 1, 'drop'), { updateRefs: true })).toEqual([])
   })
 })

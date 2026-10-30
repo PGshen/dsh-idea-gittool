@@ -112,3 +112,7 @@ pnpm dsh plugin --profile web add /绝对路径/dsh-idea-gittool-<版本>.tgz
 ## 开发者
 
 开发、测试与 AI 协作方式见 [AGENTS.md](AGENTS.md)（入口地图）。设计文档在 [docs/design](docs/design/2026-10-25-产品设计速览.md)。
+
+## 许可证与致谢
+
+本项目以 [Apache-2.0](LICENSE) 许可发布。功能与交互参考 IntelliJ IDEA 的 Git 工作流；需求调研参考了 IdeaGitTool 的公开功能清单。

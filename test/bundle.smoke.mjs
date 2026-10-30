@@ -145,8 +145,8 @@ if (chunkSource !== undefined) {
 }
 
 // ---- package contents (B4d T6, AC6) ----
-// What `dsh plugin add <tarball>` installs: the two bundles, the merge chunk, the patch and the docs.
-const PACKED_FILES = ['README.md', 'cordis.patch.yml', 'lib/client.js', 'lib/client.merge.js', 'lib/host.js', 'package.json']
+// What `dsh plugin add <tarball>` installs: the two bundles, the merge chunk, the patch, the docs and the license.
+const PACKED_FILES = ['LICENSE', 'NOTICE', 'README.md', 'cordis.patch.yml', 'lib/client.js', 'lib/client.merge.js', 'lib/host.js', 'package.json']
 const pack = spawnSync('pnpm', ['pack', '--dry-run', '--json'], {
   cwd: new URL('..', import.meta.url),
   encoding: 'utf8',

@@ -3,6 +3,21 @@
   "version": "1.0.0-rc.1",
   "type": "module",
   "description": "IntelliJ 风格 Git 工作台：DSH Web 右侧栏双面 bundle 插件",
+  "license": "Apache-2.0",
+  "author": "pengguishen",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/PGshen/dsh-idea-gittool.git"
+  },
+  "homepage": "https://github.com/PGshen/dsh-idea-gittool#readme",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "git",
+    "intellij",
+    "workbench"
+  ],
   "main": "lib/host.js",
   "exports": {
     ".": "./lib/host.js",
@@ -14,6 +29,8 @@
     "lib/client.js",
     "lib/client.*.js",
     "cordis.patch.yml",
+    "LICENSE",
+    "NOTICE",
     "README.md"
   ],
   "dsh": {

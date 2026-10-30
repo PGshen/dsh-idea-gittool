@@ -79,6 +79,18 @@ dsh plugin --profile web add /绝对路径/dsh-idea-gittool-<版本>.tgz
 
 需要代理时在命令前加 `HTTPS_PROXY=… HTTP_PROXY=…`，pnpm 会继承。给中国大陆用户分发时，优先考虑把 tgz 放到他们能访问的下载地址（对象存储、内网文件服务），或后续发布 npm 走 npmmirror 镜像。
 
+慢链路想直接 URL 安装时，可以给 pnpm 放宽超时与重试（`dsh plugin` 把参数原样转给 pnpm；默认 `fetch-timeout` 60s、`fetch-retries` 2）：
+
+```bash
+dsh plugin --profile web add <URL> \
+  --fetch-timeout=600000 \
+  --fetch-retries=10 \
+  --fetch-retry-mintimeout=10000 \
+  --fetch-retry-maxtimeout=120000
+```
+
+注意：连接被 `ECONNRESET` 重置不是超时，放宽超时只会让失败更晚出现；这种情况优先用 `curl -L --retry 10 -C -` 下载后本地安装。
+
 ## 撤回
 
 | 情况 | 做法 |

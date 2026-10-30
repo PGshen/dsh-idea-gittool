@@ -247,7 +247,7 @@ describe('createRpcHandler / bootstrap', () => {
       sandboxPolicy: () => policySource(repo.root, 'workspace-write'),
     })
 
-    const before =okValue<BootstrapValue>(await handler('bootstrap', { sessionId: 'session-1' }, SIGNAL))
+    const before = okValue<BootstrapValue>(await handler('bootstrap', { sessionId: 'session-1' }, SIGNAL))
     expect(before.git).toMatchObject({ path: GIT_BINARY, source: 'path' })
     expect(before.gitVersion).toBe(before.git?.version)
 

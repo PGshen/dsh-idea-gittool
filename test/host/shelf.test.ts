@@ -319,6 +319,18 @@ describe('shelfCreate and submodules', () => {
     sub: gitIn(join(repo.root, 'sub'), 'rev-parse', 'HEAD'),
   })
 
+  it('applying a shelf whose path has since become a submodule says so for apply (t2 review M1)', async () => {
+    const source = createTempRepo()
+    cleanups.push(source.cleanup)
+    const repo = makeRepo()
+    writeFileSync(join(repo.root, 'sub'), 'plain\n')
+    const { entry } = await write(shelfCreateOperation, repo, { name: 'x', paths: ['sub'] })
+    gitIn(repo.root, 'submodule', 'add', '-q', source.root, 'sub')
+    gitIn(repo.root, 'commit', '-q', '-m', 'add sub')
+    const failure = await failureOf(write(shelfApplyOperation, repo, { id: entry.id }))
+    expect(failure).toMatchObject({ code: 'git/invalid-payload', details: { reason: 'submodule-apply' } })
+  })
+
   it('refuses an unstaged gitlink change with reason submodule', async () => {
     const repo = withSubmodule()
     expect(porcelainOf(repo)).toEqual([' M sub'])

@@ -136,7 +136,12 @@ export function createGitExecutable(subprocess: GitSubprocess, options: GitExecu
     if (probe === undefined) {
       const current = detect(AbortSignal.timeout(GIT_TIMEOUT_MS))
       probe = current
-      current.catch(() => {
+      // t2 review I1: a git below the minimum is not kept either, so "re-detect" (a fresh
+      // bootstrap, also in read-only sessions that may not reset the path) notices an upgrade.
+      current.then((found) => {
+        const parsed = parseGitVersion(found.version)
+        if (probe === current && (parsed === null || !isSupportedGitVersion(parsed))) probe = undefined
+      }, () => {
         if (probe === current) probe = undefined
       })
     }

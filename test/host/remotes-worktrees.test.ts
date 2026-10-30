@@ -13,7 +13,7 @@ import {
   setUpstreamOperation,
 } from '../../src/host/git/remote-write.ts'
 import { tagDeleteOperation, tagPushOperation } from '../../src/host/git/tag-write.ts'
-import { readWorktreeList, worktreeAddOperation, worktreePruneOperation, worktreeRemoveOperation } from '../../src/host/git/worktree.ts'
+import { readWorktreeList, resolveInsideRepository, worktreeAddOperation, worktreePruneOperation, worktreeRemoveOperation } from '../../src/host/git/worktree.ts'
 import { createFakeSubprocess } from './fake-subprocess.ts'
 import { createTempDir, createTempRepo, removeTempDir } from './fixtures.ts'
 import type { TempRepo } from './fixtures.ts'
@@ -242,6 +242,20 @@ describe('worktrees', () => {
     expect(await readWorktreeList(run, repo.root)).toHaveLength(1)
     expect(repo.git('branch', '--list', 'escape').trim()).toBe('')
   }
+
+  it('splits on backslashes on Windows, so a symlinked segment written with \\ is still caught (t2 review I2)', async () => {
+    const repo = makeRepo()
+    symlinkSync(outsideDir(), join(repo.root, '.worktrees'))
+    await expect(resolveInsideRepository(repo.root, '.worktrees\\x', 'win32')).rejects.toMatchObject({ details: { reason: 'path-outside-repository' } })
+  })
+
+  it('excludes the real location when .worktrees links elsewhere inside the repository (t2 review M3)', async () => {
+    const repo = makeRepo()
+    mkdirSync(join(repo.root, 'build/wt'), { recursive: true })
+    symlinkSync(join(repo.root, 'build/wt'), join(repo.root, '.worktrees'))
+    await write(worktreeAddOperation, repo, { path: '.worktrees/side', branch: 'side', createBranch: true })
+    expect(readFileSync(join(repo.root, '.git/info/exclude'), 'utf8')).toContain('/build/wt/side/')
+  })
 
   it('refuses a location whose first segment is a symlink leading outside the repository', async () => {
     const repo = makeRepo()

@@ -9,7 +9,7 @@
 
 | 项 | 值 |
 |---|---|
-| 状态 | 执行中 |
+| 状态 | 待验收 |
 | 里程碑 | B 阶段收尾（TODO 第二组：需要设计的问题） |
 | 设计依据 | [产品设计 v0.2](../../design/2026-10-25-产品设计-v0.2.md) §419（找不到 git 时的入口）、§1096/§1136（git 路径设置）、§1442/§1539（只读模式下写入口禁用并说明原因）；[ADR 0011](../../decisions/) 搁架；[ADR 0014](../../decisions/0014-git路径的信任边界.md)；b3a、b3c、b3d、b4d 计划的终审条目 |
 | 分支 | `t2-design-fixes`（从 main 切出） |
@@ -45,62 +45,77 @@
 
 ## 验收标准
 
-- [ ] AC1：`--root` 下 drop 首提交且有分支指向它时，分支保持原 sha，主分支结果正确；预览与执行一致，变基页提示该分支保持不动（真实仓库 Host 测试 + 模型测试）
-- [ ] AC2：搁架选中因刷新改变后，「三方合并应用」与「确认删除」提示条消失；点击只会作用到用户看到的那个条目；乱序刷新结果被丢弃（happy-dom + store 测试）
-- [ ] AC3：搁置包含子模块的路径时返回 `reason: 'submodule'`，索引、工作区、ref 都不变；客户端子模块行不可勾选并说明原因（真实仓库测试，子模块用 `protocol.file.allow=always`）
-- [ ] AC4：`.worktrees`、中间段或目标本身为指向仓库外的符号链接时，新建被拒（`reason: 'path-outside-repository'`），仓库外目录为空、`worktree list` 无新条目；普通路径不受影响
-- [ ] AC5：只读会话调用 `gitExecutable`（含 `path: null`）返回 `git/sandbox-denied` 且全局状态不变；`workspace-write`、`danger-full-access` 正常；设置页在只读会话中禁用输入并说明原因；挂载时补发被拒不显示错误
-- [ ] AC6：一个写操作进行中改 git 路径，该写操作所有命令用同一个 git，下一次写才用新路径；快照仍按钉住的文件身份逐条复核（ADR 0014 第 7 步）
-- [ ] AC7：ADR（追加到 0014 或新开）写明「只读会话不能设置 git 路径」与按写操作快照；`make check` 全绿
+- [x] AC1：`--root` 下 drop 首提交且有分支指向它时，分支保持原 sha，主分支结果正确；预览与执行一致，变基页提示该分支保持不动（真实仓库 Host 测试 + 模型测试）
+- [x] AC2：搁架选中因刷新改变后，「三方合并应用」与「确认删除」提示条消失；点击只会作用到用户看到的那个条目；乱序刷新结果被丢弃（happy-dom + store 测试）
+- [x] AC3（有偏差，见「意外与发现」）：搁置包含子模块的路径时返回 `reason: 'submodule'`，索引、工作区、ref 都不变；客户端子模块行不可勾选并说明原因（真实仓库测试，子模块用 `protocol.file.allow=always`）
+- [x] AC4：`.worktrees`、中间段或目标本身为指向仓库外的符号链接时，新建被拒（`reason: 'path-outside-repository'`），仓库外目录为空、`worktree list` 无新条目；普通路径不受影响
+- [x] AC5：只读会话调用 `gitExecutable`（含 `path: null`）返回 `git/sandbox-denied` 且全局状态不变；`workspace-write`、`danger-full-access` 正常；设置页在只读会话中禁用输入并说明原因；挂载时补发被拒不显示错误
+- [x] AC6：一个写操作进行中改 git 路径，该写操作所有命令用同一个 git，下一次写才用新路径；快照仍按钉住的文件身份逐条复核（ADR 0014 第 7 步）
+- [x] AC7：ADR（追加到 0014 或新开）写明「只读会话不能设置 git 路径」与按写操作快照；`make check` 全绿
 
 ## 任务
 
-### T1：变基 --root 前导 drop 的分支（待开始）
+### T1：变基 --root 前导 drop 的分支（完成）
 
 - **涉及文件**：`src/shared/rebase-todo.ts`（`BuildTodoOptions.root`）、`src/host/git/interactive-rebase.ts`、`src/client/rebase/rebase-model.ts`、变基页提示与 locales
 - **测试**：`test/shared/rebase-todo.test.ts` 新增 root 用例（非 root 保持原样）；`test/host/interactive-rebase.test.ts` 真实仓库先红后绿
 
-### T2：搁架提示条绑定条目、refresh 序号（待开始）
+### T2：搁架提示条绑定条目、refresh 序号（完成）
 
 - **涉及文件**：`src/client/pages/ShelfPanel.tsx`（`notCleanId`、`confirmingDropId`，选中变化时清空）、`src/client/store/shelf-store.ts`
 - **测试**：`test/client/shelf/` 下 happy-dom 用例（三方合并与删除两条路径）、store 乱序刷新用例
 
-### T3：搁架拒绝子模块（待开始）
+### T3：搁架拒绝子模块（完成）
 
 - **涉及文件**：`src/host/git/shelf.ts`（create 前置检查；`treeEntry`/`indexEntry` 遇非 blob 显式报错）、`ShelfPanel.tsx` 搁置对话框、locales、`docs/references/` 补 mktree 对 gitlink 的实测
 - **测试**：`test/host/shelf.test.ts` 未暂存/已暂存 gitlink、混合路径
 
-### T4：worktree realpath 包含性检查（待开始）
+### T4：worktree realpath 包含性检查（完成）
 
 - **涉及文件**：`src/host/git/worktree.ts`（找到最深已存在祖先取 realpath，用 `sandbox-gate.ts` 的 `isWithinRoot` 判定；把解析后的路径交给 git；事后再查 `worktree list`，越界只报错不自动删）、`src/client/store/action-store.ts`、`src/client/locales/remotes.ts`
 - **测试**：`test/host/remotes-worktrees.test.ts` 四种情形 + 回归；action-store 文案
 - **残留风险**：检查之后、git 执行之前在不存在的段上新建符号链接，只能靠 confine 兜底
 
-### T5：git 路径会话级门禁与按写操作快照（待开始）
+### T5：git 路径会话级门禁与按写操作快照（完成）
 
 - **涉及文件**：`src/host/sandbox-gate.ts`（会话级判定：会话存活、policy 可用、非 read-only；不看仓库是否在工作区内，因为「找不到 git」与「仓库在沙箱外」都需要靠设置路径自救）、`src/host/rpc.ts`（`handleGitExecutable` 门禁；`handleWrite` 在队列内、门禁后取快照）、`src/host/git-executable.ts`（`snapshot()`）、`src/host/git-executor.ts`（`GitRunOptions.executable`、`resolveProgram`、`bindWriteContext`）、`src/client/GitBody.tsx`、`src/client/git-path.ts`、`SettingsSheet.tsx`、`git-missing.tsx`、locales、ADR
 - **测试**：`test/host/rpc.test.ts` 门禁；`test/host/git-executable.test.ts` 快照；写操作中途改路径的 argv[0] 一致性；客户端 DOM 测试
 
 ## 进度
 
-- 无
+- 2026-10-30 — T1 完成（832703a，英文提示改为不分单复数 a091087）
+- 2026-10-30 — T2+T3 完成（1e00173、e70e5e2）
+- 2026-10-30 — T4 完成（7a3beb1）
+- 2026-10-30 — T5 完成（7d571ef、68f7de2、79bfb1c）
+- 2026-10-30 — 四组合并到 `t2-design-fixes`（`action-store.ts` 的 `INVALID_REASON_KEY` 冲突，两项都保留），合并后 `make check` 全绿（149 文件 / 2425 测试）
+- 2026-10-30 — 整分支评审（独立子代理，无 Critical，「修复后可合并」）；I1、I2、M1、M2、M3、M6 已修，M4、M5 登记 TODO，`make check` 全绿（2429 测试）
 
 ## 下一步
 
-- 4 组已分派给并行子代理（T1、T2+T3、T4、T5）；合并各分支后跑 `make check`，再做整分支评审。
+- 等负责人验收；验收后按 SOP §8 合并到 main，计划移入 completed，TODO 中 t2 链接改为 completed。
 
 ## 决策记录
 
+- 2026-10-30 — T1 只在勾选 `--update-refs` 时提示「保持不动」（不勾选时分支本来就不动）。
+- 2026-10-30 — T2 提示条状态按条目 id 记录，渲染时与当前选中比对；`refresh` 序号检查在成功/失败分支之前，过期的失败结果也丢弃。
+- 2026-10-30 — T3 子模块判定：HEAD 或索引中 mode 160000，或工作区目录内有 `.git`；`treeEntry` 遇到 tree 仍返回 null（目录被新文件替换的场景）。客户端不改协议，见「意外与发现」。
+- 2026-10-30 — T4 交给 git 的是解析后的真实路径；创建后复查只报错不删除。
+- 2026-10-30 — T5 ADR 追加在 0014 末尾，未新开 0015（避免并行分支编号冲突）；只有 `read-only-mode` 会隐藏空状态入口，其他拒绝原因只静默补发错误。
+- 2026-10-30 — 整分支评审处理：I1 只读会话「重新检测」无法从「版本过低」恢复（`set(null)` 被门禁拦，`info()` 缓存了旧探测）→ `info()` 不缓存低于最低版本的结果，ADR 0014 补一句；I2 Windows 下 `resolveInsideRepository` 只按 `/` 切分可绕过检查 → 与 `validateRepoPath` 一样按 `[\\/]` 切分（导出函数，带 platform 参数测试）；M1 取回时路径已变成子模块 → 新 reason `submodule-apply` 与取回语境的文案；M2 worktree 拒绝文案涵盖「目标本身是符号链接」；M3 `info/exclude` 写真实位置；M6 格式。
 - 2026-10-29 — 本计划的接口变化（预先列出，需随计划批准）：协议层只新增错误 reason（`path-outside-repository`、`submodule`）以及 `gitExecutable` 可能返回已有错误码 `git/sandbox-denied`，请求/返回结构不变；Host 内部接口 `GitExecutable.snapshot`、`GitRunOptions.executable`、`bindWriteContext` 新参数。
 
 ## 意外与发现
 
+- AC3 偏差：status 条目不带子模块标记，计划约定不改协议，所以只有未跟踪的内嵌仓库在对话框打开时就置灰；已跟踪的 gitlink 要等 Host 拒绝一次（整体拒绝，不会搁错）后才置灰。已登记 TODO（需协议改动）。
+- 只读空状态偏差：bootstrap 失败时拿不到 writePolicy，「设置 git 路径」入口要先被 Host 拒绝一次才隐藏。已登记 TODO。
+- `.claude/worktrees/` 下残留的子代理 worktree 会被不带 `--dir` 的 vitest 扫进去（`make check` 不受影响）。
 - 搁架子模块问题的真实表现与 TODO 描述不同（见「现状」）。
 - 搁架竞态同样会让「删除」作用到别的条目，比 TODO 原描述的三方合并更危险，一并修。
 
 ## 验证记录
 
-- 无
+- 2026-10-30 合并与评审修复后 `make check`：2429 个测试通过，lint、类型检查、分层契约、构建与 smoke 通过；`pnpm-lock.yaml` 与 edeb88b 相同。
+- 各 AC 均有真实仓库 Host 测试或 happy-dom 测试；未做浏览器 L4 走查。
 
 ## 阻塞
 

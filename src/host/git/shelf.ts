@@ -384,9 +384,17 @@ export const shelfApplyOperation: WriteOperation<ShelfApplyInput, Omit<ShelfAppl
 
     // Clean means: the path is exactly as it was at HEAD when shelved (index and working tree).
     const current = new Map<string, { index: ObjectEntry | null; worktree: ObjectEntry | null }>()
-    for (const file of meta.files) {
-      // Written (`-w`): a three-way merge reads the current version as "ours".
-      current.set(file.path, { index: await indexEntry(read, file.path), worktree: await worktreeEntry(read, ctx.repoRoot, file.path, true) })
+    try {
+      for (const file of meta.files) {
+        // Written (`-w`): a three-way merge reads the current version as "ours".
+        current.set(file.path, { index: await indexEntry(read, file.path), worktree: await worktreeEntry(read, ctx.repoRoot, file.path, true) })
+      }
+    } catch (error) {
+      // t2 review M1: a shelved path that has since become a submodule; say so in terms of applying.
+      if (error instanceof GitCommandFailure && error.details?.['reason'] === 'submodule') {
+        throw invalidPayload(`"${String(error.details['path'])}" is now a submodule; the shelf entry cannot be applied there`, { ...error.details, reason: 'submodule-apply' })
+      }
+      throw error
     }
     const unclean = meta.files.filter((file) => {
       const now = current.get(file.path)

@@ -1,7 +1,7 @@
 // Worktrees (plan b3d T3, behind the client flag `worktrees`): list, add from an existing or a new
 // branch at a path inside the repository (the write boundary of `workspace-write`), remove, prune.
 import { appendFile, lstat, mkdir, readFile, realpath } from 'node:fs/promises'
-import { dirname, isAbsolute, join, relative } from 'node:path'
+import { dirname, isAbsolute, join, relative, sep } from 'node:path'
 import type { WorktreeAddValue, WorktreeEntry, WorktreePruneValue, WorktreeRemoveValue } from '../../shared/protocol.ts'
 import type { GitCommandFailure, GitRunner, WriteContext, WriteOperation } from '../git-executor.ts'
 import { GIT_BASE_ARGV, failureFromExit } from '../git-executor.ts'
@@ -91,9 +91,10 @@ function outsideRepository(): GitCommandFailure {
  * Residual TOCTOU risk: a symlink created between this check and git's mkdir is not caught here; the
  * sandbox confiner (`workspace-write`) stays the backstop, and the post-add check reports it.
  */
-async function resolveInsideRepository(repoRoot: string, path: string): Promise<string> {
+export async function resolveInsideRepository(repoRoot: string, path: string, platform: NodeJS.Platform = process.platform): Promise<string> {
   const root = await realpath(repoRoot)
-  const segments = path.split('/').filter(segment => segment !== '' && segment !== '.')
+  // Review I2: split like `validateRepoPath`, which accepts `\\` as a separator on Windows.
+  const segments = path.split(platform === 'win32' ? /[\\/]/u : '/').filter(segment => segment !== '' && segment !== '.')
   for (let depth = segments.length; depth >= 0; depth--) {
     const candidate = join(repoRoot, ...segments.slice(0, depth))
     let info
@@ -110,7 +111,7 @@ async function resolveInsideRepository(repoRoot: string, path: string): Promise<
   throw outsideRepository()
 }
 
-export const worktreeAddOperation:WriteOperation<WorktreeAddInput, Omit<WorktreeAddValue, 'version'>> = {
+export const worktreeAddOperation: WriteOperation<WorktreeAddInput, Omit<WorktreeAddValue, 'version'>> = {
   parse(payload) {
     const record = payloadRecord(payload)
     return {
@@ -138,7 +139,8 @@ export const worktreeAddOperation:WriteOperation<WorktreeAddInput, Omit<Worktree
       }
       throw redactedFailure(result, 'git worktree add')
     }
-    await excludeLocally(ctx, input.path)
+    // Review M3: exclude where the worktree really is (`.worktrees` may link elsewhere in the repository).
+    await excludeLocally(ctx, relative(await realpath(ctx.repoRoot), target).split(sep).join('/'))
     const path = await canonical(target)
     const worktree = (await listOf(ctx)).find(entry => entry.path === path)
     if (worktree === undefined) throw invalidPayload('the new worktree is not listed', {})

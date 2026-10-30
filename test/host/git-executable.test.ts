@@ -214,6 +214,14 @@ describe('concurrent probing and setting', () => {
   const versionSpawns = (fake: ReturnType<typeof createFakeSubprocess>): number =>
     fake.spawns.filter(spawn => spawn.spec.argv.includes('--version')).length
 
+  it('probes PATH again after finding a git that is too old, so re-detect sees an upgrade (t2 review I1)', async () => {
+    const fake = createFakeSubprocess({ executable: script('git', 'echo "git version 2.20.1"') })
+    const git = createGitExecutable(fake)
+    expect((await git.info(SIGNAL)).version).toBe('2.20.1')
+    fake.executable = GIT_BINARY
+    expect((await git.info(SIGNAL)).version).not.toBe('2.20.1')
+  })
+
   it('shares one --version probe among concurrent info() callers', async () => {
     const fake = createFakeSubprocess()
     const git = createGitExecutable(fake)

@@ -97,7 +97,7 @@ describe('InteractiveRebasePageView', () => {
     const html = render(state({ plan: root, rows, updateRefs: true, invalid: null }))
     expect(html).toContain('data-rebase-stays-put')
     expect(html).toContain('mid 将保持不动')
-    expect(render(state({ plan: root, rows, updateRefs: true, invalid: null }), {}, enT)).toContain('mid will stay where it is')
+    expect(render(state({ plan: root, rows, updateRefs: true, invalid: null }), {}, enT)).toContain('Staying put: mid')
     expect(render(state({ plan: root, rows, updateRefs: false, invalid: null }))).not.toContain('data-rebase-stays-put')
     expect(render(state({ rows, updateRefs: true, invalid: null }))).not.toContain('data-rebase-stays-put')
   })

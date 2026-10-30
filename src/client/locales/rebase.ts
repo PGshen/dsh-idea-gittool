@@ -102,7 +102,7 @@ export const enRebase = {
   'rebase.preview.writeMessage': '# write back the message of the group above',
   'rebase.updateRefs': 'Also move branches that point at these commits (--update-refs)',
   'rebase.updateRefs.unsupported': 'This Git is older than 2.38, so the rebase will not move the other branches on these commits ({branches}).',
-  'rebase.updateRefs.staysPut': '{branches} will stay where it is: rebasing from the root drops the leading commits it is on, leaving no commit to move it to.',
+  'rebase.updateRefs.staysPut': 'Staying put: {branches}. Rebasing from the root drops the leading commits these branches point at, leaving no commit to move them to.',
   'rebase.pushed.warning': 'This rewrites pushed history: work based on these commits must be adapted, and pushing needs a force push',
   'rebase.pushed.confirm': 'I understand this rewrites pushed history',
   'rebase.submit': 'Start rebase',

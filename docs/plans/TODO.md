@@ -50,7 +50,7 @@
 
 | 完成日期 | 事项 | 计划 |
 |---|---|---|
-| 2026-10-30 | TODO 第二组：交互式变基 `--root` 前导 drop 的分支保持不动；搁架提示条绑定条目、refresh 序号、拒绝子模块；新建 worktree 做 realpath 包含性检查（含 Windows 分隔符）；只读会话不能设置 git 路径、每个写操作取 git 快照（ADR 0014 补充）；整分支评审 I1/I2、M1–M3、M6 已修 | [t2](active/t2-TODO设计类修复.md) |
+| 2026-10-30 | TODO 第二组：交互式变基 `--root` 前导 drop 的分支保持不动；搁架提示条绑定条目、refresh 序号、拒绝子模块；新建 worktree 做 realpath 包含性检查（含 Windows 分隔符）；只读会话不能设置 git 路径、每个写操作取 git 快照（ADR 0014 补充）；整分支评审 I1/I2、M1–M3、M6 已修 | [t2](completed/t2-TODO设计类修复.md) |
 | 2026-10-29 | TODO 批量修复：数据安全 7 条（草稿只在成功/推进后清理、合并窗口 `beforeunload`、`<remote>/HEAD` 删除 `--no-deref`、`remoteList` 脱敏、主/锁定 worktree 禁删、保存失败询问可再答与关窗按取消、改写历史后清空消失的选中）与文案/小修正/小功能/测试 15 条；顺带修复并发设置 git 路径时旧请求生效 | [t1](completed/t1-TODO批量修复.md) |
 | 2026-10-28 | `layout.test.ts`「2000 行 < 50ms」高负载偶发超时：阈值改为 200ms 只防数量级回退（满载实测 52–62ms），真实渲染预算由 B4c 客户端 harness 测量 | [b4c](completed/b4c-性能.md) T5 |
 | 2026-10-29 | B4d 跨平台与安装升级（B4 打磨四份全部完成）：git 版本门控（最低 2.25，`--update-refs` 2.38、搁架三方 2.43）、「未找到 git / 版本过低」空状态与设置页 git 路径（Host 内存采用，校验见 [ADR 0014](../decisions/0014-git路径的信任边界.md)）；跨平台审计（win32 路径校验、沙箱包含判断、Windows 不直连 git）；`scripts/compat`（2.39.5 全绿）；1.0.0-rc.1 打包清单 + tarball 安装/升级/卸载/engines 实测；`pnpm matrix` 12 种仓库；README 改写为用户文档；B 阶段核对表；终审 I1 与 M2–M7 已修，负责人验收通过 | [b4d](completed/b4d-跨平台与安装升级.md) |

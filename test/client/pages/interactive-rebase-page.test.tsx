@@ -91,6 +91,17 @@ describe('InteractiveRebasePageView', () => {
     expect(render(state({ plan: lonely }))).not.toContain('当前 Git 低于 2.38')
   })
 
+  it('says which branches stay put when a --root rebase drops their leading commits (t2 T1)', () => {
+    const root = plan({ base: null })
+    const rows = setAction(setAction(fromPlan(root), 0, 'drop'), 1, 'drop')
+    const html = render(state({ plan: root, rows, updateRefs: true, invalid: null }))
+    expect(html).toContain('data-rebase-stays-put')
+    expect(html).toContain('mid 将保持不动')
+    expect(render(state({ plan: root, rows, updateRefs: true, invalid: null }), {}, enT)).toContain('mid will stay where it is')
+    expect(render(state({ plan: root, rows, updateRefs: false, invalid: null }))).not.toContain('data-rebase-stays-put')
+    expect(render(state({ rows, updateRefs: true, invalid: null }))).not.toContain('data-rebase-stays-put')
+  })
+
   it('shows the message editor for a reword row and the todo preview with readable message lines', () => {
     const rows = setAction(fromPlan(plan()), 1, 'reword')
     const html = render(state({ rows, invalid: null }), { selected: 1, showPreview: true })

@@ -2,7 +2,7 @@
 // React-free and RPC-free; the store and the page drive it. Rows are in todo order (oldest first).
 // The todo text itself comes from the shared rules the Host executes (src/shared/rebase-todo.ts).
 import type { RebaseAction, RebaseEntry, RebasePlanValue } from '../../shared/protocol.ts'
-import { buildTodo, rebaseTodoProblem } from '../../shared/rebase-todo.ts'
+import { buildTodo, rebaseTodoProblem, rootDropBranches } from '../../shared/rebase-todo.ts'
 import { text } from '../localized-text.ts'
 import type { LocalizedText } from '../localized-text.ts'
 
@@ -173,5 +173,16 @@ export function previewTodo(plan: RebasePlanValue, rows: readonly RebaseRow[], o
   return buildTodo(toEntries(rows), {
     messageBlob: () => MESSAGE_PLACEHOLDER,
     branches: options.updateRefs ? sha => branches.get(sha) ?? [] : undefined,
+    root: plan.base === null,
   })
+}
+
+/**
+ * Branches the rebase leaves on their old commit although `--update-refs` is on: under `--root`, those
+ * on the dropped commits before the first kept one (plan t2 T1; the page says so).
+ */
+export function stayingBranches(plan: RebasePlanValue, rows: readonly RebaseRow[], options: { updateRefs: boolean }): string[] {
+  if (!options.updateRefs || plan.base !== null) return []
+  const branches = new Map(plan.commits.map(commit => [commit.sha, commit.branches]))
+  return [...new Set(rootDropBranches(toEntries(rows), sha => branches.get(sha) ?? []))]
 }

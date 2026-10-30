@@ -174,6 +174,8 @@ const INVALID_REASON_KEY: Record<string, GitWorkbenchKey> = {
   'main-worktree': 'worktrees.remove.main',
   'current-worktree': 'worktrees.remove.current',
   'worktree-locked': 'worktrees.remove.locked',
+  // T2 T4: a worktree location that leads outside the repository through a symlink.
+  'path-outside-repository': 'worktree.add.outsideRepository',
 }
 
 /** Error code (+ details) → localized, actionable text. */

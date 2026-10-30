@@ -884,7 +884,11 @@ export interface WorktreeListValue {
   version?: number
 }
 
-/** `path` 相对仓库根，不能越出仓库根；`createBranch` 时从 `startPoint`（缺省 HEAD）新建分支。 */
+/**
+ * `path` 相对仓库根，不能越出仓库根；`createBranch` 时从 `startPoint`（缺省 HEAD）新建分支。
+ * 拒绝时 `git/invalid-payload` 的 `reason`：`branch-exists`、`no-branch`、`branch-checked-out`、
+ * `path-outside-repository`（T2 T4：路径某一段是符号链接、实际位置在仓库外，或目标本身是符号链接）。
+ */
 export interface WorktreeAddRequest extends WriteRequest {
   path: string
   branch: string

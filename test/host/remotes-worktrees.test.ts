@@ -1,5 +1,5 @@
 // B3d T1–T3: remotes, tag push/delete, remote branch delete, upstream, worktrees (real repositories).
-import { chmodSync, existsSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -15,7 +15,7 @@ import {
 import { tagDeleteOperation, tagPushOperation } from '../../src/host/git/tag-write.ts'
 import { readWorktreeList, worktreeAddOperation, worktreePruneOperation, worktreeRemoveOperation } from '../../src/host/git/worktree.ts'
 import { createFakeSubprocess } from './fake-subprocess.ts'
-import { createTempRepo } from './fixtures.ts'
+import { createTempDir, createTempRepo, removeTempDir } from './fixtures.ts'
 import type { TempRepo } from './fixtures.ts'
 import { contextFor, createRemoteSetup } from './remote-fixtures.ts'
 import type { RemoteSetup } from './remote-fixtures.ts'
@@ -225,5 +225,61 @@ describe('worktrees', () => {
     expect((await failureOf(write(worktreeAddOperation, repo, { path: '../outside', branch: 'x', createBranch: true }))).code).toBe('git/invalid-payload')
     expect((await failureOf(write(worktreeAddOperation, repo, { path: '/tmp/abs', branch: 'x', createBranch: true }))).code).toBe('git/invalid-payload')
     expect((await failureOf(write(worktreeAddOperation, repo, { path: '.worktrees/x', branch: '-b', createBranch: true }))).code).toBe('git/invalid-payload')
+  })
+
+  // T2 T4: the literal path check is not enough — a symlinked segment can lead git outside the repository.
+  function outsideDir(): string {
+    const dir = realpathSync(createTempDir('dsh-git-outside-'))
+    cleanups.push(() => removeTempDir(dir))
+    return dir
+  }
+
+  async function expectOutsideRefused(repo: TempRepo, path: string, outside: string): Promise<void> {
+    const failure = await failureOf(write(worktreeAddOperation, repo, { path, branch: 'escape', createBranch: true }))
+    expect(failure.code).toBe('git/invalid-payload')
+    expect(failure.details).toMatchObject({ reason: 'path-outside-repository' })
+    expect(readdirSync(outside, { recursive: true })).toEqual([])
+    expect(await readWorktreeList(run, repo.root)).toHaveLength(1)
+    expect(repo.git('branch', '--list', 'escape').trim()).toBe('')
+  }
+
+  it('refuses a location whose first segment is a symlink leading outside the repository', async () => {
+    const repo = makeRepo()
+    const outside = outsideDir()
+    symlinkSync(outside, join(repo.root, '.worktrees'))
+    await expectOutsideRefused(repo, '.worktrees/x', outside)
+  })
+
+  it('refuses a location whose middle segment is a symlink leading outside the repository', async () => {
+    const repo = makeRepo()
+    const outside = outsideDir()
+    mkdirSync(join(repo.root, '.worktrees'))
+    symlinkSync(outside, join(repo.root, '.worktrees/link'))
+    await expectOutsideRefused(repo, '.worktrees/link/x', outside)
+  })
+
+  it('refuses a location that is itself a symlink, even to an empty directory', async () => {
+    const repo = makeRepo()
+    const outside = outsideDir()
+    mkdirSync(join(repo.root, '.worktrees'))
+    symlinkSync(outside, join(repo.root, '.worktrees/x'))
+    await expectOutsideRefused(repo, '.worktrees/x', outside)
+  })
+
+  it('still adds at a plain location, at an existing empty directory, and through a symlinked repository root', async () => {
+    const repo = makeRepo()
+    const plain = await write(worktreeAddOperation, repo, { path: '.worktrees/x', branch: 'x', createBranch: true })
+    expect(plain.worktree.path).toBe(join(repo.root, '.worktrees/x'))
+    mkdirSync(join(repo.root, '.worktrees/empty'))
+    const empty = await write(worktreeAddOperation, repo, { path: '.worktrees/empty', branch: 'empty', createBranch: true })
+    expect(empty.worktree.path).toBe(join(repo.root, '.worktrees/empty'))
+    // The session may reach the repository through a symlink (macOS /tmp -> /private/tmp).
+    const holder = outsideDir()
+    const alias = join(holder, 'alias')
+    symlinkSync(repo.root, alias)
+    const viaAlias = bindWriteContext(createGitRunner(createFakeSubprocess()), alias, { kind: 'unconfined' }, new AbortController().signal)
+    const input = worktreeAddOperation.parse({ sessionId: 's', requestId: 'r', path: '.worktrees/aliased', branch: 'aliased', createBranch: true })
+    const aliased = await worktreeAddOperation.run(viaAlias, input)
+    expect(aliased.worktree.path).toBe(join(repo.root, '.worktrees/aliased'))
   })
 })

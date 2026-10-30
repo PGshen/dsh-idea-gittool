@@ -42,6 +42,8 @@
 | P2 | git 2.25 / 2.38 兼容实测：在 scratchpad 编译旧版 git 后跑 `scripts/compat/run-host-tests.sh`（2.39.5、2.50.1 已全绿） | B4d T5，2026-10-29 | 编译下载的源码被自动模式拦截；负责人 2026-10-29 决定暂不做 |
 | P2 | 搁架三方取回产生的冲突：三栏窗口与冲突列表里对方一侧名字仍写「贮藏的改动」；冲突来源只记在客户端内存，刷新页面后说明文字退回贮藏文案 | t1 T2，2026-10-29 | 需把 `origin` 传给 `conflictSides`/`withStashLabel`/`MergeWindow` |
 | P2 | 已跟踪的子模块要等 Host 拒绝一次后才在搁置对话框里置灰：status 条目不带子模块标记，可在 `FileEntry` 加可选字段（porcelain v2 的 `S` 标记，协议改动需批准） | t2 评审 M5，2026-10-30 | 见 [ADR 0011](../decisions/) 追记 |
+| P2 | 搁架「取回」不能干净应用时，Host 的 `git/conflict`（`reason: 'shelf-not-clean'`）触发全局 `onConflict` 打开空冲突列表（停在「读取中…」），盖住搁架的「三方合并应用」提示条 | t2 L4，2026-10-30 | `src/client/pages/workbench-overlay.ts` `actionOverlayWiring` 应跳过 `shelf-not-clean`（或 Host 改用别的错误码）；B3c 起就有 |
+| P2 | 提交页「按 Changelist 分组」时文件右键菜单只有「移到 Changelist」，缺「搁置…」等普通视图的条目 | t2 L4，2026-10-30 | `src/client/pages/ChangelistView.tsx`；B3c 起就有 |
 | P2 | 只读会话的「未找到 git」空状态，「设置 git 路径」入口要先被 Host 拒绝一次才隐藏（bootstrap 失败时拿不到 writePolicy）；`gitPathReadOnly` 置位后不复位，会话变可写要重新挂载 | t2 评审 M4，2026-10-30 | 见 [ADR 0014](../decisions/0014-git路径的信任边界.md) 补充；可在 not-found 错误里带 writePolicy（协议改动） |
 
 ## 已完成

@@ -89,6 +89,7 @@
 - 2026-10-30 — T5 完成（7d571ef、68f7de2、79bfb1c）
 - 2026-10-30 — 四组合并到 `t2-design-fixes`（`action-store.ts` 的 `INVALID_REASON_KEY` 冲突，两项都保留），合并后 `make check` 全绿（149 文件 / 2425 测试）
 - 2026-10-30 — 整分支评审（独立子代理，无 Critical，「修复后可合并」）；I1、I2、M1、M2、M3、M6 已修，M4、M5 登记 TODO，`make check` 全绿（2429 测试）
+- 2026-10-30 — L4 浏览器走查（隔离 DSH 3081，2370ed2 构建）：T1、T3、T4、T5 通过；顺带发现 2 个既有问题登记 TODO（见「意外与发现」）
 
 ## 下一步
 
@@ -111,11 +112,19 @@
 - `.claude/worktrees/` 下残留的子代理 worktree 会被不带 `--dir` 的 vitest 扫进去（`make check` 不受影响）。
 - 搁架子模块问题的真实表现与 TODO 描述不同（见「现状」）。
 - 搁架竞态同样会让「删除」作用到别的条目，比 TODO 原描述的三方合并更危险，一并修。
+- L4 发现既有问题（非 t2 引入，`workbench-overlay.ts`、`shelf.ts` 该处本分支未改）：搁架「取回」不能干净应用时 Host 返回 `git/conflict`（`reason: 'shelf-not-clean'`），全局 `onConflict` 随即打开冲突列表，页面停在「读取中…」盖住搁架的提示条，要按「← 返回」才看到「三方合并应用」。已登记 TODO。
+- L4 发现既有缺口：提交页开着「按 Changelist 分组」时文件右键菜单只有「移到 Changelist」，没有「搁置…」等条目（`ChangelistView.tsx`）。已登记 TODO。
 
 ## 验证记录
 
 - 2026-10-30 合并与评审修复后 `make check`：2429 个测试通过，lint、类型检查、分层契约、构建与 smoke 通过；`pnpm-lock.yaml` 与 edeb88b 相同。
-- 各 AC 均有真实仓库 Host 测试或 happy-dom 测试；未做浏览器 L4 走查。
+- 各 AC 均有真实仓库 Host 测试或 happy-dom 测试。
+- 2026-10-30 L4 浏览器走查（隔离 HOME、DSH 3081、本仓库 2370ed2 构建；走查仓库为 scratchpad 临时仓库，含子模块 `sub`、未跟踪内嵌仓库 `nested/`、指向仓库外的 `.worktrees` 符号链接），截图在 `.evidence/t2/`：
+  - AC1（T1）：日志右键根提交「从此处交互式变基…」，把 `commit 1` 设为 drop 并勾选 `--update-refs`，底部提示「first 将保持不动：从根变基时……」（`01-rebase-root-stays-put.jpg`）；开始变基后 `git log --all` 显示 `first` 仍在 ac702fe，main 被重写。通过。
+  - AC3（T3）：勾选全部改动「搁置…」，对话框打开即标出「nested/ — 子模块，不能搁置」（`02-shelve-dialog-nested-grey.jpg`）；「搁置」被 Host 整体拒绝，提示子模块不能搁置，`sub` 随即置灰、文件数变 2（`03-shelve-submodule-refused.jpg`）；`git status` 与 `refs/worktree/dsh-git/shelf/` 均无变化。只勾 `f2.txt` 搁置成功；工作区改成别的内容后「取回」被拒、「三方合并应用」作用于该条目并进入冲突列表。通过（tracked gitlink 先拒后灰，与已记偏差一致）。
+  - AC2（T2 选中竞态）：未在浏览器构造出刷新换选中的时序，依赖 happy-dom 测试；未验证。
+  - AC4（T4）：Worktree 页「新建 Worktree…」分支 `escape`，位置 `.worktrees/escape`（`.worktrees` 链接到仓库外）→ 提示「这个位置要经符号链接，或经符号链接指向仓库外……」（`04-worktree-outside-refused.jpg`），没有新建分支、worktree，仓库外目录为空；换成真实目录后创建成功，`info/exclude` 写入 `/.worktrees/escape/`。通过。
+  - AC5（T5）：会话切到「仅可查看」后出现只读横幅；设置页 git 路径输入框与「应用」禁用，提示「只读会话不能修改 git 路径：请在可写会话中设置」（`05-readonly-git-path-disabled.jpg`），客户端不发请求；页面内直接 POST `dsh-git/gitExecutable` 得到 `git/sandbox-denied`（`reasonCode: read-only-mode`）。切回「工作区内修改」后重新打开设置，输入框与按钮恢复可用。通过。未覆盖：「未找到 git」空状态（需要 PATH 上没有 git 启动 DSH）、写操作中途改路径的快照（Host 测试覆盖）。
 
 ## 阻塞
 

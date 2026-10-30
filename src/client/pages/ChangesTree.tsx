@@ -4,6 +4,7 @@ import { useMemo, useRef, useState } from 'react'
 import type { CSSProperties, KeyboardEvent, MouseEvent, ReactNode } from 'react'
 import { activeFocusTarget, restoreFocus } from '../focus.ts'
 import { StatusLetter } from '../ui/StatusLetter.tsx'
+import { TreeChevron, TreeFileIcon, TreeFolderIcon } from '../ui/TreeIcons.tsx'
 import { useT } from '../i18n.tsx'
 import { buildChangeGroups } from '../store/changes-store.ts'
 import type {
@@ -255,6 +256,7 @@ function FileRowView({ node, handlers }: { node: ChangeTreeFile; handlers: RowHa
       onDoubleClick={() => handlers.onOpen(entry)}
       onContextMenu={event => handlers.onContextMenu(entry, event)}
     >
+      <span className={css.chevronSpacer} aria-hidden="true" />
       <TriCheckbox
         state={node.checked ? 'all' : 'none'}
         disabled={node.disabled || handlers.checksDisabled}
@@ -262,14 +264,16 @@ function FileRowView({ node, handlers }: { node: ChangeTreeFile; handlers: RowHa
         {...(node.disabled ? { title: t('changes.conflictHint') } : {})}
         onToggle={() => handlers.onToggleFile(entry.path)}
       />
-      <StatusLetter status={entry.status} />
+      <TreeFileIcon path={entry.path} />
       <span className={css.name}>{node.name}</span>
       {stat === null ? null : <span className={css.stat}>{stat}</span>}
+      <StatusLetter status={entry.status} />
     </div>
   )
 }
 
 function NodesView({ nodes, handlers }: { nodes: readonly ChangeTreeNode[]; handlers: RowHandlers }): ReactNode {
+  const t = useT()
   return (
     <>
       {nodes.map((node) => {
@@ -283,15 +287,16 @@ function NodesView({ nodes, handlers }: { nodes: readonly ChangeTreeNode[]; hand
               data-key={node.key}
               onClick={() => handlers.onToggleCollapsed(node.key)}
             >
-              <span className={css.chevron} aria-hidden="true">{node.collapsed ? '▸' : '▾'}</span>
+              <TreeChevron expanded={!node.collapsed} />
               <TriCheckbox
                 state={node.check}
                 disabled={!node.checkable || handlers.checksDisabled}
                 label={node.path}
                 onToggle={() => handlers.onToggleNode(node.key)}
               />
-              <span className={css.name}>{node.name}</span>
-              <span className={css.count}>{node.count}</span>
+              <TreeFolderIcon open={!node.collapsed} />
+              <span className={css.dirName}>{node.name}</span>
+              <span className={css.count}>{t('tree.fileCount', { count: node.count })}</span>
             </div>
             {node.collapsed ? null : <NodesView nodes={node.children} handlers={handlers} />}
           </div>
@@ -380,7 +385,7 @@ export function ChangesTree(props: ChangesTreeProps): ReactNode {
               data-key={group.key}
               onClick={() => store.toggleCollapsed(group.key)}
             >
-              <span className={css.chevron} aria-hidden="true">{group.collapsed ? '▸' : '▾'}</span>
+              <TreeChevron expanded={!group.collapsed} />
               <TriCheckbox
                 state={group.check}
                 disabled={!group.checkable || checksDisabled}

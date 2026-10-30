@@ -20,6 +20,8 @@ import {
 } from './branch-store.ts'
 import type { BranchGroup, BranchGroupKind, BranchRow, CollapsedGroups, PanelMode } from './branch-store.ts'
 import css from './BranchPanel.module.css'
+import { TreeChevron, TreeFolderIcon, TreeKindIcon } from '../ui/TreeIcons.tsx'
+import type { TreeKind } from '../ui/TreeIcons.tsx'
 import { finishRowMenu, rowMenuAnchor, rowOf, treeRowKeyAction } from './menu-focus.ts'
 import { MenuItemButton } from './MenuItemButton.tsx'
 import { useFloatingMenu } from './menu-position.ts'
@@ -70,20 +72,12 @@ export function copyText(text: string): void {
   void globalThis.navigator?.clipboard?.writeText(text).catch(() => {})
 }
 
-const KIND_ICON: Record<'head' | 'local' | 'remote' | 'tag' | 'detached', string> = {
-  head: '◉',
-  local: '⎇',
-  remote: '☁',
-  tag: '⌂',
-  detached: '◎',
-}
-
-function rowIcon(group: BranchGroupKind, row: BranchRow): string {
-  if (row.detached) return KIND_ICON.detached
-  if (group === 'head') return KIND_ICON.head
-  if (row.entry?.kind === 'remote') return KIND_ICON.remote
-  if (row.entry?.kind === 'tag') return KIND_ICON.tag
-  return KIND_ICON.local
+function rowIcon(group: BranchGroupKind, row: BranchRow): TreeKind {
+  if (row.detached) return 'detached'
+  if (group !== 'head' && row.current) return 'current'
+  if (row.entry?.kind === 'remote') return 'remote'
+  if (row.entry?.kind === 'tag') return 'tag'
+  return 'branch'
 }
 
 interface MenuState { entry: BranchEntry; anchor: MenuAnchor; trigger: FocusTarget | null }
@@ -343,7 +337,8 @@ function BranchGroupView({ group, tabIndexOf, selectedRef, ...handlers }: Branch
         aria-expanded={!group.collapsed}
         onClick={() => handlers.onToggleGroup?.(group.kind)}
       >
-        <span className={css.chevron} aria-hidden="true">{group.collapsed ? '▸' : '▾'}</span>
+        <TreeChevron expanded={!group.collapsed} />
+        <TreeFolderIcon open={!group.collapsed} />
         <span>{group.label}</span>
         <span className={css.count}>{group.total}</span>
       </button>
@@ -381,7 +376,8 @@ function BranchRowView({ group, row, tabIndex, selected, onToggleDirectory, onCl
         onClick={toggle}
         onKeyDown={event => directoryRowKey(event, toggle)}
       >
-        <span className={css.chevron} aria-hidden="true">{expanded ? '▾' : '▸'}</span>
+        <TreeChevron expanded={expanded} />
+        <TreeFolderIcon open={expanded} />
         <span className={css.name}>{row.label}</span>
         <span className={css.count}>{row.childCount}</span>
       </div>
@@ -431,10 +427,11 @@ function BranchRowView({ group, row, tabIndex, selected, onToggleDirectory, onCl
         onOpenMenu(entry, rowMenuAnchor(event.currentTarget), event.currentTarget)
       }}
     >
-      <span className={css.icon} aria-hidden="true">{rowIcon(group, row)}</span>
+      <span className={css.chevronSpacer} aria-hidden="true" />
+      <TreeKindIcon kind={rowIcon(group, row)} />
       <span className={css.name}>{row.label}</span>
       {row.detached ? <span className={css.detachedNote}>{t('branch.detachedNote')}</span> : null}
-      {row.current ? <span className={css.check} aria-label={t('branch.current')}>✓</span> : null}
+      {row.current ? <span className={css.srOnly}>{t('branch.current')}</span> : null}
       {row.upstream === undefined ? null : <span className={css.upstream}>{row.upstream}</span>}
       {aheadBehind === '' ? null : <span className={css.aheadBehind}>{aheadBehind}</span>}
     </div>

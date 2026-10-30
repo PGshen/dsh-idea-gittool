@@ -5,6 +5,7 @@ import type { CSSProperties, ReactNode } from 'react'
 import type { CommitFileEntry } from '../../shared/protocol.ts'
 import { useT } from '../i18n.tsx'
 import { StatusLetter } from '../ui/StatusLetter.tsx'
+import { TreeChevron, TreeFileIcon, TreeFolderIcon } from '../ui/TreeIcons.tsx'
 import css from './ChangedFilesTree.module.css'
 import type { MenuAnchor } from './menu-position.ts'
 
@@ -159,10 +160,12 @@ export function FileRow({ file, name, depth, showDirectory, selected = false, on
         onFileMenu(file, { kind: 'point', x: event.clientX, y: event.clientY })
       }}
     >
-      <StatusLetter status={file.status} />
+      {showDirectory ? null : <span className={css.chevronSpacer} aria-hidden="true" />}
+      <TreeFileIcon path={file.path} />
       <span className={css.name}>{name}</span>
       {showDirectory && directory !== '' ? <span className={css.directory}>{directory}</span> : null}
       {stat === undefined ? null : <span className={css.stat}>{stat}</span>}
+      <StatusLetter status={file.status} />
     </button>
   )
 }
@@ -176,6 +179,7 @@ function TreeRows({ nodes, depth, collapsed, selectedPath, onToggle, onOpenFile,
   onOpenFile?: ((file: CommitFileEntry) => void) | undefined
   onFileMenu?: FileMenuHandler | undefined
 }): ReactNode {
+  const t = useT()
   return (
     <>
       {nodes.map((node) => {
@@ -192,9 +196,10 @@ function TreeRows({ nodes, depth, collapsed, selectedPath, onToggle, onOpenFile,
               aria-expanded={!isCollapsed}
               onClick={() => onToggle(node.path)}
             >
-              <span className={css.chevron} aria-hidden="true">{isCollapsed ? '▸' : '▾'}</span>
-              <span className={css.name}>{node.name}</span>
-              <span className={css.count}>{node.count}</span>
+              <TreeChevron expanded={!isCollapsed} />
+              <TreeFolderIcon open={!isCollapsed} />
+              <span className={css.dirName}>{node.name}</span>
+              <span className={css.count}>{t('tree.fileCount', { count: node.count })}</span>
             </button>
             {isCollapsed ? null : (
               <TreeRows nodes={node.children} depth={depth + 1} collapsed={collapsed} selectedPath={selectedPath} onToggle={onToggle} onOpenFile={onOpenFile} onFileMenu={onFileMenu} />

@@ -254,6 +254,16 @@ describe('变更文件树', () => {
     expect(html).toContain('aria-expanded="true"')
   })
 
+  it('树模式目录行带文件夹图标与「N 个文件」，文件行带文件类型图标', () => {
+    const html = renderToStaticMarkup(
+      <ChangedFilesTree files={[file('src/log/LogTable.tsx', 'M', 3, 1), file('src/log/FilterBar.tsx', 'A', 12, 0)]} label="变更文件" />,
+    )
+    expect(html).toContain('data-tree-icon="folder-open"')
+    expect(html).toContain('data-tree-icon="file"')
+    expect(html).toContain('data-expanded="true"')
+    expect(html).toContain('2 个文件')
+  })
+
   it('initialCollapsedDirs 让对应目录初始折叠，不渲染子行', () => {
     const html = renderToStaticMarkup(
       <ChangedFilesTree files={[file('src/log/LogTable.tsx')]} initialCollapsedDirs={['src']} />,

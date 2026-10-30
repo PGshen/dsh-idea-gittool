@@ -41,6 +41,14 @@ describe('PageTabs', () => {
     expect(badgeText(120)).toBe('99+')
   })
 
+  it('locked while a sub-page is open: every tab is disabled and the current one stays selected', () => {
+    const html = renderToStaticMarkup(<PageTabs page="log" locked onChange={() => {}} uncommittedCount={0} />)
+    expect(html).toContain('data-locked="true"')
+    expect(html.match(/<button[^>]*disabled=""/g)?.length).toBe(4)
+    expect(html).toMatch(/aria-selected="true"[^>]*data-page="log"/)
+    expect(renderToStaticMarkup(<PageTabs page="log" onChange={() => {}} uncommittedCount={0} />)).not.toContain('disabled=""')
+  })
+
   it('arrow keys wrap between pages', () => {
     expect(adjacentPage('log', 'ArrowRight')).toBe('commit')
     expect(adjacentPage('commit', 'ArrowRight')).toBe('branches')
@@ -107,6 +115,14 @@ describe('ChangesTree', () => {
     const untrackedRow = html.slice(html.indexOf('data-path="scratch.md"'))
     expect(untrackedRow.slice(0, untrackedRow.indexOf('</div>'))).not.toContain('+')
     expect(html).toContain('title="docs/old.md → docs/renamed.md"')
+  })
+
+  it('directory rows carry a folder icon and file count, file rows a file-type icon', () => {
+    const html = render(store => store.setStatus(mixedStatus()))
+    expect(html).toContain('data-tree-icon="folder-open"')
+    expect(html).toContain('data-tree-icon="file"')
+    expect(html).toContain('data-expanded="true"')
+    expect(html).toMatch(/\d+ 个文件/)
   })
 
   it('conflict rows have a disabled checkbox with the hint', () => {

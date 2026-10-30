@@ -68,7 +68,7 @@
   width: 100%;
   min-width: 0;
   padding: 0 8px;
-  padding-inline-start: calc(8px + var(--git-tree-depth, 0) * 14px);
+  padding-inline-start: calc(8px + var(--git-tree-depth, 0) * 20px);
   font-size: 12px;
   line-height: 22px;
   cursor: default;
@@ -103,11 +103,17 @@
   color: var(--dsw-alias-state-error-primary);
 }
 
-.chevron {
+.chevronSpacer {
   flex: none;
-  width: 10px;
-  color: var(--dsw-alias-label-tertiary);
-  font-size: 10px;
+  width: 14px;
+}
+
+.dirName {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .name {

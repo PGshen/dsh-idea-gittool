@@ -121,7 +121,8 @@
   align-items: center;
   gap: 4px;
   width: 100%;
-  padding: 3px 8px;
+  height: 22px;
+  padding: 0 8px;
   border: none;
   background: transparent;
   color: var(--dsw-alias-label-secondary);
@@ -141,7 +142,7 @@
   gap: 4px;
   min-width: 0;
   height: 22px;
-  padding-inline-start: calc(16px + var(--git-tree-depth, 0) * 20px);
+  padding-inline-start: calc(8px + var(--git-tree-depth, 0) * 20px + 20px);
   padding-inline-end: 8px;
   white-space: nowrap;
   cursor: default;
@@ -170,23 +171,24 @@
   color: var(--dsw-alias-state-error-primary);
 }
 
-.chevron,
-.icon {
+.chevronSpacer {
   flex: none;
-  width: 12px;
-  color: var(--dsw-alias-label-tertiary);
-  text-align: center;
+  width: 14px;
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 .name {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.check {
-  flex: none;
-  color: color-mix(in oklab, var(--dsw-alias-state-success-primary) 60%, var(--dsw-alias-label-primary));
 }
 
 .detachedNote {

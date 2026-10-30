@@ -69,7 +69,8 @@ describe('StashPageView', () => {
 
   it('omits the file count when the Host left it out (more than 50 entries)', () => {
     const html = view({}, state({ list: { status: 'ready', entries: [entry(SHA_A, 0, { fileCount: undefined as never })], version: 1, error: null } }))
-    expect(html).not.toContain('个文件</')
+    const list = html.slice(html.indexOf('role="listbox"'), html.indexOf('data-stash-files'))
+    expect(list).not.toContain('个文件</')
   })
 
   it('selected row is marked and its tracked and untracked files are shown', () => {

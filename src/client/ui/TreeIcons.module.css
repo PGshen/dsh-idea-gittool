@@ -1,0 +1,52 @@
+/* Tree glyphs: 16px icon box, chevron rotates on expand; colors only from --dsw-* tokens. */
+.chevron {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  color: var(--dsw-alias-label-tertiary);
+  transition: transform 120ms ease;
+}
+
+.chevron[data-expanded='true'] {
+  transform: rotate(90deg);
+}
+
+.icon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.folder {
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.branch,
+.remote {
+  color: color-mix(in oklab, var(--dsw-alias-brand-primary) 70%, var(--dsw-alias-label-secondary));
+}
+
+.tag {
+  color: color-mix(in oklab, var(--dsw-alias-state-success-primary) 70%, var(--dsw-alias-label-secondary));
+}
+
+.current {
+  color: color-mix(in oklab, var(--dsw-alias-state-warn-primary) 60%, var(--dsw-alias-label-primary));
+}
+
+.detached {
+  color: var(--dsw-alias-state-error-primary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chevron {
+    transition: none;
+  }
+}

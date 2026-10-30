@@ -22,8 +22,17 @@
   cursor: pointer;
 }
 
-.tab:hover {
+.tab:hover:not(:disabled) {
   background: var(--dsw-alias-interactive-bg-hover);
+}
+
+/* Locked while a sub-page is open: unselected tabs fade, the current one keeps its highlight. */
+.tab:disabled {
+  cursor: default;
+}
+
+.tab:disabled:not(.selected) {
+  color: var(--dsw-alias-label-tertiary);
 }
 
 .selected,

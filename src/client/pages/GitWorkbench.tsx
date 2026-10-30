@@ -853,7 +853,7 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
         }}
         pullDisabledReason={blockText(integrateBlock)}
       />
-      <PageTabs page={page} onChange={setPage} uncommittedCount={uncommittedCount(status)} stashCount={status?.stashCount ?? 0} />
+      <PageTabs page={page} locked={overlay !== null} onChange={setPage} uncommittedCount={uncommittedCount(status)} stashCount={status?.stashCount ?? 0} />
       <ActionNotice
         notice={notice}
         onDismiss={() => { setNotice(null) }}

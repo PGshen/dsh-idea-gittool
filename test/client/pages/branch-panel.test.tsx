@@ -54,6 +54,15 @@ describe('BranchPanel 结构', () => {
     expect(html).toContain('data-branch-name="chore"')
   })
 
+  it('分组头与目录带文件夹图标，当前分支用星标，其余分支/标签用各自图标', () => {
+    const html = render()
+    expect(html).toContain('data-tree-icon="folder-open"')
+    expect(html).toContain('data-tree-icon="current"')
+    expect(html).toContain('data-tree-icon="branch"')
+    expect(html).toContain('data-tree-icon="tag"')
+    expect(html).toContain('data-expanded="true"')
+  })
+
   it('目录行带 aria-expanded 与子行缩进', () => {
     const html = render()
     expect(html).toContain('data-kind="directory"')

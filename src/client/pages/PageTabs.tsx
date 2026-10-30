@@ -40,13 +40,16 @@ export interface PageTabsProps {
   uncommittedCount: number
   /** Stashes (`status.stashCount`), shown on the Stash tab; hidden at 0 or when unknown. */
   stashCount?: number
+  /** A sub-page (overlay) is open: switching pages would strand it, so every tab is disabled. */
+  locked?: boolean
 }
 
-export function PageTabs({ page, onChange, uncommittedCount, stashCount = 0 }: PageTabsProps): ReactNode {
+export function PageTabs({ page, onChange, uncommittedCount, stashCount = 0, locked = false }: PageTabsProps): ReactNode {
   const t = useT()
   const badge = badgeText(uncommittedCount)
   const stashBadge = badgeText(stashCount)
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
+    if (locked) return
     const next = adjacentPage(page, event.key)
     if (next === null) return
     event.preventDefault()
@@ -55,7 +58,7 @@ export function PageTabs({ page, onChange, uncommittedCount, stashCount = 0 }: P
     target?.focus()
   }
   return (
-    <div role="tablist" aria-label={t('tabs.tabsLabel')} className={css.tabs} onKeyDown={onKeyDown}>
+    <div role="tablist" aria-label={t('tabs.tabsLabel')} className={css.tabs} data-locked={locked} onKeyDown={onKeyDown}>
       {WORKBENCH_PAGES.map((candidate) => {
         const selected = candidate === page
         return (
@@ -66,9 +69,10 @@ export function PageTabs({ page, onChange, uncommittedCount, stashCount = 0 }: P
             id={`dsh-git-tab-${candidate}`}
             aria-selected={selected}
             tabIndex={selected ? 0 : -1}
+            disabled={locked}
             className={selected ? `${css.tab} ${css.selected}` : css.tab}
             data-page={candidate}
-            onClick={() => { if (!selected) onChange(candidate) }}
+            onClick={() => { if (!selected && !locked) onChange(candidate) }}
           >
             {t(LABEL[candidate])}
             {candidate === 'commit' && badge !== null

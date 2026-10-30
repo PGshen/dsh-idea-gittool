@@ -6,6 +6,7 @@ export const zhCommon = {
   'action.close': '关闭',
   'action.cancel': '取消',
   'action.refresh': '刷新',
+  'tree.fileCount': '{count} 个文件',
 } satisfies Record<string, string>
 
 export const enCommon = {
@@ -14,4 +15,5 @@ export const enCommon = {
   'action.close': 'Close',
   'action.cancel': 'Cancel',
   'action.refresh': 'Refresh',
+  'tree.fileCount': '{count} files',
 } satisfies Record<keyof typeof zhCommon, string>

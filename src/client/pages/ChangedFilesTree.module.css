@@ -32,7 +32,7 @@
   box-sizing: border-box;
   width: 100%;
   padding: 2px 8px;
-  padding-inline-start: calc(8px + var(--git-tree-depth, 0) * 14px);
+  padding-inline-start: calc(8px + var(--git-tree-depth, 0) * 20px);
   border: 0;
   background: transparent;
   color: var(--dsw-alias-label-primary);
@@ -53,10 +53,17 @@
   flex-direction: column;
 }
 
-.chevron {
-  width: 12px;
-  color: var(--dsw-alias-label-tertiary);
-  font-size: 10px;
+.chevronSpacer {
+  flex: none;
+  width: 14px;
+}
+
+.dirName {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .name {

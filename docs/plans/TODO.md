@@ -45,6 +45,7 @@
 | P2 | 搁架「取回」不能干净应用时，Host 的 `git/conflict`（`reason: 'shelf-not-clean'`）触发全局 `onConflict` 打开空冲突列表（停在「读取中…」），盖住搁架的「三方合并应用」提示条 | t2 L4，2026-10-30 | `src/client/pages/workbench-overlay.ts` `actionOverlayWiring` 应跳过 `shelf-not-clean`（或 Host 改用别的错误码）；B3c 起就有 |
 | P2 | 提交页「按 Changelist 分组」时文件右键菜单只有「移到 Changelist」，缺「搁置…」等普通视图的条目 | t2 L4，2026-10-30 | `src/client/pages/ChangelistView.tsx`；B3c 起就有 |
 | P2 | 只读会话的「未找到 git」空状态，「设置 git 路径」入口要先被 Host 拒绝一次才隐藏（bootstrap 失败时拿不到 writePolicy）；`gitPathReadOnly` 置位后不复位，会话变可写要重新挂载 | t2 评审 M4，2026-10-30 | 见 [ADR 0014](../decisions/0014-git路径的信任边界.md) 补充；可在 not-found 错误里带 writePolicy（协议改动） |
+| P2 | 发布到 npm、再考虑插件市场 Discover 索引 | r1 计划，2026-10-30 | 首发用 tarball 已覆盖；npm 需包名、registry 与合规确认，市场索引依赖 npm 或 `git+commit` 安装目标，见 [ADR 0015](../decisions/0015-发布与分发形态.md) |
 
 ## 已完成
 

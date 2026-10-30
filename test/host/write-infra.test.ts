@@ -1,4 +1,6 @@
 // A2 T1 写基础设施：写/网络模式的执行环境与 confine、写访问判定、写队列、写端点的门禁与版本递增。
+import { chmodSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 vi.setConfig({ testTimeout: 30_000 })
@@ -27,7 +29,8 @@ import { createWriteQueue } from '../../src/host/write-queue.ts'
 import { createRepoCache } from '../../src/host/cache.ts'
 import type { WriteOperations } from '../../src/host/rpc.ts'
 import { createRpcHandler } from '../../src/host/rpc.ts'
-import { createTempRepo } from './fixtures.ts'
+import { createGitExecutable } from '../../src/host/git-executable.ts'
+import { createTempDir, createTempRepo, removeTempDir, writeExecutableScript } from './fixtures.ts'
 import { createFakeSubprocess, lastSpawn } from './fake-subprocess.ts'
 import { GIT_BINARY } from './git-binary.ts'
 
@@ -543,5 +546,87 @@ describe('review fixes', () => {
     expect(seen?.signal.aborted).toBe(false)
     gate.resolve()
     expect((await pending).ok).toBe(true)
+  })
+})
+
+describe('git path snapshot per write (t2 T5, ADR 0014)', () => {
+  function gitWrapper(): string {
+    const dir = createTempDir('dsh-git-path-')
+    cleanups.push(() => removeTempDir(dir))
+    return realpathSync(writeExecutableScript(dir, 'git', `#!/bin/sh\nexec "${GIT_BINARY}" "$@"\n`))
+  }
+
+  function setup(run: (ctx: WriteContext) => Promise<void>): {
+    handler: ReturnType<typeof createRpcHandler>
+    repo: ReturnType<typeof createTempRepo>
+    fake: ReturnType<typeof createFakeSubprocess>
+    gitExecutable: ReturnType<typeof createGitExecutable>
+  } {
+    const repo = makeRepo()
+    const fake = createFakeSubprocess()
+    const gitExecutable = createGitExecutable(fake)
+    const { deps } = gateDeps(repo.root, 'danger-full-access')
+    const handler = createRpcHandler({
+      runner: createGitRunner(fake, { executable: gitExecutable }),
+      gitExecutable,
+      ...deps,
+      writeOperations: {
+        commitFiles: {
+          parse: () => ({}),
+          run: async (ctx) => {
+            await run(ctx)
+            return { sha: 'abcdef1234567', shortSha: 'abcdef1' }
+          },
+        },
+      },
+    })
+    return { handler, repo, fake, gitExecutable }
+  }
+
+  /** argv[0] of every command spawned in the repository since `from`. */
+  const programsSince = (fake: ReturnType<typeof createFakeSubprocess>, root: string, from: number): string[] =>
+    fake.spawns.slice(from).filter(spawn => spawn.spec.cwd === root).map(spawn => String(spawn.spec.argv[0]))
+
+  it('runs every command of one write with the git in effect when it started; the next write uses the new one', async () => {
+    const first = gitWrapper()
+    const second = gitWrapper()
+    let from = 0
+    let mid: (() => Promise<unknown>) | undefined
+    const { handler, repo, fake, gitExecutable } = setup(async (ctx) => {
+      from = fake.spawns.length
+      await ctx.git(['--version'], { mode: 'read' })
+      await mid?.()
+      await ctx.git(['rev-parse', 'HEAD'], { mode: 'read' })
+      await ctx.git(['status', '--porcelain'])
+    })
+    await gitExecutable.set(first, SIGNAL)
+    mid = async () => {
+      const result = await handler('gitExecutable', { sessionId: 's', path: second }, SIGNAL)
+      if (!result.ok) throw new Error(JSON.stringify(result.error))
+    }
+
+    expect((await handler('commitFiles', { sessionId: 's', requestId: 'w1' }, SIGNAL)).ok).toBe(true)
+    const during = programsSince(fake, repo.root, from)
+    expect(gitExecutable.override()).toBe(second)
+    expect(during).toHaveLength(3)
+    expect(new Set(during)).toEqual(new Set([first]))
+
+    mid = undefined
+    expect((await handler('commitFiles', { sessionId: 's', requestId: 'w2' }, SIGNAL)).ok).toBe(true)
+    expect(new Set(programsSince(fake, repo.root, from))).toEqual(new Set([second]))
+  })
+
+  it('stops a write whose pinned git was replaced mid-way (identity still checked per command)', async () => {
+    const first = gitWrapper()
+    const { handler, gitExecutable } = setup(async (ctx) => {
+      await ctx.git(['--version'], { mode: 'read' })
+      rmSync(first)
+      writeFileSync(first, '#!/bin/sh\necho swapped\n')
+      chmodSync(first, 0o755)
+      await ctx.git(['status', '--porcelain'])
+    })
+    await gitExecutable.set(first, SIGNAL)
+
+    expect(errorOf(await handler('commitFiles', { sessionId: 's', requestId: 'w' }, SIGNAL)).code).toBe('git/not-found')
   })
 })

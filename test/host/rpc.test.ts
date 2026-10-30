@@ -10,6 +10,7 @@ import type {
   ConnectionRpcHandlerResult,
 } from '@deepseek-ai/dsh-client-connection'
 import type { SandboxMode } from '@deepseek-ai/dsh-sandbox'
+import type { Session } from '@deepseek-ai/dsh-session'
 
 import type {
   BlameValue,
@@ -64,6 +65,12 @@ function makeOutsideDir(): string {
 
 function policySource(workspaceRoot: string, mode: SandboxMode = 'read-only'): SandboxPolicySource {
   return { workspaceRoot, resolve: () => ({ mode, workspaceRoot }) }
+}
+
+/** A live session whose cwd is `cwd` (the git path gate needs one, t2 T5). */
+function liveSessions(cwd: string): NonNullable<RpcDeps['sessions']> {
+  const session = { header: { cwd } } as unknown as Session
+  return () => ({ get: () => session })
 }
 
 function makeHandler(overrides: Partial<RpcDeps> = {}): {
@@ -236,10 +243,11 @@ describe('createRpcHandler / bootstrap', () => {
     const handler = createRpcHandler({
       runner: createGitRunner(fake, { executable: gitExecutable }),
       gitExecutable,
-      sandboxPolicy: () => policySource(repo.root),
+      sessions: liveSessions(repo.root),
+      sandboxPolicy: () => policySource(repo.root, 'workspace-write'),
     })
 
-    const before = okValue<BootstrapValue>(await handler('bootstrap', { sessionId: 'session-1' }, SIGNAL))
+    const before =okValue<BootstrapValue>(await handler('bootstrap', { sessionId: 'session-1' }, SIGNAL))
     expect(before.git).toMatchObject({ path: GIT_BINARY, source: 'path' })
     expect(before.gitVersion).toBe(before.git?.version)
 
@@ -259,7 +267,8 @@ describe('createRpcHandler / bootstrap', () => {
     const handler = createRpcHandler({
       runner: createGitRunner(fake, { executable: gitExecutable }),
       gitExecutable,
-      sandboxPolicy: () => policySource(repo.root),
+      sessions: liveSessions(repo.root),
+      sandboxPolicy: () => policySource(repo.root, 'workspace-write'),
     })
     repo.write('tools/git', '#!/bin/sh\necho "git version 2.50.0"\n')
     chmodSync(join(repo.root, 'tools/git'), 0o755)
@@ -267,6 +276,61 @@ describe('createRpcHandler / bootstrap', () => {
     const failure = errorOf(await handler('gitExecutable', { sessionId: 'session-1', path: join(repo.root, 'tools/git') }, SIGNAL))
 
     expect(failure.details).toMatchObject({ reason: 'inside-workspace' })
+  })
+
+  it.each([null, GIT_BINARY])('refuses gitExecutable (path %s) in a read-only session and keeps the Host git (t2 T5)', async (path) => {
+    const repo = makeRepo()
+    const fake = createFakeSubprocess()
+    const gitExecutable = createGitExecutable(fake)
+    const set = vi.spyOn(gitExecutable, 'set')
+    const handler = createRpcHandler({
+      runner: createGitRunner(fake, { executable: gitExecutable }),
+      gitExecutable,
+      sessions: liveSessions(repo.root),
+      sandboxPolicy: () => policySource(repo.root, 'read-only'),
+    })
+
+    const failure = errorOf(await handler('gitExecutable', { sessionId: 'session-1', path }, SIGNAL))
+
+    expect(failure.code).toBe('git/sandbox-denied')
+    expect(failure.details).toMatchObject({ mode: 'read-only', reasonCode: 'read-only-mode' })
+    expect(set).not.toHaveBeenCalled()
+    expect(gitExecutable.override()).toBeNull()
+  })
+
+  it('refuses gitExecutable when the session is not live or the policy is unavailable (t2 T5)', async () => {
+    const repo = makeRepo()
+    const gitExecutable = createGitExecutable(createFakeSubprocess())
+    const set = vi.spyOn(gitExecutable, 'set')
+    const notLive = createRpcHandler({
+      runner: createGitRunner(createFakeSubprocess()),
+      gitExecutable,
+      sessions: () => ({ get: () => undefined }),
+      sandboxPolicy: () => policySource(repo.root, 'workspace-write'),
+    })
+    const noPolicy = createRpcHandler({ runner: createGitRunner(createFakeSubprocess()), gitExecutable, sessions: liveSessions(repo.root) })
+
+    expect(errorOf(await notLive('gitExecutable', { sessionId: 'session-1', path: GIT_BINARY }, SIGNAL)).details).toMatchObject({ reasonCode: 'session-not-live' })
+    expect(errorOf(await noPolicy('gitExecutable', { sessionId: 'session-1', path: GIT_BINARY }, SIGNAL)).details).toMatchObject({ reasonCode: 'policy-unavailable' })
+    expect(set).not.toHaveBeenCalled()
+  })
+
+  it.each<SandboxMode>(['workspace-write', 'danger-full-access'])('lets a %s session set the git path, even with the repository outside the workspace (t2 T5)', async (mode) => {
+    const repo = makeRepo()
+    const outside = makeOutsideDir()
+    const fake = createFakeSubprocess()
+    const gitExecutable = createGitExecutable(fake)
+    const handler = createRpcHandler({
+      runner: createGitRunner(fake, { executable: gitExecutable }),
+      gitExecutable,
+      sessions: liveSessions(repo.root),
+      sandboxPolicy: () => policySource(outside, mode),
+    })
+
+    const set = okValue<GitExecutableInfo>(await handler('gitExecutable', { sessionId: 'session-1', path: GIT_BINARY }, SIGNAL))
+    expect(set.source).toBe('setting')
+    const cleared = okValue<GitExecutableInfo>(await handler('gitExecutable', { sessionId: 'session-1', path: null }, SIGNAL))
+    expect(cleared.source).toBe('path')
   })
 
   it('reports an old PATH git through gitExecutable before reading any status (final review M5)', async () => {

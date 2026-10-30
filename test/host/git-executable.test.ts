@@ -270,3 +270,40 @@ describe('concurrent probing and setting', () => {
   })
 })
 
+describe('per-write snapshot (t2 T5, ADR 0014)', () => {
+  it('keeps the path in effect when it was taken, even after a later set()', async () => {
+    const git = createGitExecutable(createFakeSubprocess())
+    const first = script('git', `exec "${GIT_BINARY}" "$@"`)
+    const second = script('git', `exec "${GIT_BINARY}" "$@"`)
+    await git.set(first, SIGNAL)
+
+    const snapshot = git.snapshot()
+    await git.set(second, SIGNAL)
+
+    expect(snapshot.override()).toBe(realpathSync(first))
+    expect(git.override()).toBe(realpathSync(second))
+    expect(await snapshot.verify()).toBe(true)
+  })
+
+  it('stays on PATH when taken before a path was set', async () => {
+    const git = createGitExecutable(createFakeSubprocess())
+    const snapshot = git.snapshot()
+    await git.set(script('git', `exec "${GIT_BINARY}" "$@"`), SIGNAL)
+
+    expect(snapshot.override()).toBeNull()
+    expect(await snapshot.verify()).toBe(true)
+  })
+
+  it('still re-checks the pinned file: a replaced file fails verify()', async () => {
+    const git = createGitExecutable(createFakeSubprocess())
+    const wrapper = script('git', `exec "${GIT_BINARY}" "$@"`)
+    await git.set(wrapper, SIGNAL)
+    const snapshot = git.snapshot()
+    rmSync(wrapper)
+    writeFileSync(wrapper, '#!/bin/sh\necho swapped\n')
+    chmodSync(wrapper, 0o755)
+
+    expect(await snapshot.verify()).toBe(false)
+  })
+})
+

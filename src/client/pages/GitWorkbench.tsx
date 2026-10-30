@@ -1295,6 +1295,7 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
           <SettingsSheet
             onClose={() => { overlays.closeIf('settings') }}
             git={value.git}
+            gitPathReadOnly={value.writePolicy.reasonCode === 'read-only-mode'}
             onGitPath={async (path) => {
               const outcome = await applyGitPath(client, sessionId, path, t)
               if (outcome.ok) void (props.onReload ?? onRefresh)()

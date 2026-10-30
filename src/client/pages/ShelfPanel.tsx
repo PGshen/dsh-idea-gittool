@@ -3,7 +3,7 @@
 // hook-free for static rendering; containers own the store and go through the action store.
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode, Ref } from 'react'
-import type { ShelfApplyValue, ShelfEntry } from '../../shared/protocol.ts'
+import type { GitError, ShelfApplyValue, ShelfEntry } from '../../shared/protocol.ts'
 import type { FocusTarget } from '../focus.ts'
 import { useT } from '../i18n.tsx'
 import type { Translate } from '../i18n.tsx'
@@ -25,6 +25,21 @@ type Actions = Pick<ActionStore, 'run'>
 /** Paths "shelve…" takes from a row: every checked file when the row is checked, else the row alone. */
 export function shelvePaths(path: string, checked: ReadonlySet<string>): string[] {
   return checked.has(path) ? [...checked].sort() : [path]
+}
+
+/**
+ * Paths the Host refused as submodules (`reason: 'submodule'`, plan t2 T3). Status carries no
+ * submodule flag, so the sheet learns gitlinks from this refusal.
+ */
+export function submodulePathsOf(error: GitError | null | undefined): string[] {
+  const details = (error?.details ?? {}) as Record<string, unknown>
+  if (error?.code !== 'git/invalid-payload' || details['reason'] !== 'submodule' || !Array.isArray(details['paths'])) return []
+  return details['paths'].filter((path): path is string => typeof path === 'string')
+}
+
+/** An embedded repository shows in status as an untracked `dir/` entry; it cannot be shelved either. */
+function isEmbeddedRepository(path: string): boolean {
+  return path.endsWith('/')
 }
 
 /** Default entry name: `搁置于 MM-DD HH:mm`. */
@@ -231,6 +246,8 @@ export interface ShelveSheetViewProps {
   t: Translate
   name: string
   paths: readonly string[]
+  /** Rows that are submodules: shown greyed out with the reason and left out of the request. */
+  submodules?: ReadonlySet<string>
   busy: boolean
   error: LocalizedText | null
   onName: (name: string) => void
@@ -241,7 +258,9 @@ export interface ShelveSheetViewProps {
 
 export function ShelveSheetView(props: ShelveSheetViewProps): ReactNode {
   const { t, busy } = props
-  const canSubmit = props.name.trim() !== '' && props.paths.length > 0 && !busy
+  const submodules = props.submodules ?? new Set<string>()
+  const shelvable = props.paths.filter(path => !submodules.has(path))
+  const canSubmit = props.name.trim() !== '' && shelvable.length > 0 && !busy
   return (
     <SheetFrame
       dataKind="shelve"
@@ -256,8 +275,18 @@ export function ShelveSheetView(props: ShelveSheetViewProps): ReactNode {
           <span>{t('shelf.shelve.name')}</span>
           <input value={props.name} disabled={busy} data-autofocus="" data-shelf-name onChange={event => props.onName(event.target.value)} />
         </label>
-        <p className={sheetCss.hint}>{t('shelf.shelve.files', { count: props.paths.length })}</p>
-        <ul className={sheetCss.files}>{props.paths.map(path => <li key={path} className={sheetCss.file} title={path}>{path}</li>)}</ul>
+        <p className={sheetCss.hint}>{t('shelf.shelve.files', { count: shelvable.length })}</p>
+        <ul className={sheetCss.files}>
+          {props.paths.map(path => submodules.has(path)
+            ? (
+                <li key={path} className={`${sheetCss.file} ${sheetCss.muted}`} title={path} aria-disabled="true" data-shelve-path={path}>
+                  {path}
+                  {' — '}
+                  {t('shelf.shelve.submodule')}
+                </li>
+              )
+            : <li key={path} className={sheetCss.file} title={path} data-shelve-path={path}>{path}</li>)}
+        </ul>
         <p className={sheetCss.muted}>{t('shelf.shelve.explain')}</p>
         <MessageLines t={t} error={props.error} />
         <IntegrateFooter t={t} label={t('shelf.shelve.submit')} busy={busy} canSubmit={canSubmit} onCancel={props.onCancel} />
@@ -273,23 +302,31 @@ export function ShelveSheet(props: { paths: readonly string[]; actions: Actions;
   const [name, setName] = useState(() => defaultShelfName(t, new Date()))
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<LocalizedText | null>(null)
+  // Plan t2 T3: submodules are never sent. Embedded repositories are known up front; gitlinks are
+  // learned from the Host's refusal, after which the remaining files can be shelved.
+  const [submodules, setSubmodules] = useState<ReadonlySet<string>>(() => new Set(props.paths.filter(isEmbeddedRepository)))
   const submit = async (trigger: FocusTarget | null): Promise<void> => {
+    const paths = props.paths.filter(path => !submodules.has(path))
+    if (paths.length === 0) return
     setBusy(true)
     setError(null)
-    const outcome = await props.actions.run('shelfCreate', { name: name.trim(), paths: [...props.paths] }, { target: 'shelf-create', trigger })
+    const outcome = await props.actions.run('shelfCreate', { name: name.trim(), paths }, { target: 'shelf-create', trigger })
     setBusy(false)
     if (outcome.kind === 'done') {
       props.onShelved()
       props.onClose()
-    } else {
-      setError(failureText(outcome))
+      return
     }
+    const refused = outcome.kind === 'failed' ? submodulePathsOf(outcome.error) : []
+    if (refused.length > 0) setSubmodules(new Set([...submodules, ...refused]))
+    setError(failureText(outcome))
   }
   return (
     <ShelveSheetView
       t={t}
       name={name}
       paths={props.paths}
+      submodules={submodules}
       busy={busy}
       error={error}
       rootRef={rootRef}

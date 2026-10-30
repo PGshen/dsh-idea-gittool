@@ -174,6 +174,8 @@ const INVALID_REASON_KEY: Record<string, GitWorkbenchKey> = {
   'main-worktree': 'worktrees.remove.main',
   'current-worktree': 'worktrees.remove.current',
   'worktree-locked': 'worktrees.remove.locked',
+  // t2 T3: a shelve request naming a submodule is refused as a whole.
+  submodule: 'shelf.error.submodule',
 }
 
 /** Error code (+ details) → localized, actionable text. */

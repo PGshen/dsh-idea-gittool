@@ -81,6 +81,8 @@
 | `git stash create` 不改工作区，但「新增后在工作区删除」（AD）的文件在它的工作区树里仍然存在——不能用它代表工作区，改为逐文件 `hash-object -w` | ✅ 2026-10-28 | B3c 修复过程 |
 | `update-index --index-info` 写入 `<mode> <oid> <stage>\t<path>` 可直接制造 1/2/3 阶段冲突；mode 为 0 的行删除该路径的条目 | ✅ 2026-10-28 | `shelf.test.ts` 三方合并 |
 | `checkout-index -f -- <path>` 按索引条目写回工作区（字节精确，含可执行位与符号链接） | ✅ 2026-10-28 | `shelf.test.ts` 非 UTF-8 / 二进制 |
+| 子模块路径：`ls-tree HEAD -- sub` 给 `160000 commit <oid>`，`ls-files -s -- sub` 给 `160000 <oid> 0`；`hash-object -- sub`（目录）失败 `Unable to hash sub`；porcelain v2 记录形如 `1 .M SC.. 160000 160000 160000 …`；仓库内嵌的未跟踪仓库在 `--untracked-files=all` 下只列为 `?? nested/`（带尾斜杠，不列内部文件） | ✅ 2026-10-30，git 2.50.1 | t2 T3 本机探测（临时测试） |
+| `mktree` 收到 `100644 blob <gitlink 的 commit oid>`：commit 对象可读时报 `entry '…' object <oid> is a commit but specified type was (blob)`，子模块里新提交的 oid（超级仓库没有该对象）报 `… is unavailable`，均退出 128；`160000 commit <oid>` 行则直接成功（不校验对象存在）。所以搁架若把 gitlink 当 blob 记进载体树会在 mktree 一步失败（不丢数据，但报原始错误）；若绕过 mktree，`treeEntry` 把 gitlink 当「不存在」会在回滚时从索引删掉它。现做法：搁置前在 HEAD/索引查 `160000`、工作区查「目录内有 `.git`」，命中即整体拒绝（`reason: 'submodule'`），`treeEntry`/`indexEntry` 遇到 gitlink 也显式拒绝 | ✅ 2026-10-30，git 2.50.1 | 同上 + `shelf.test.ts`「shelfCreate and submodules」 |
 
 ## 7. Worktree 与远程（B3d，2026-10-28，git 2.50.1）
 

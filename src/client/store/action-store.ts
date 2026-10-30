@@ -176,6 +176,8 @@ const INVALID_REASON_KEY: Record<string, GitWorkbenchKey> = {
   'worktree-locked': 'worktrees.remove.locked',
   // T2 T4: a worktree location that leads outside the repository through a symlink.
   'path-outside-repository': 'worktree.add.outsideRepository',
+  // t2 T3: a shelve request naming a submodule is refused as a whole.
+  submodule: 'shelf.error.submodule',
 }
 
 /** Error code (+ details) → localized, actionable text. */

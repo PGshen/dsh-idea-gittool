@@ -1,4 +1,5 @@
 // B3c T1/T2: shelf — save chosen changes under a name in restricted refs, roll them back, apply them again.
+import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
@@ -9,10 +10,10 @@ import { GitCommandFailure, createGitRunner } from '../../src/host/git-executor.
 import type { WriteContext } from '../../src/host/git-executor.ts'
 import { readShelfList, readShelfPatch, shelfApplyOperation, shelfCreateOperation, shelfDropOperation } from '../../src/host/git/shelf.ts'
 import { createFakeSubprocess } from './fake-subprocess.ts'
-import { createTempRepo } from './fixtures.ts'
+import { TEST_GIT_ENV, createTempRepo } from './fixtures.ts'
 import type { TempRepo } from './fixtures.ts'
 import { contextFor } from './remote-fixtures.ts'
-import { gitTestSupports } from './git-binary.ts'
+import { GIT_BINARY, gitTestSupports } from './git-binary.ts'
 
 vi.setConfig({ testTimeout: 60_000 })
 
@@ -287,5 +288,101 @@ describe('shelfApply and shelfDrop', () => {
     expect(await readShelfList(run, repo.root)).toEqual([])
     expect((await failureOf(write(shelfDropOperation, repo, { id: entry.id }))).code).toBe('git/stale-target')
     expect((await failureOf(write(shelfDropOperation, repo, { id: '../x' }))).code).toBe('git/invalid-payload')
+  })
+})
+
+// t2 T3: a submodule (gitlink, mode 160000) or an embedded repository cannot be shelved — its content
+// is a commit of another repository. Any request naming one is refused as a whole, nothing changes.
+describe('shelfCreate and submodules', () => {
+  const gitIn = (cwd: string, ...args: string[]): string => {
+    const result = spawnSync(GIT_BINARY, ['-c', 'user.name=t', '-c', 'user.email=t@example.com', '-c', 'protocol.file.allow=always', ...args], { cwd, env: TEST_GIT_ENV, encoding: 'utf8' })
+    if (result.status !== 0) throw new Error(`git ${args.join(' ')}: ${result.stderr}`)
+    return result.stdout
+  }
+
+  /** A repository with a committed submodule `sub` whose checkout then moves to a new commit. */
+  function withSubmodule(): TempRepo {
+    const source = createTempRepo()
+    cleanups.push(source.cleanup)
+    const repo = makeRepo()
+    gitIn(repo.root, 'submodule', 'add', '-q', source.root, 'sub')
+    gitIn(repo.root, 'commit', '-q', '-m', 'add sub')
+    gitIn(join(repo.root, 'sub'), 'commit', '-q', '--allow-empty', '-m', 'moved')
+    return repo
+  }
+
+  const snapshot = (repo: TempRepo): Record<string, unknown> => ({
+    index: repo.git('ls-files', '-s'),
+    status: porcelainOf(repo),
+    refs: repo.git('for-each-ref', '--format=%(refname) %(objectname)'),
+    a: read(repo, 'a.txt'),
+    sub: gitIn(join(repo.root, 'sub'), 'rev-parse', 'HEAD'),
+  })
+
+  it('refuses an unstaged gitlink change with reason submodule', async () => {
+    const repo = withSubmodule()
+    expect(porcelainOf(repo)).toEqual([' M sub'])
+    const before = snapshot(repo)
+    const failure = await failureOf(write(shelfCreateOperation, repo, { name: 'x', paths: ['sub'] }))
+    expect(failure).toMatchObject({ code: 'git/invalid-payload', details: { reason: 'submodule', paths: ['sub'] } })
+    expect(snapshot(repo)).toEqual(before)
+  })
+
+  it('refuses a staged gitlink change', async () => {
+    const repo = withSubmodule()
+    repo.git('add', 'sub')
+    expect(porcelainOf(repo)).toEqual(['M  sub'])
+    const before = snapshot(repo)
+    const failure = await failureOf(write(shelfCreateOperation, repo, { name: 'x', paths: ['sub'] }))
+    expect(failure.details).toMatchObject({ reason: 'submodule', paths: ['sub'] })
+    expect(snapshot(repo)).toEqual(before)
+  })
+
+  it('refuses a newly added submodule that HEAD does not have yet', async () => {
+    const source = createTempRepo()
+    cleanups.push(source.cleanup)
+    const repo = makeRepo()
+    gitIn(repo.root, 'submodule', 'add', '-q', source.root, 'fresh')
+    const before = repo.git('ls-files', '-s')
+    const failure = await failureOf(write(shelfCreateOperation, repo, { name: 'x', paths: ['fresh', '.gitmodules'] }))
+    expect(failure.details).toMatchObject({ reason: 'submodule', paths: ['fresh'] })
+    expect(repo.git('ls-files', '-s')).toBe(before)
+    expect(repo.git('for-each-ref', SHELF_REF_PREFIX).trim()).toBe('')
+  })
+
+  it('refuses a mixed request as a whole: the regular files stay changed, nothing is saved', async () => {
+    const repo = withSubmodule()
+    repo.write('a.txt', 'a changed\n')
+    repo.write('b.txt', 'b staged\n')
+    repo.git('add', 'b.txt')
+    const before = snapshot(repo)
+    const failure = await failureOf(write(shelfCreateOperation, repo, { name: 'x', paths: ['a.txt', 'b.txt', 'sub'] }))
+    expect(failure.details).toMatchObject({ reason: 'submodule', paths: ['sub'] })
+    expect(snapshot(repo)).toEqual(before)
+    expect(read(repo, 'a.txt')).toBe('a changed\n')
+    expect(repo.git('for-each-ref', SHELF_REF_PREFIX).trim()).toBe('')
+  })
+
+  it('refuses an untracked embedded repository', async () => {
+    const repo = makeRepo()
+    const nested = createTempRepo()
+    cleanups.push(nested.cleanup)
+    gitIn(repo.root, 'clone', '-q', nested.root, 'nested')
+    repo.write('a.txt', 'a changed\n')
+    const failure = await failureOf(write(shelfCreateOperation, repo, { name: 'x', paths: ['a.txt', 'nested'] }))
+    expect(failure.details).toMatchObject({ reason: 'submodule', paths: ['nested'] })
+    expect(read(repo, 'a.txt')).toBe('a changed\n')
+    expect(existsSync(join(repo.root, 'nested', '.git'))).toBe(true)
+    expect(repo.git('for-each-ref', SHELF_REF_PREFIX).trim()).toBe('')
+  })
+
+  it('still shelves regular files next to an unchanged submodule', async () => {
+    const repo = withSubmodule()
+    gitIn(join(repo.root, 'sub'), 'checkout', '-q', 'HEAD~1')
+    expect(porcelainOf(repo)).toEqual([])
+    repo.write('a.txt', 'a changed\n')
+    const { entry } = await write(shelfCreateOperation, repo, { name: 'x', paths: ['a.txt'] })
+    expect(entry.files.map(file => file.path)).toEqual(['a.txt'])
+    expect(read(repo, 'a.txt')).toBe('a\n')
   })
 })

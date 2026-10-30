@@ -164,23 +164,69 @@ function statusOf(state: { x: string; y: string }): FileStatusCode {
   return (['M', 'A', 'D', 'R', 'C', 'T', 'U'].includes(letter) ? letter : 'M') as FileStatusCode
 }
 
-/** `<mode> <type> <oid>\t<path>` of one path in a tree-ish, or null. */
+/** Mode of a gitlink (submodule) entry in a tree or the index. */
+const GITLINK_MODE = '160000'
+
+function submoduleRefused(paths: readonly string[]): GitCommandFailure {
+  return invalidPayload(`"${paths[0] ?? ''}" is a submodule; submodules cannot be shelved`, { reason: 'submodule', path: paths[0], paths: [...paths] })
+}
+
+/**
+ * `<mode> <type> <oid>\t<path>` of one path in a tree-ish, or null when absent. A directory there
+ * (the path is a new file replacing a tracked directory) is absent as a file; a gitlink is refused
+ * explicitly instead of being read as "absent", which would delete it on rollback (plan t2 T3).
+ */
 async function treeEntry(git: Git, treeish: string, path: string): Promise<ObjectEntry | null> {
   const result = await git(['ls-tree', '-z', '--full-tree', treeish, '--', path])
   if (result.exitCode !== 0) throw failureFromExit(result, 'git ls-tree')
   const [meta = ''] = result.stdout.split('\t')
   const [mode, type, oid] = meta.split(' ')
+  if (type === 'commit' || mode === GITLINK_MODE) throw submoduleRefused([path])
   return type === 'blob' && mode !== undefined && oid !== undefined ? { mode, oid } : null
 }
 
-/** Stage-0 index entry, or null; an unmerged path is refused. */
+/** Stage-0 index entry, or null; an unmerged path and a gitlink are refused. */
 async function indexEntry(git: Git, path: string): Promise<ObjectEntry | null> {
   const result = await git(['ls-files', '-s', '-z', '--', path])
   if (result.exitCode !== 0) throw failureFromExit(result, 'git ls-files')
   const records = result.stdout.split('\0').filter(record => record !== '')
   if (records.some(record => !/^\S+ \S+ 0\t/u.test(record))) throw invalidPayload(`"${path}" has unresolved conflicts`, { reason: 'conflict', path })
   const [mode, oid] = (records[0] ?? '').split(/[ \t]/u)
+  if (mode === GITLINK_MODE) throw submoduleRefused([path])
   return mode !== undefined && oid !== undefined && records.length > 0 ? { mode, oid } : null
+}
+
+/**
+ * Requested paths that are submodules: a gitlink in HEAD or the index, or a working-tree directory
+ * holding `.git` (a checked-out submodule or an embedded repository). Their content is a commit of
+ * another repository, which a shelf cannot capture or restore (plan t2 T3, references mktree/gitlink).
+ */
+async function findSubmodules(git: Git, root: string, paths: readonly string[]): Promise<string[]> {
+  const requested = new Set(paths)
+  const found = new Set<string>()
+  for (const batch of batches(paths, CLEAN_BATCH_MAX)) {
+    const tree = await git(['ls-tree', '-z', '--full-tree', 'HEAD', '--', ...batch])
+    if (tree.exitCode !== 0) throw failureFromExit(tree, 'git ls-tree')
+    const index = await git(['ls-files', '-s', '-z', '--', ...batch])
+    if (index.exitCode !== 0) throw failureFromExit(index, 'git ls-files')
+    for (const record of [...tree.stdout.split('\0'), ...index.stdout.split('\0')]) {
+      const tab = record.indexOf('\t')
+      const path = record.slice(tab + 1)
+      if (tab > 0 && record.startsWith(`${GITLINK_MODE} `) && requested.has(path)) found.add(path)
+    }
+  }
+  for (const path of paths) {
+    if (found.has(path)) continue
+    try {
+      if ((await lstat(join(root, path))).isDirectory()) {
+        await lstat(join(root, path, '.git'))
+        found.add(path)
+      }
+    } catch {
+      // Absent, or a plain directory: not a submodule.
+    }
+  }
+  return paths.filter(path => found.has(path))
 }
 
 /** The current working-tree entry, hashed (and written) by git itself; null when absent. */
@@ -252,6 +298,9 @@ export const shelfCreateOperation: WriteOperation<ShelfCreateInput, Omit<ShelfCr
     const read = gitOf(ctx)
     const head = await readHeadPosition(async (args) => await query(ctx, args))
     if (head.sha === undefined) throw invalidPayload('shelving needs at least one commit', { reason: 'no-head' })
+    // A request naming a submodule is refused as a whole, before anything is captured.
+    const submodules = await findSubmodules(read, ctx.repoRoot, input.paths)
+    if (submodules.length > 0) throw submoduleRefused(submodules)
     const states = await readPathStates(ctx, input.paths)
     const chosen = input.paths.filter(path => states.has(path)).sort()
     if (chosen.length === 0) throw invalidPayload('none of the paths has changes to shelve', { reason: 'nothing-to-shelve' })

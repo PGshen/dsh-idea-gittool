@@ -147,6 +147,19 @@ export interface GitRunOptions {
   stdin?: string | Uint8Array | undefined
   /** B3a: stdin is a rebase todo ({@link GIT_TODO_STDIN_ENV}); write/network mode with stdin only. */
   todoFromStdin?: boolean | undefined
+  /**
+   * t2 T5: the git to run for this call (a write's snapshot); replaces
+   * {@link GitRunnerDefaults.executable}. Its `verify()` is still checked before the command.
+   */
+  executable?: GitProgramSource | undefined
+}
+
+/** Which user-set git (if any) a command runs; see git-executable.ts. */
+export interface GitProgramSource {
+  /** The adopted real path, or null for PATH. */
+  override(): string | null
+  /** Whether the adopted file is still the validated one (true when none is set). */
+  verify?(): Promise<boolean>
 }
 
 /** Byte length of a stdin payload (console records only the size, never the content). */
@@ -172,7 +185,7 @@ export interface GitRunnerDefaults {
    * B4d T2: a user-set git path (see git-executable.ts). When it returns a path, every command
    * runs exactly that program (checked before each use) and `directBinary` is not consulted.
    */
-  executable?: { override(): string | null; verify?(): Promise<boolean> } | undefined
+  executable?: GitProgramSource | undefined
 }
 
 /**
@@ -313,11 +326,11 @@ export function createGitRunner(
     return directProgram
   }
 
-  const resolveProgram = async (signal: AbortSignal): Promise<string> => {
-    const override = defaults.executable?.override() ?? null
+  const resolveProgram = async (signal: AbortSignal, executable: GitProgramSource | undefined): Promise<string> => {
+    const override = executable?.override() ?? null
     if (override !== null) {
       // A file replaced since it was validated is no longer the git the user chose (final review I1).
-      if (defaults.executable?.verify !== undefined && !(await defaults.executable.verify())) {
+      if (executable?.verify !== undefined && !(await executable.verify())) {
         throw new Error(`${override} changed since it was set as the git path`)
       }
       await subprocess.resolveExecutable(override, undefined, signal)
@@ -375,7 +388,7 @@ export function createGitRunner(
 
     let program: string
     try {
-      program = await resolveProgram(lifetime)
+      program = await resolveProgram(lifetime, options.executable ?? defaults.executable)
     } catch (error) {
       // Not an abort → there is no git to run (design §16.7 `git/not-found`, B4d T2).
       const aborted = classifyAbort(error).code
@@ -506,12 +519,16 @@ export interface WriteOperation<I, V extends object> {
   run(ctx: WriteContext, input: I): Promise<V>
 }
 
-/** Bind a runner to one repository, confinement and request signal. */
+/**
+ * Bind a runner to one repository, confinement and request signal. `executable` (t2 T5) pins the
+ * git of a write: every command through this context, read-mode queries included, runs it.
+ */
 export function bindWriteContext(
   run: GitRunner,
   repoRoot: string,
   confine: GitConfiner,
   signal: AbortSignal,
+  executable?: GitProgramSource,
 ): WriteContext {
   return {
     repoRoot,
@@ -521,6 +538,7 @@ export function bindWriteContext(
         cwd: repoRoot,
         signal,
         confine,
+        executable,
         mode: options.mode ?? 'write',
         timeoutMs: options.timeoutMs,
         stdoutMaxBytes: options.stdoutMaxBytes,

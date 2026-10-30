@@ -3,7 +3,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { GitClient } from '../../src/client/git-client.ts'
-import { applyGitPath, gitMissingOf, gitPathErrorText, isAbsoluteGitPath } from '../../src/client/git-path.ts'
+import { applyGitPath, gitMissingOf, gitPathErrorText, isAbsoluteGitPath, isReadOnlySessionDenial } from '../../src/client/git-path.ts'
 import { readSettings, resetSettingsForTest, writeSettings } from '../../src/client/settings.ts'
 import type { GitExecutableInfo, RpcResult } from '../../src/shared/protocol.ts'
 import { enT, zhT } from './i18n-helpers.tsx'
@@ -49,6 +49,16 @@ describe('gitPathErrorText', () => {
     expect(gitPathErrorText({ code: 'git/stale-target', message: 'x', details: { target: 'git-path', expected: '/a/git' } }, zhT)).toContain('又发起了一次设置')
     expect(gitPathErrorText({ code: 'git/stale-target', message: 'x', details: { target: 'git-path', expected: '/a/git' } }, enT)).toContain('Another setting')
   })
+
+  it('explains a session that may not change the git path (t2 T5)', () => {
+    const readOnly = { code: 'git/sandbox-denied', message: 'x', details: { mode: 'read-only', reasonCode: 'read-only-mode' } } as const
+    expect(gitPathErrorText(readOnly, zhT)).toBe('只读会话不能修改 git 路径；请在可写会话中设置')
+    expect(gitPathErrorText(readOnly, enT)).toContain('read-only session')
+    expect(gitPathErrorText({ code: 'git/sandbox-denied', message: 'x', details: { mode: 'read-only', reasonCode: 'session-not-live' } }, zhT)).toContain('不能修改 git 路径')
+    expect(isReadOnlySessionDenial(readOnly)).toBe(true)
+    expect(isReadOnlySessionDenial({ code: 'git/sandbox-denied', message: 'x', details: { reasonCode: 'session-not-live' } })).toBe(false)
+    expect(isReadOnlySessionDenial({ code: 'git/not-found', message: 'x' })).toBe(false)
+  })
 })
 
 describe('applyGitPath', () => {
@@ -79,6 +89,16 @@ describe('applyGitPath', () => {
     const outcome = await applyGitPath(client, 's', '/tmp/fake', zhT)
 
     expect(outcome.ok).toBe(false)
+    expect(readSettings().gitPath).toBe('/usr/bin/git')
+  })
+
+  it('marks a read-only session rejection and keeps the stored path (t2 T5)', async () => {
+    writeSettings({ gitPath: '/usr/bin/git' })
+    const { client } = clientAnswering({ ok: false, error: { code: 'git/sandbox-denied', message: 'x', details: { reasonCode: 'read-only-mode' } } })
+
+    const outcome = await applyGitPath(client, 's', '', zhT)
+
+    expect(outcome).toEqual({ ok: false, message: '只读会话不能修改 git 路径；请在可写会话中设置', readOnly: true })
     expect(readSettings().gitPath).toBe('/usr/bin/git')
   })
 

@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { RebaseEntry } from '../../src/shared/protocol.ts'
-import { buildTodo, rebaseTodoProblem } from '../../src/shared/rebase-todo.ts'
+import { buildTodo, rebaseTodoProblem, rootDropBranches } from '../../src/shared/rebase-todo.ts'
 
 const A = 'a'.repeat(40)
 const B = 'b'.repeat(40)
@@ -119,5 +119,26 @@ describe('buildTodo', () => {
     expect(buildTodo(entries, { messageBlob: blobs(entries), branches: sha => (sha === A ? ['x'] : []) })).toBe(
       [`drop ${A}`, 'update-ref refs/heads/x', `pick ${B}`, ''].join('\n'),
     )
+  })
+
+  it('leaves the branch of a leading drop alone under --root (t2 T1)', () => {
+    // `rebase -i --root` would move it onto git's internal empty root commit.
+    const entries: RebaseEntry[] = [{ sha: A, action: 'drop' }, { sha: B, action: 'pick' }, { sha: C, action: 'drop' }]
+    const branches = (sha: string): string[] => (sha === A ? ['x'] : sha === C ? ['y'] : [])
+    expect(buildTodo(entries, { messageBlob: blobs(entries), branches, root: true })).toBe(
+      [`drop ${A}`, `pick ${B}`, `drop ${C}`, 'update-ref refs/heads/y', ''].join('\n'),
+    )
+    expect(buildTodo(entries, { messageBlob: blobs(entries), branches, root: false })).toContain('update-ref refs/heads/x')
+  })
+})
+
+describe('rootDropBranches', () => {
+  it('lists the branches on drops before the first kept commit', () => {
+    const entries: RebaseEntry[] = [
+      { sha: A, action: 'drop' }, { sha: B, action: 'drop' }, { sha: C, action: 'pick' }, { sha: D, action: 'drop' },
+    ]
+    const branches = (sha: string): string[] => (sha === A ? ['x'] : sha === B ? ['y', 'z'] : sha === D ? ['w'] : [])
+    expect(rootDropBranches(entries, branches)).toEqual(['x', 'y', 'z'])
+    expect(rootDropBranches([{ sha: A, action: 'pick' }], branches)).toEqual([])
   })
 })

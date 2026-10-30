@@ -112,6 +112,10 @@ describe('tag push rejected', () => {
   it('names the Host\'s worktree refusals', () => {
     expect(actionErrorText({ code: 'git/invalid-payload', message: 'x', details: { reason: 'worktree-locked' } })).toEqual(text('worktrees.remove.locked'))
     expect(actionErrorText({ code: 'git/invalid-payload', message: 'x', details: { reason: 'main-worktree' } })).toEqual(text('worktrees.remove.main'))
+    // T2 T4: a location that leads outside the repository through a symlink.
+    expect(actionErrorText({ code: 'git/invalid-payload', message: 'x', details: { reason: 'path-outside-repository' } })).toEqual(text('worktree.add.outsideRepository'))
+    expect(zh['worktree.add.outsideRepository']).toContain('符号链接')
+    expect(actionErrorText({ code: 'git/invalid-payload', message: 'x', details: { reason: 'submodule-apply' } })).toEqual(text('shelf.error.submoduleApply'))
   })
 })
 

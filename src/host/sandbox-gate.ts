@@ -1,6 +1,7 @@
 // 写能力门禁（可行性调研 §8.3）：能看永远可用，能改只在沙箱边界内。
 // 判定顺序：sandboxPolicy → 会话 → 模式 → 仓库根是否在工作区内 → confine 探针。
 // 任何一环缺失或不成立都 fail closed（返回只读），绝不静默放宽。
+// 前三环（会话、策略、模式）另作会话级门禁 resolveSessionMode，用于 git 路径这类 Host 全局设置（t2 T5）。
 
 import { realpath } from 'node:fs/promises'
 import nodePath, { resolve } from 'node:path'
@@ -96,28 +97,12 @@ export async function resolveWriteAccess(
   deps: SandboxGateDeps,
   options: EvaluateWritePolicyOptions = {},
 ): Promise<WriteAccess> {
-  const session = deps.sessions?.()?.get(input.sessionId as SessionId)
-  if (session === undefined) {
-    return { policy: readOnly('sessionNotLive') }
-  }
-
-  const policySource = deps.sandboxPolicy?.()
-  if (policySource === undefined) {
-    return { policy: readOnly('policyUnavailable') }
-  }
-
-  let policy: SandboxExecutionPolicy
-  try {
-    policy = policySource.resolve({ session })
-  } catch {
-    return { policy: readOnly('resolveFailed', policySource.workspaceRoot) }
-  }
+  const resolved = sessionPolicy(input.sessionId, deps)
+  if ('denied' in resolved) return { policy: resolved.denied }
+  const { policy } = resolved
 
   if (policy.mode === 'danger-full-access') {
     return { policy: { mode: 'read-write', workspaceRoot: policy.workspaceRoot }, confiner: { kind: 'unconfined' } }
-  }
-  if (policy.mode === 'read-only') {
-    return { policy: readOnly('readOnlyMode', policy.workspaceRoot) }
   }
 
   // workspace-write: the whole repository (including .git) must sit inside the boundary.
@@ -158,6 +143,49 @@ export async function resolveWriteAccess(
     },
   }
   return { policy: { mode: 'read-write', workspaceRoot: policy.workspaceRoot }, confiner }
+}
+
+/**
+ * The repository-independent first half of the gate: the session is live, its policy resolves, and
+ * the mode is not `read-only`. A read-only answer carries the same reason the write gate would give.
+ */
+function sessionPolicy(sessionId: string, deps: SandboxGateDeps): { policy: SandboxExecutionPolicy } | { denied: WritePolicyValue } {
+  const session = deps.sessions?.()?.get(sessionId as SessionId)
+  if (session === undefined) return { denied: readOnly('sessionNotLive') }
+
+  const policySource = deps.sandboxPolicy?.()
+  if (policySource === undefined) return { denied: readOnly('policyUnavailable') }
+
+  let policy: SandboxExecutionPolicy
+  try {
+    policy = policySource.resolve({ session })
+  } catch {
+    return { denied: readOnly('resolveFailed', policySource.workspaceRoot) }
+  }
+  if (policy.mode === 'read-only') return { denied: readOnly('readOnlyMode', policy.workspaceRoot) }
+  return { policy }
+}
+
+/**
+ * Session-level gate for Host-global settings such as the git path (t2 T5, ADR 0014): may this
+ * session change state at all? Unlike {@link resolveWriteAccess} it does not look at a repository,
+ * so a session whose git is missing, or whose repository lies outside the workspace, can still set
+ * the path it needs to recover. Never throws; uncertainty is `read-only`.
+ */
+export function resolveSessionMode(sessionId: string, deps: SandboxGateDeps): WritePolicyValue {
+  const resolved = sessionPolicy(sessionId, deps)
+  if ('denied' in resolved) return resolved.denied
+  return { mode: 'read-write', workspaceRoot: resolved.policy.workspaceRoot }
+}
+
+/** Throw `git/sandbox-denied` (with `reasonCode`) unless the session-level gate allows changes. */
+export function assertSessionWritable(policy: WritePolicyValue): void {
+  if (policy.mode === 'read-write') return
+  throw new GitCommandFailure('git/sandbox-denied', policy.reason ?? '会话不能修改设置（fail closed）', {
+    mode: policy.mode,
+    ...(policy.workspaceRoot === undefined ? {} : { workspaceRoot: policy.workspaceRoot }),
+    ...(policy.reasonCode === undefined ? {} : { reasonCode: policy.reasonCode }),
+  })
 }
 
 /**

@@ -11,6 +11,8 @@
 //   its own deadline, so one caller's cancellation never fails the others.
 // - Overlapping `set()` calls: the latest one wins; an earlier one still validating fails with
 //   `git/stale-target` (`target: 'git-path'`) instead of adopting its path afterwards.
+// - `snapshot()` (t2 T5): a write freezes the choice when it starts, so a `set()` mid-way never
+//   switches git between its commands; only read-write sessions may call `set()` (rpc gate).
 
 import { constants } from 'node:fs'
 import { access, realpath, stat } from 'node:fs/promises'
@@ -18,18 +20,23 @@ import { tmpdir } from 'node:os'
 import nodePath from 'node:path'
 
 import type { GitExecutableInfo, UnsupportedVersionDetails } from '../shared/protocol.ts'
-import type { GitSubprocess } from './git-executor.ts'
+import type { GitProgramSource, GitSubprocess } from './git-executor.ts'
 import { GIT_GRACE_MS, GIT_READ_ENV, GIT_TIMEOUT_MS, GitCommandFailure, messageOf } from './git-executor.ts'
 import { GIT_MIN_VERSION, formatGitVersion, isSupportedGitVersion, parseGitVersion } from './git-version.ts'
 import { isWithinRoot } from './sandbox-gate.ts'
 
 export type GitPathRejection = 'not-absolute' | 'not-local' | 'not-found' | 'not-executable' | 'not-git' | 'inside-workspace'
 
-export interface GitExecutable {
+export interface GitExecutable extends GitProgramSource {
   /** The user-set path in effect, or null for PATH. Read by the runner before every command. */
   override(): string | null
   /** Whether the adopted file is still the one that was validated (true when none is set). */
   verify(): Promise<boolean>
+  /**
+   * The current choice frozen (t2 T5): a later `set()` does not change it, so one write runs a
+   * single git from start to end. `verify()` still re-checks the pinned file identity per command.
+   */
+  snapshot(): Required<GitProgramSource>
   /** The git in use; throws `git/not-found` when PATH has none (or the set path vanished). */
   info(signal: AbortSignal): Promise<GitExecutableInfo>
   /** Validate and adopt `path` (null → back to PATH); always re-probes. The old path stays on rejection. */
@@ -129,7 +136,12 @@ export function createGitExecutable(subprocess: GitSubprocess, options: GitExecu
     if (probe === undefined) {
       const current = detect(AbortSignal.timeout(GIT_TIMEOUT_MS))
       probe = current
-      current.catch(() => {
+      // t2 review I1: a git below the minimum is not kept either, so "re-detect" (a fresh
+      // bootstrap, also in read-only sessions that may not reset the path) notices an upgrade.
+      current.then((found) => {
+        const parsed = parseGitVersion(found.version)
+        if (probe === current && (parsed === null || !isSupportedGitVersion(parsed))) probe = undefined
+      }, () => {
         if (probe === current) probe = undefined
       })
     }
@@ -170,12 +182,23 @@ export function createGitExecutable(subprocess: GitSubprocess, options: GitExecu
     return { info: { path, version: formatGitVersion(parsed), raw, source: 'setting' }, identity: pinned }
   }
 
+  /** Whether `path` is still the file pinned as `pinned` (true when nothing is set). */
+  const unchanged = async (path: string | null, pinned: FileIdentity | null): Promise<boolean> => {
+    if (path === null || pinned === null) return true
+    const now = await identityOf(path)
+    return now !== null && now.dev === pinned.dev && now.ino === pinned.ino && now.size === pinned.size && now.mtimeMs === pinned.mtimeMs
+  }
+
   return {
     override: () => override,
-    async verify() {
-      if (override === null || identity === null) return true
-      const now = await identityOf(override)
-      return now !== null && now.dev === identity.dev && now.ino === identity.ino && now.size === identity.size && now.mtimeMs === identity.mtimeMs
+    verify: () => unchanged(override, identity),
+    snapshot() {
+      const frozenPath = override
+      const frozenIdentity = identity
+      return Object.freeze({
+        override: () => frozenPath,
+        verify: () => unchanged(frozenPath, frozenIdentity),
+      })
     },
     info,
     async set(path, signal, setOptions = {}) {

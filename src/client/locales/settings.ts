@@ -51,6 +51,9 @@ export const zhSettings = {
   'git.path.tooOld': 'Git {current} 版本过低，需要 {minimum} 或更高版本。',
   'git.path.failed': '设置失败：{message}',
   'git.path.superseded': '校验期间又发起了一次设置，这次设置没有采用。',
+  // t2 T5：git 路径是 Host 全局设置，只有可写会话能改（ADR 0014）。
+  'git.path.readOnly': '只读会话不能修改 git 路径；请在可写会话中设置',
+  'git.path.sandboxDenied': '无法确认当前会话的沙箱边界，不能修改 git 路径。',
   'settings.gitPath': 'git 路径',
   'settings.gitPath.current': '正在使用：{path}（Git {version}，{source}）',
   'settings.gitPath.source.path': '来自 PATH',
@@ -109,6 +112,8 @@ export const enSettings = {
   'git.path.tooOld': 'Git {current} is too old; {minimum} or later is required.',
   'git.path.failed': 'Could not set the path: {message}',
   'git.path.superseded': 'Another setting was made while this one was being checked, so this one was not used.',
+  'git.path.readOnly': 'A read-only session cannot change the git path; set it in a writable session.',
+  'git.path.sandboxDenied': 'The sandbox boundary of this session cannot be confirmed, so the git path cannot be changed.',
   'settings.gitPath': 'git path',
   'settings.gitPath.current': 'In use: {path} (Git {version}, {source})',
   'settings.gitPath.source.path': 'from PATH',

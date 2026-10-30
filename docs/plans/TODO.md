@@ -25,9 +25,9 @@
 | P2 | RPC 载荷上限：`mergeApply`/`mergeDraftSave` 的 Result 最多约 8 MiB，未经真实 HTTP 验证宿主 RPC 层能否接受；考虑把上限降到与单侧 2 MiB 相当 | B1 终审，2026-10-27 | `src/host/git/merge-write.ts` `MERGE_APPLY_RESULT_MAX_BYTES`；B1 验收演示实测：卡住的是插件自己 `/dsh-git` 的 256 KiB 请求体上限（宿主未拦），已改为按端点限额（合并写端点 32 MiB，见计划「意外与发现」）；是否把 Result 上限降到 2 MiB 仍待负责人决定 |
 | P2 | 贮藏恢复冲突（没有进行中的操作）时保存的草稿永远不会被清理 | B1 终审，2026-10-27 | 清理只挂在 continue/abort/operationCommit；草稿 stages 不会再匹配，无害但残留 ref |
 | P2 | 切换 DSH 语言会重挂载三个编辑器（标签参与 effect 依赖），丢失滚动位置与选区 | B1 终审，2026-10-27 | 把 gutter/栏标签改为可更新的 facet，不重建编辑器 |
-| P2 | B3a 终审 Minor（5 条）：`--root` 下首条 drop 的提交上若有分支，`--update-refs` 会把它指到 git 的空根提交；squash 组信息清空时客户端不拦、Host 报通用错误；preset 的提交不在计划里（链未加载完）时静默打开无关列表；行动作变化后仍保留之前输入的信息；「压缩所选提交」未检查合并提交 | B3a 终审，2026-10-27 | 细节见 [b3a 计划](completed/b3a-交互式变基.md)「决策记录」终审条目 |
-| P2 | B3c 终审 Minor（7 条）：版本刷新换了选中条目后「三方合并应用」作用到新条目；`shelf-store.refresh` 无序号；拖放/「移到」带上被搜索隐藏或其他列表里的勾选文件；三方合并的路径未分批；重命名后的新路径进活动列表而非原列表；内联编辑 Enter 后可能 blur 再触发一次新增；子模块 gitlink 只回滚索引 | B3c 终审，2026-10-28 | 细节见 [b3c 计划](completed/b3c-搁架与Changelist.md)「决策记录」终审条目 |
-| P2 | B3d 终审 Minor（剩 3 条，其余 6 条 t1 已修）：名字含 `/` 的远程能列出但无法管理；`.worktrees` 为指向仓库外的符号链接时新 worktree 落在仓库外；有独立推送 URL 时「改 URL」只改 fetch | B3d 终审，2026-10-28 | 细节见 [b3d 计划](completed/b3d-Worktree与远程.md)「决策记录」终审条目 |
+| P2 | B3a 终审 Minor（剩 4 条，`--root` 分支问题 t2 已修）：squash 组信息清空时客户端不拦、Host 报通用错误；preset 的提交不在计划里（链未加载完）时静默打开无关列表；行动作变化后仍保留之前输入的信息；「压缩所选提交」未检查合并提交 | B3a 终审，2026-10-27 | 细节见 [b3a 计划](completed/b3a-交互式变基.md)「决策记录」终审条目 |
+| P2 | B3c 终审 Minor（剩 5 条，选中竞态、refresh 序号、子模块 t2 已修）：拖放/「移到」带上被搜索隐藏或其他列表里的勾选文件；三方合并的路径未分批；重命名后的新路径进活动列表而非原列表；内联编辑 Enter 后可能 blur 再触发一次新增 | B3c 终审，2026-10-28 | 细节见 [b3c 计划](completed/b3c-搁架与Changelist.md)「决策记录」终审条目 |
+| P2 | B3d 终审 Minor（剩 2 条，其余 t1/t2 已修）：名字含 `/` 的远程能列出但无法管理；有独立推送 URL 时「改 URL」只改 fetch | B3d 终审，2026-10-28 | 细节见 [b3d 计划](completed/b3d-Worktree与远程.md)「决策记录」终审条目 |
 | P2 | B3b 终审 Minor（剩 10 条，`patch.ts` 注释与 `[PATCH n/m]` t1 已修）：勾选的重命名旧路径被当成「勾选外改动」多问一次贮藏；SHA-256 仓库的 mbox 头识别不到；CRLF 普通 diff `apply --check` 失败没有专门提示；`am --abort` 失败未处理；带 revision 推送时「设置 upstream」无效却仍显示；推送页换 revision 不重建 store；父组件换请求时 Diff 选项丢失但开关仍亮；高亮片段与行文本长度不符时词级标记错位；整文件并排的行构建是 O(段×行)；`n`/`p` 跳过折叠的 hunk 没有提示 | B3b 终审，2026-10-28 | 细节见 [b3b 计划](completed/b3b-Diff增强与提交菜单.md)「决策记录」终审条目 |
 | P2 | Fixup/Squash 到此提交的自动变基被中止后，`fixup!`/`squash!` 提交留在 HEAD；是否在中止时提示「撤销该提交」 | B3b L4，2026-10-27 | 与 IntelliJ 一致，需负责人决定 |
 | P2 | B2 终审 Minor（剩 7 条，分支比较 ref、`git.blame` Esc、卸载关闭 historyStore t1 已修）：Blame 未提交行双击应显示 HEAD→工作区（含已暂存）；修订版 Blame「文件不存在」文案区分修订并给「文件历史」按钮；文件历史第 2 页起合并条目路径退回新名（游标带当前路径）；文档头部 bootstrap 未到时误报「不在仓库」；`openTab` 失败后意图残留在队列；被该提交删除的文件禁用「与工作区比较」；窄头部 `⋯` 点动作/外部/Esc 收起 | B2 终审，2026-10-27 | 细节见 [b2 计划](completed/b2-历史与Blame.md)「决策记录」终审条目 |
@@ -37,15 +37,20 @@
 | P2 | B4c 终审 Minor（6 条）：chunk 加载失败后因文件/文案变化重载成功时失败提示不消失；加载期间 pane 容器重挂会用旧宿主节点；`LogRow` memo 后「相对日期」只在行 props 变化时刷新；`pnpm dev` 下 chunk 变化整体重建 client context（可改 `rebuild()`，onEnd 抛错会让 watch 退出）；测试替身对绝对路径 realpath 而真实 provider 不做；Windows 上 `directBinary` 直连 `libexec/git-core/git.exe` 会绕过 `cmd\git.exe` 对 PATH 的补充（B4d 实测，或 win32 默认关闭） | B4c 终审，2026-10-28 | 细节见 [b4c 计划](completed/b4c-性能.md)「决策记录」终审条目 |
 | P2 | Windows 上控制台「复制命令」与 blame 命令提示生成的是 POSIX shell 语法（单引号、`cd … &&`），需在 Git Bash 里运行；可按平台改成 PowerShell 引号 | B4d T4 审计，2026-10-29 | `src/host/git/write-support.ts` `shellQuote` |
 | P2 | Diff 里只改了行尾（CRLF↔LF）的行看起来与原行相同：Host 如实保留 `\r`，客户端不显示行尾标记 | B4d T4 审计，2026-10-29 | 可在行尾差异时显示 `CRLF`/`LF` 小标记（IntelliJ 行为） |
-| P2 | B4d 终审 Minor（剩 4 条，搁架门控与并发探测测试 t1 已补）：缓存的工作台在 git 消失后不切到「未找到 git」空状态；git 路径是 Host 全局的，只读会话也能改，并在其他仓库进行中的写之间生效（应按写操作取一次）；`GitBody` 的 `mounted` 引用在 StrictMode 下不恢复；客户端与 Host 的绝对路径判定跨平台不一致 | B4d 终审，2026-10-29 | 细节见 [b4d 计划](completed/b4d-跨平台与安装升级.md)「决策记录」Final 条目 |
+| P2 | B4d 终审 Minor（剩 3 条，其余 t1/t2 已修）：缓存的工作台在 git 消失后不切到「未找到 git」空状态；`GitBody` 的 `mounted` 引用在 StrictMode 下不恢复；客户端与 Host 的绝对路径判定跨平台不一致 | B4d 终审，2026-10-29 | 细节见 [b4d 计划](completed/b4d-跨平台与安装升级.md)「决策记录」Final 条目 |
 | P1 | B 阶段差距待负责人裁定：更多提交选项（author/sign-off/GPG、跳过 hooks）未实现；筛选（日期/路径等）、分支收藏与最近、提交详情 GPG 徽标与「在 N 个分支中」、合并标签、提交页创建补丁与加入 .gitignore、按仓库覆盖设置均未做 | B4d T8 核对表，2026-10-29 | 见 [b4d 计划](completed/b4d-跨平台与安装升级.md)「验证记录」T8 |
 | P2 | git 2.25 / 2.38 兼容实测：在 scratchpad 编译旧版 git 后跑 `scripts/compat/run-host-tests.sh`（2.39.5、2.50.1 已全绿） | B4d T5，2026-10-29 | 编译下载的源码被自动模式拦截；负责人 2026-10-29 决定暂不做 |
 | P2 | 搁架三方取回产生的冲突：三栏窗口与冲突列表里对方一侧名字仍写「贮藏的改动」；冲突来源只记在客户端内存，刷新页面后说明文字退回贮藏文案 | t1 T2，2026-10-29 | 需把 `origin` 传给 `conflictSides`/`withStashLabel`/`MergeWindow` |
+| P2 | 已跟踪的子模块要等 Host 拒绝一次后才在搁置对话框里置灰：status 条目不带子模块标记，可在 `FileEntry` 加可选字段（porcelain v2 的 `S` 标记，协议改动需批准） | t2 评审 M5，2026-10-30 | 见 [ADR 0011](../decisions/) 追记 |
+| P2 | 搁架「取回」不能干净应用时，Host 的 `git/conflict`（`reason: 'shelf-not-clean'`）触发全局 `onConflict` 打开空冲突列表（停在「读取中…」），盖住搁架的「三方合并应用」提示条 | t2 L4，2026-10-30 | `src/client/pages/workbench-overlay.ts` `actionOverlayWiring` 应跳过 `shelf-not-clean`（或 Host 改用别的错误码）；B3c 起就有 |
+| P2 | 提交页「按 Changelist 分组」时文件右键菜单只有「移到 Changelist」，缺「搁置…」等普通视图的条目 | t2 L4，2026-10-30 | `src/client/pages/ChangelistView.tsx`；B3c 起就有 |
+| P2 | 只读会话的「未找到 git」空状态，「设置 git 路径」入口要先被 Host 拒绝一次才隐藏（bootstrap 失败时拿不到 writePolicy）；`gitPathReadOnly` 置位后不复位，会话变可写要重新挂载 | t2 评审 M4，2026-10-30 | 见 [ADR 0014](../decisions/0014-git路径的信任边界.md) 补充；可在 not-found 错误里带 writePolicy（协议改动） |
 
 ## 已完成
 
 | 完成日期 | 事项 | 计划 |
 |---|---|---|
+| 2026-10-30 | TODO 第二组：交互式变基 `--root` 前导 drop 的分支保持不动；搁架提示条绑定条目、refresh 序号、拒绝子模块；新建 worktree 做 realpath 包含性检查（含 Windows 分隔符）；只读会话不能设置 git 路径、每个写操作取 git 快照（ADR 0014 补充）；整分支评审 I1/I2、M1–M3、M6 已修 | [t2](completed/t2-TODO设计类修复.md) |
 | 2026-10-29 | TODO 批量修复：数据安全 7 条（草稿只在成功/推进后清理、合并窗口 `beforeunload`、`<remote>/HEAD` 删除 `--no-deref`、`remoteList` 脱敏、主/锁定 worktree 禁删、保存失败询问可再答与关窗按取消、改写历史后清空消失的选中）与文案/小修正/小功能/测试 15 条；顺带修复并发设置 git 路径时旧请求生效 | [t1](completed/t1-TODO批量修复.md) |
 | 2026-10-28 | `layout.test.ts`「2000 行 < 50ms」高负载偶发超时：阈值改为 200ms 只防数量级回退（满载实测 52–62ms），真实渲染预算由 B4c 客户端 harness 测量 | [b4c](completed/b4c-性能.md) T5 |
 | 2026-10-29 | B4d 跨平台与安装升级（B4 打磨四份全部完成）：git 版本门控（最低 2.25，`--update-refs` 2.38、搁架三方 2.43）、「未找到 git / 版本过低」空状态与设置页 git 路径（Host 内存采用，校验见 [ADR 0014](../decisions/0014-git路径的信任边界.md)）；跨平台审计（win32 路径校验、沙箱包含判断、Windows 不直连 git）；`scripts/compat`（2.39.5 全绿）；1.0.0-rc.1 打包清单 + tarball 安装/升级/卸载/engines 实测；`pnpm matrix` 12 种仓库；README 改写为用户文档；B 阶段核对表；终审 I1 与 M2–M7 已修，负责人验收通过 | [b4d](completed/b4d-跨平台与安装升级.md) |

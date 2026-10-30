@@ -43,6 +43,22 @@ export interface BuildTodoOptions {
   messageBlob: (index: number) => string
   /** Other local branches on a commit; given only when `--update-refs` is requested. */
   branches?: ((sha: string) => readonly string[]) | undefined
+  /**
+   * The rebase runs with `--root` (no base). Branches on drops before the first kept commit then get
+   * no update-ref line: git would move them onto its internal empty root commit (empty tree, no
+   * message, no parent), so they stay on their old commit instead (plan t2 T1, git 2.50.1).
+   */
+  root?: boolean | undefined
+}
+
+/** Branches on the drops before the first kept commit: under `--root` they stay where they are. */
+export function rootDropBranches(entries: readonly RebaseEntry[], branches: (sha: string) => readonly string[]): string[] {
+  const result: string[] = []
+  for (const entry of entries) {
+    if (entry.action !== 'drop') break
+    result.push(...branches(entry.sha))
+  }
+  return result
 }
 
 /** The todo text for valid entries (see {@link rebaseTodoProblem}); ends with a newline. */
@@ -75,8 +91,8 @@ export function buildTodo(entries: readonly RebaseEntry[], options: BuildTodoOpt
         break
       case 'drop':
         lines.push(`drop ${entry.sha}`)
-        if (group === undefined) for (const ref of refsOf(entry.sha)) lines.push(`update-ref refs/heads/${ref}`)
-        else group.refs.push(...refsOf(entry.sha))
+        if (group !== undefined) group.refs.push(...refsOf(entry.sha))
+        else if (options.root !== true) for (const ref of refsOf(entry.sha)) lines.push(`update-ref refs/heads/${ref}`)
         break
     }
   })

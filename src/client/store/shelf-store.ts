@@ -1,6 +1,6 @@
 // Shelf list state (plan b3c T3): entries newest first, the selected entry and its patch. A patch
 // response for an entry the user already left is dropped; a refresh keeps the selection while the
-// entry still exists.
+// entry still exists, and a refresh result overtaken by a newer refresh is dropped (plan t2 T2).
 import { useSyncExternalStore } from 'react'
 import type { GitError, RpcRequest, RpcResult, ShelfEntry, ShelfListValue, ShelfPatchRequest, ShelfPatchValue } from '../../shared/protocol.ts'
 import { settle } from './blame-store.ts'
@@ -29,6 +29,7 @@ export function createShelfStore(options: {
   const listeners = new Set<() => void>()
   let state: ShelfState = { status: 'idle', shelves: [], selectedId: null, patch: null, patchError: null, error: null }
   let patchSequence = 0
+  let listSequence = 0
   const emit = (next: Partial<ShelfState>): void => {
     state = { ...state, ...next }
     for (const listener of listeners) listener()
@@ -47,8 +48,10 @@ export function createShelfStore(options: {
       return () => listeners.delete(listener)
     },
     refresh: async () => {
+      const sequence = ++listSequence
       emit({ status: state.status === 'ready' ? 'ready' : 'loading' })
       const result = await settle(options.list({ sessionId: options.sessionId }))
+      if (sequence !== listSequence) return
       if (!result.ok) {
         emit({ status: 'error', error: result.error })
         return

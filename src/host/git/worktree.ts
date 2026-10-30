@@ -1,10 +1,11 @@
 // Worktrees (plan b3d T3, behind the client flag `worktrees`): list, add from an existing or a new
 // branch at a path inside the repository (the write boundary of `workspace-write`), remove, prune.
-import { appendFile, mkdir, readFile, realpath } from 'node:fs/promises'
-import { dirname, isAbsolute, join, relative } from 'node:path'
+import { appendFile, lstat, mkdir, readFile, realpath } from 'node:fs/promises'
+import { dirname, isAbsolute, join, relative, sep } from 'node:path'
 import type { WorktreeAddValue, WorktreeEntry, WorktreePruneValue, WorktreeRemoveValue } from '../../shared/protocol.ts'
-import type { GitRunner, WriteContext, WriteOperation } from '../git-executor.ts'
+import type { GitCommandFailure, GitRunner, WriteContext, WriteOperation } from '../git-executor.ts'
 import { GIT_BASE_ARGV, failureFromExit } from '../git-executor.ts'
+import { isWithinRoot } from '../sandbox-gate.ts'
 import { validateRepoPath } from './diff.ts'
 import { invalidPayload, optionalBoolean, outputSummary, parseRefName, payloadRecord, query, readRunner, redactedFailure } from './write-support.ts'
 
@@ -77,6 +78,39 @@ async function excludeLocally(ctx: WriteContext, path: string): Promise<void> {
   await appendFile(file, `${current === '' || current.endsWith('\n') ? '' : '\n'}${line}\n`)
 }
 
+function outsideRepository(): GitCommandFailure {
+  return invalidPayload('worktree path leaves the repository', { reason: 'path-outside-repository' })
+}
+
+/**
+ * T2 T4: `validateRepoPath` only checks the path literally; a symlinked segment (`.worktrees ->
+ * /outside`) would still lead `git worktree add` out of the repository. Resolve the deepest existing
+ * ancestor (the target itself counts: git accepts an existing empty directory, but never a symlink
+ * there), require its real path inside the real repository root (the root itself may be reached
+ * through a symlink, e.g. macOS /tmp), and hand git the resolved path so it never follows a link.
+ * Residual TOCTOU risk: a symlink created between this check and git's mkdir is not caught here; the
+ * sandbox confiner (`workspace-write`) stays the backstop, and the post-add check reports it.
+ */
+export async function resolveInsideRepository(repoRoot: string, path: string, platform: NodeJS.Platform = process.platform): Promise<string> {
+  const root = await realpath(repoRoot)
+  // Review I2: split like `validateRepoPath`, which accepts `\\` as a separator on Windows.
+  const segments = path.split(platform === 'win32' ? /[\\/]/u : '/').filter(segment => segment !== '' && segment !== '.')
+  for (let depth = segments.length; depth >= 0; depth--) {
+    const candidate = join(repoRoot, ...segments.slice(0, depth))
+    let info
+    try {
+      info = await lstat(candidate)
+    } catch {
+      continue
+    }
+    if (depth === segments.length && info.isSymbolicLink()) throw outsideRepository()
+    const resolved = await realpath(candidate).catch(() => null)
+    if (resolved === null || !isWithinRoot(root, resolved)) throw outsideRepository()
+    return join(resolved, ...segments.slice(depth))
+  }
+  throw outsideRepository()
+}
+
 export const worktreeAddOperation: WriteOperation<WorktreeAddInput, Omit<WorktreeAddValue, 'version'>> = {
   parse(payload) {
     const record = payloadRecord(payload)
@@ -89,7 +123,7 @@ export const worktreeAddOperation: WriteOperation<WorktreeAddInput, Omit<Worktre
   },
 
   async run(ctx, input) {
-    const target = join(ctx.repoRoot, input.path)
+    const target = await resolveInsideRepository(ctx.repoRoot, input.path)
     const ref = `refs/heads/${input.branch}`
     if ((await query(ctx, ['check-ref-format', ref])).exitCode !== 0) throw invalidPayload(`invalid branch name "${input.branch}"`, {})
     const exists = (await query(ctx, ['rev-parse', '-q', '--verify', ref])).exitCode === 0
@@ -105,10 +139,14 @@ export const worktreeAddOperation: WriteOperation<WorktreeAddInput, Omit<Worktre
       }
       throw redactedFailure(result, 'git worktree add')
     }
-    await excludeLocally(ctx, input.path)
+    // Review M3: exclude where the worktree really is (`.worktrees` may link elsewhere in the repository).
+    await excludeLocally(ctx, relative(await realpath(ctx.repoRoot), target).split(sep).join('/'))
     const path = await canonical(target)
     const worktree = (await listOf(ctx)).find(entry => entry.path === path)
     if (worktree === undefined) throw invalidPayload('the new worktree is not listed', {})
+    // Double check after the fact (a symlink swapped in between the check and git). The worktree is
+    // reported, not deleted: removing what git just created elsewhere is riskier than leaving it.
+    if (!isWithinRoot(await realpath(ctx.repoRoot), worktree.path)) throw outsideRepository()
     return { worktree }
   },
 }

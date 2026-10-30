@@ -112,7 +112,7 @@ import { logFilterSignature, normalizeLogFilters, readLog } from './git/log.ts'
 import { readRefs } from './git/refs.ts'
 import { readStatus } from './git/status.ts'
 import type { SandboxGateDeps, SandboxLike, SandboxPolicySource, WriteAccess } from './sandbox-gate.ts'
-import { assertWritable, evaluateWritePolicy, resolveWriteAccess } from './sandbox-gate.ts'
+import { assertSessionWritable, assertWritable, evaluateWritePolicy, resolveSessionMode, resolveWriteAccess } from './sandbox-gate.ts'
 import type { SessionSources } from './repo-resolver.ts'
 import { resolveRepository } from './repo-resolver.ts'
 
@@ -605,7 +605,7 @@ async function handleBootstrap(
 
 /** B4d T2: validate and adopt a git path (or go back to PATH); the Host keeps it in memory only. */
 async function handleGitExecutable(deps: RpcDeps, payload: unknown, signal: AbortSignal): Promise<ConnectionRpcHandlerResult> {
-  parseSessionId(payload)
+  const sessionId = parseSessionId(payload)
   const path = (payload as { path?: unknown }).path
   if (path !== null && typeof path !== 'string') {
     throw new GitCommandFailure('git/invalid-payload', 'path must be an absolute path or null', {})
@@ -613,6 +613,10 @@ async function handleGitExecutable(deps: RpcDeps, payload: unknown, signal: Abor
   if (deps.gitExecutable === undefined) {
     throw new GitCommandFailure('git/invalid-payload', 'this Host cannot change its git executable', {})
   }
+  // t2 T5 (ADR 0014): the git path is Host-global, so only a session that may change state can set
+  // it — clearing included. No repository check: a session without git, or with its repository
+  // outside the workspace, needs this to recover.
+  assertSessionWritable(resolveSessionMode(sessionId, { sessions: deps.sessions, sandboxPolicy: deps.sandboxPolicy }))
   // A git planted in the session's workspace (e.g. by an agent) must never become the Host's git (final review I1).
   const workspaceRoot = deps.sandboxPolicy?.()?.workspaceRoot
   const forbiddenRoots = workspaceRoot === undefined || workspaceRoot === '' ? [] : [workspaceRoot]
@@ -644,8 +648,11 @@ async function handleWrite<V extends object>(
     if (access.confiner === undefined) {
       throw new GitCommandFailure('git/sandbox-denied', 'write confinement is unavailable (fail closed)', {})
     }
+    // t2 T5: one git for the whole write, taken after the gate; a later git path change applies to
+    // the next write only (each command still re-checks the pinned file, ADR 0014 step 7).
+    const executable = deps.gitExecutable?.snapshot()
     try {
-      const result = await operation.run(bindWriteContext(deps.runner, root, access.confiner, writeSignal), input)
+      const result = await operation.run(bindWriteContext(deps.runner, root, access.confiner, writeSignal, executable), input)
       return { ...result, version: runtime.cache().bumpVersion(root) }
     } catch (error) {
       runtime.cache().bumpVersion(root)

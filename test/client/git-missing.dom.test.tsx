@@ -72,6 +72,18 @@ describe('GitMissingView', () => {
     expect(text).toContain('2.25.0')
   })
 
+  it('hides the path entry in a read-only session but keeps the install guide and re-detect (t2 T5)', () => {
+    const props = show({ readOnly: true, gitPath: '/usr/bin/git' })
+    const text = visibleText(view!.container)
+
+    expect(view!.container.querySelector('input')).toBeNull()
+    expect(text).not.toContain('设置 git 路径…')
+    expect(text).toContain('只读会话不能修改 git 路径；请在可写会话中设置')
+    expect(byRole(view!.container, 'link', '如何安装 Git')).toBeTruthy()
+    click(byRole(view!.container, 'button', '重新检测'))
+    expect(props.onRedetect).toHaveBeenCalledOnce()
+  })
+
   it('disables the buttons while detecting', () => {
     show({ busy: true })
     expect(byRole(view!.container, 'button', '重新检测').hasAttribute('disabled')).toBe(true)

@@ -8,7 +8,7 @@ import type { BootstrapCache } from './bootstrap-cache.ts'
 import type { GitClient } from './git-client.ts'
 import css from './GitBody.module.css'
 import { GitMissingView } from './git-missing.tsx'
-import { applyGitPath, gitMissingOf, gitPathErrorText } from './git-path.ts'
+import { applyGitPath, gitMissingOf, gitPathErrorText, isReadOnlySessionDenial } from './git-path.ts'
 import { I18nProvider, useT } from './i18n.tsx'
 import { GitWorkbench } from './pages/GitWorkbench.tsx'
 import { createPoller } from './polling.ts'
@@ -50,6 +50,8 @@ function GitBodyContent(props: GitBodyProps): ReactNode {
   const [lastRefreshAt, setLastRefreshAt] = useState<number | null>(null)
   const [gitPathBusy, setGitPathBusy] = useState(false)
   const [gitPathError, setGitPathError] = useState<string | null>(null)
+  // t2 T5: learned from the Host refusing a path; while git is missing there is no write policy.
+  const [gitPathReadOnly, setGitPathReadOnly] = useState(false)
   const mounted = useRef(true)
   const gitPathCall = useRef(0)
   useEffect(() => () => { mounted.current = false }, [])
@@ -60,17 +62,27 @@ function GitBodyContent(props: GitBodyProps): ReactNode {
     const call = ++gitPathCall.current
     setGitPathBusy(true)
     let error: string | null = null
+    let readOnly = false
     if (path === undefined) {
       const stored = readSettings().gitPath
       const result = await gitClient.gitExecutable({ sessionId, path: stored })
-      if (!result.ok) error = gitPathErrorText(result.error, t)
+      // t2 T5: a session that may not change the git path keeps whatever git the Host already
+      // runs; re-sending the stored path there is routine, not an error to show.
+      if (!result.ok) {
+        readOnly = isReadOnlySessionDenial(result.error)
+        if (result.error.code !== 'git/sandbox-denied') error = gitPathErrorText(result.error, t)
+      }
     } else {
       const outcome = await applyGitPath(gitClient, sessionId, path, t)
-      if (!outcome.ok) error = outcome.message
+      if (!outcome.ok) {
+        error = outcome.message
+        readOnly = outcome.readOnly === true
+      }
     }
     // A fresh bootstrap: one already in flight was read with the previous git (final review M2).
     await bootstrapCache.reload(sessionId)
     if (!mounted.current || call !== gitPathCall.current) return
+    if (readOnly) setGitPathReadOnly(true)
     setGitPathError(error)
     setGitPathBusy(false)
   }
@@ -103,6 +115,7 @@ function GitBodyContent(props: GitBodyProps): ReactNode {
         gitPath={gitPath}
         busy={gitPathBusy}
         error={gitPathError}
+        readOnly={gitPathReadOnly}
         onRedetect={() => { void sendGitPath() }}
         onApply={(path) => { void sendGitPath(path) }}
       />

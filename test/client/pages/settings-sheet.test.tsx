@@ -43,6 +43,15 @@ describe('SettingsSheetView', () => {
     expect(html).toContain('data-git-path-inactive')
   })
 
+  it('disables the git path field in a read-only session and says why (t2 T5)', () => {
+    const html = render({ gitPathReadOnly: true, git: { path: '/usr/bin/git', version: '2.50.1', raw: 'git version 2.50.1', source: 'path' } })
+    expect(control(html, 'gitPath')).toContain('disabled=""')
+    expect(html).toMatch(/<button[^>]*type="submit"[^>]*disabled=""|<button[^>]*disabled=""[^>]*type="submit"/)
+    expect(html).toContain('只读会话不能修改 git 路径；请在可写会话中设置')
+    expect(render().includes('只读会话不能修改 git 路径')).toBe(false)
+    expect(control(render(), 'gitPath')).not.toContain('disabled')
+  })
+
   it('lists every sheet setting as a labelled dialog', () => {
     const html = render()
     expect(html).toContain('role="dialog"')

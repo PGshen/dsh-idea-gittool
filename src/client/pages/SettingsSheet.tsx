@@ -52,6 +52,8 @@ export interface SettingsSheetViewProps {
   git?: GitExecutableInfo | undefined
   gitPathBusy?: boolean
   gitPathError?: string | null
+  /** t2 T5: bootstrap `writePolicy.reasonCode === 'read-only-mode'`; the Host would refuse a path. */
+  gitPathReadOnly?: boolean
   onGitPath?: (path: string) => void
 }
 
@@ -65,6 +67,7 @@ export function SettingsSheetView({
   git,
   gitPathBusy = false,
   gitPathError = null,
+  gitPathReadOnly = false,
   onGitPath,
 }: SettingsSheetViewProps): ReactNode {
   // The stored path is not what the Host runs (Host restarted, or the path stopped validating).
@@ -140,7 +143,8 @@ export function SettingsSheetView({
         <section className={css.group}>
           <div className={css.row}>
             <span className={css.label}>{t('settings.gitPath')}</span>
-            <GitPathField value={settings.gitPath} busy={gitPathBusy} error={gitPathError} onApply={path => onGitPath?.(path)} />
+            <GitPathField value={settings.gitPath} busy={gitPathBusy} error={gitPathError} disabled={gitPathReadOnly} onApply={path => onGitPath?.(path)} />
+            {gitPathReadOnly ? <p className={css.hint} data-git-path-read-only="">{t('git.path.readOnly')}</p> : null}
             {git === undefined ? null : (
               <p className={css.hint}>
                 {t('settings.gitPath.current', {
@@ -167,11 +171,12 @@ export function SettingsSheetView({
 export interface SettingsSheetProps {
   onClose: () => void
   git?: GitExecutableInfo | undefined
+  gitPathReadOnly?: boolean
   /** B4d: hand a path to the Host; resolves to the rejection text, or null once adopted. */
   onGitPath?: (path: string) => Promise<string | null>
 }
 
-export function SettingsSheet({ onClose, git, onGitPath }: SettingsSheetProps): ReactNode {
+export function SettingsSheet({ onClose, git, gitPathReadOnly = false, onGitPath }: SettingsSheetProps): ReactNode {
   const t = useT()
   const settings = useSettings()
   const rootRef = useRef<HTMLDivElement | null>(null)
@@ -189,6 +194,7 @@ export function SettingsSheet({ onClose, git, onGitPath }: SettingsSheetProps): 
       git={git}
       gitPathBusy={gitPathBusy}
       gitPathError={gitPathError}
+      gitPathReadOnly={gitPathReadOnly}
       onGitPath={onGitPath === undefined ? undefined : (path) => {
         setGitPathBusy(true)
         void onGitPath(path).then((error) => {

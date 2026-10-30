@@ -7,11 +7,12 @@
 ## 打包
 
 ```bash
-pnpm build && pnpm smoke && pnpm pack --pack-destination <目录>
+make dist
 ```
 
-- 产物 `dsh-idea-gittool-<版本>.tgz` 只含 `lib/host.js`、`lib/client.js`、`lib/client.merge.js`（合并窗口的按需 chunk）、`cordis.patch.yml`、`README.md`、`package.json`。`pnpm smoke` 用 `pnpm pack --dry-run --json` 校验这份清单。
+- 产物 `dist/dsh-idea-gittool-<版本>.tgz` 只含 `lib/host.js`、`lib/client.js`、`lib/client.merge.js`（合并窗口的按需 chunk）、`cordis.patch.yml`、`LICENSE`、`NOTICE`、`README.md`、`package.json`，旁边生成 `SHA256SUMS`。`make dist` 会先构建并跑 `pnpm smoke`；`pnpm smoke` 用 `pnpm pack --dry-run --json` 校验这份清单。
 - `lib/client.css`（构建时的样式副本，DSH 不读取）与 `lib/host.js.map` 不进包。
+- 版本号、tag、GitHub Release 与撤回流程见 [release](release.md)。
 
 ## 安装、升级、卸载
 

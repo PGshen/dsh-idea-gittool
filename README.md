@@ -15,15 +15,19 @@ DSH Web 右侧栏里的 **IntelliJ 风格 Git 工作台**：默认看提交图�
 
 ## 安装、升级、卸载
 
-在 DSH 的 checkout 里运行（`dsh plugin` 把参数转给 profile 目录里的 pnpm）：
+从 GitHub Release 安装（推荐）：
 
 ```bash
-pnpm dsh plugin --profile web add /绝对路径/dsh-idea-gittool-<版本>.tgz
+dsh plugin --profile web add https://github.com/PGshen/dsh-idea-gittool/releases/download/v1.0.0-rc.1/dsh-idea-gittool-1.0.0-rc.1.tgz
 ```
 
-- 安装或升级后**重启 `dsh web`**。升级就是再 `add` 一次新版本的包；设置、Changelist 等数据保存在浏览器里，升级后保留。
-- 卸载：`pnpm dsh plugin --profile web remove dsh-idea-gittool`，然后重启。
-- 详细步骤、版本不匹配时的表现与隔离验证方法见 [install-upgrade](docs/runbooks/install-upgrade.md)。
+- 没有全局 `dsh` 命令时，在 DSH 的 checkout 里把 `dsh` 换成 `pnpm dsh`（`dsh plugin` 只是把参数转给 profile 目录里的 pnpm）。
+- 也可以在 Web 侧边栏 **Plugins → Add plugin** 里粘贴上面的 URL，或本地 tgz 的绝对路径。
+- 附件旁边通常有 `SHA256SUMS`，下载后可校验：`shasum -a 256 -c SHA256SUMS`。
+- 安装或升级后**重启 `dsh web`**。升级就是再 `add` 一次新版本；设置、Changelist 等数据保存在浏览器里，升级后保留。
+- 卸载：`dsh plugin --profile web remove dsh-idea-gittool`，然后重启。
+- 版本不匹配时安装会被拒绝，换匹配当前 DSH 的版本；确认要冒险时按提示用 `dsh plugin --profile web allow-version …` 按精确版本豁免。
+- 版本不匹配的表现、隔离验证方法与发布流程见 [install-upgrade](docs/runbooks/install-upgrade.md) 与 [release](docs/runbooks/release.md)。
 
 ## 打开
 

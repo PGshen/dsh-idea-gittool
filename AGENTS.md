@@ -31,12 +31,13 @@
 | `make check-fast` | pre-commit 运行的快速子集（文档检查 + lint/类型检查） |
 | `pnpm build` / `pnpm dev` | 构建双面产物（`lib/host.js`、`lib/client.js`）；`dev` 为 watch 模式 |
 | `pnpm smoke` | 不依赖浏览器的产物契约校验（需先 `build`；含体积门槛与按需 chunk） |
+| `make dist` | 发布产物：build → smoke → `pnpm pack` → `dist/SHA256SUMS`，并打印收件人安装命令；发布流程见 [release](docs/runbooks/release.md) |
 | `pnpm bench` / `pnpm bench:client` | L5 性能基准（10k 合成仓库 Host 延迟 / 日志滚动渲染 harness），不进 `make check` |
 | `pnpm matrix` | L5 真实仓库矩阵（12 种生成仓库走 Host 主要流程，B4d），不进 `make check` |
 | `scripts/compat/run-host-tests.sh <git 绝对路径>` | 用指定版本的 git 跑 `test/host`（L5 兼容，B4d），不进 `make check` |
 
 代码骨架在 M0 计划中建立；之后新增构建/挂载命令时，必须同步更新本表和 runbooks。
-运行和自验证的方法见 [docs/runbooks/verification.md](docs/runbooks/verification.md)，环境搭建见 [docs/runbooks/dev-setup.md](docs/runbooks/dev-setup.md)，打包安装与升级见 [docs/runbooks/install-upgrade.md](docs/runbooks/install-upgrade.md)。
+运行和自验证的方法见 [docs/runbooks/verification.md](docs/runbooks/verification.md)，环境搭建见 [docs/runbooks/dev-setup.md](docs/runbooks/dev-setup.md)，打包安装与升级见 [docs/runbooks/install-upgrade.md](docs/runbooks/install-upgrade.md)，发布与分发见 [docs/runbooks/release.md](docs/runbooks/release.md)。
 
 ## 文档索引
 

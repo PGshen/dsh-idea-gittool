@@ -102,7 +102,7 @@ const emitMergeChunk = {
       mkdirSync('lib', { recursive: true })
       writeFileSync(`lib/${MERGE_CHUNK}`, text)
       mergeChunkHash = hashOf(text)
-      console.log(`merge chunk ${(text.length / 1024).toFixed(1)} KB`)
+      console.error(`merge chunk ${(text.length / 1024).toFixed(1)} KB`)
     })
   },
 }
@@ -128,7 +128,7 @@ const emitClientBundle = {
       rmSync('lib/client.js.map', { force: true })
       const now = new Date()
       utimesSync('lib/client.js', now, now)
-      console.log(`client bundle ${(text.length / 1024).toFixed(1)} KB (css ${(css.length / 1024).toFixed(1)} KB)`)
+      console.error(`client bundle ${(text.length / 1024).toFixed(1)} KB (css ${(css.length / 1024).toFixed(1)} KB)`)
     })
   },
 }
@@ -230,10 +230,10 @@ if (process.argv.includes('--watch')) {
   await chunkCtx.watch()
   const hostCtx = await context(host)
   await hostCtx.watch()
-  console.log(`watching src/host → lib/host.js, src/client → lib/client.js + lib/${MERGE_CHUNK}`)
+  console.error(`watching src/host → lib/host.js, src/client → lib/client.js + lib/${MERGE_CHUNK}`)
 } else {
   await build(mergeChunk)
   await build(clientOptions())
   await build(host)
-  console.log(`built lib/host.js, lib/client.js and lib/${MERGE_CHUNK}`)
+  console.error(`built lib/host.js, lib/client.js and lib/${MERGE_CHUNK}`)
 }

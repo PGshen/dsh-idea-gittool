@@ -9,7 +9,7 @@ PYTHON ?= python3
 # pnpm 建议通过 `corepack enable pnpm` 提供；找不到时 setup/check 会给出明确错误。
 PNPM ?= $(shell command -v pnpm 2>/dev/null)
 
-.PHONY: setup check check-fast check-docs check-code check-fast-code
+.PHONY: setup check check-fast check-docs check-code check-fast-code dist
 
 setup:
 	git config core.hooksPath .githooks
@@ -25,6 +25,11 @@ check: check-docs check-code
 
 # pre-commit 运行的快速子集：文档检查 + lint/类型检查。
 check-fast: check-docs check-fast-code
+
+# 发布产物：构建 → 产物 smoke → 打包 → dist/SHA256SUMS，并打印安装命令（docs/runbooks/release.md）。
+dist:
+	@if [ -z "$(PNPM)" ]; then echo "错误：找不到 pnpm，请先运行 corepack enable pnpm"; exit 1; fi; \
+	$(PNPM) run dist
 
 check-docs:
 	@$(PYTHON) scripts/check_docs.py

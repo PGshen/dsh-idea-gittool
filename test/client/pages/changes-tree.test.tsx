@@ -71,9 +71,13 @@ describe('titleDot', () => {
       .toEqual({ tone: 'warning', tooltip: '变基进行中' })
   })
 
-  it('GitTitleView renders the dot only when present', () => {
-    expect(renderToStaticMarkup(<GitTitleView title="Git" dot={null} />)).toBe('Git')
+  it('GitTitleView renders the icon always and the dot only when present', () => {
+    const clean = renderToStaticMarkup(<GitTitleView title="Git" dot={null} />)
+    expect(clean).toContain('data-git-title-icon')
+    expect(clean).toContain('Git')
+    expect(clean).not.toContain('data-git-title-dot')
     const html = renderToStaticMarkup(<GitTitleView title="Git" dot={{ tone: 'warning', tooltip: '变基进行中' }} />)
+    expect(html).toContain('data-git-title-icon')
     expect(html).toContain('data-git-title-dot="warning"')
     expect(html).toContain('title="变基进行中"')
   })

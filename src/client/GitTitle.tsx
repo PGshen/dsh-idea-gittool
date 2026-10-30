@@ -1,7 +1,8 @@
-// Git tab title: fixed "Git" plus the uncommitted-changes dot (design §5.3).
+// Git tab title: branch icon, fixed "Git", plus the uncommitted-changes dot (design §5.3).
 // The dot is computed from the shared bootstrap snapshot; the slot registration injects
 // `bootstrapCache`. Without it (older registration) only the title renders.
 import type { ReactNode } from 'react'
+import { IconBranchOutlineMedium } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { BootstrapValue } from '../shared/protocol.ts'
 import type { BootstrapCache } from './bootstrap-cache.ts'
@@ -38,18 +39,22 @@ export function titleDot(value: BootstrapValue | null, t: Translate): TitleDot |
   return { tone: 'brand', tooltip: t('title.uncommitted', { count }) }
 }
 
-/** Presentational title (no hooks): text followed by the optional dot. */
+/** Presentational title (no hooks): branch icon, text, then the optional dot. */
 export function GitTitleView({ title, dot }: { title: ReactNode; dot: TitleDot | null }): ReactNode {
-  if (dot === null) return <>{title}</>
   return (
-    <span className={css.title} title={dot.tooltip}>
+    <span className={css.title} title={dot?.tooltip}>
+      <span className={css.icon} data-git-title-icon="">
+        <IconBranchOutlineMedium size={14} />
+      </span>
       {title}
-      <span
-        className={`${css.dot} ${dot.tone === 'warning' ? css.warning : css.brand}`}
-        role="img"
-        aria-label={dot.tooltip}
-        data-git-title-dot={dot.tone}
-      />
+      {dot !== null && (
+        <span
+          className={`${css.dot} ${dot.tone === 'warning' ? css.warning : css.brand}`}
+          role="img"
+          aria-label={dot.tooltip}
+          data-git-title-dot={dot.tone}
+        />
+      )}
     </span>
   )
 }
@@ -66,6 +71,6 @@ export interface GitTitleInjected {
 export function GitTitle(props: PropsRuntime<'sidebar.right.pane.tab.title'> & PropsLocale<'gitWorkbench'> & GitTitleInjected): ReactNode {
   const { useTabInfo, bootstrapCache, sessionId, t } = props
   const { tab } = useTabInfo()
-  if (bootstrapCache === undefined) return <>{tab.title}</>
+  if (bootstrapCache === undefined) return <GitTitleView title={tab.title} dot={null} />
   return <TitleWithDot title={tab.title} cache={bootstrapCache} sessionId={sessionId} t={t} />
 }

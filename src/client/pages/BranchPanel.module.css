@@ -1,4 +1,4 @@
-/* 分支面板（设计 §5.4、§8.1.4）。颜色只用 --dsw-* token。 */
+/* 分支面板（设计 §5.4、§8.1.4）。颜色只用 --dsw-* token；字号跟随对话正文（markdown base）。 */
 .panel {
   display: flex;
   flex-direction: column;
@@ -6,13 +6,13 @@
   min-height: 0;
   background: var(--dsw-alias-bg-base);
   color: var(--dsw-alias-label-primary);
-  font-size: 12px;
+  font-size: var(--dsw-font-markdown-base-font-size);
 }
 
 .wide {
-  width: 220px;
-  min-width: 200px;
-  max-width: 240px;
+  width: 240px;
+  min-width: 220px;
+  max-width: 280px;
   height: 100%;
   border-right: 0.5px solid var(--dsw-alias-border-l2);
 }
@@ -140,8 +140,8 @@
   align-items: center;
   gap: 4px;
   min-width: 0;
-  height: 22px;
-  padding-inline-start: calc(16px + var(--git-tree-depth, 0) * 14px);
+  height: 24px;
+  padding-inline-start: calc(16px + var(--git-tree-depth, 0) * 20px);
   padding-inline-end: 8px;
   white-space: nowrap;
   cursor: default;
@@ -199,7 +199,7 @@
   flex: none;
   margin-left: auto;
   color: var(--dsw-alias-label-tertiary);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .upstream + .aheadBehind {
@@ -211,7 +211,7 @@
   margin-left: auto;
   color: var(--dsw-alias-label-secondary);
   font-family: var(--dsw-font-markdown-code-block-font-family);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .message,

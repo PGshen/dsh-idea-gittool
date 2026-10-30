@@ -1,8 +1,13 @@
-/* Tab title dot (design §5.3): 5px, brand color for changes, warning for conflicts/operations. */
+/* Tab title: branch icon + text; dot (design §5.3) is 5px, brand color for changes, warning for conflicts/operations. */
 .title {
   display: inline-flex;
   align-items: center;
   gap: 4px;
+}
+
+.icon {
+  display: inline-flex;
+  flex: none;
 }
 
 .dot {

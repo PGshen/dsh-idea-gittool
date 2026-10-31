@@ -2,9 +2,10 @@
 // Wide 档为可收起的常驻左栏；Standard 档为抽屉，Compact 档为全高覆盖页（都点外部/Esc 关闭）。
 // 单击导航、双击过滤；右键菜单来自 branchActions（A3 T7：签出、新建、合并、重命名、删除等），
 // 写动作经 onAction 交给工作台的 BranchActionRunner。
+// Wide 档右缘有分隔条：拖拽或 ←/→ 调宽，宽度由调用方持有。
 // Row-level focus (I-1): right click, ArrowRight or Shift+F10 opens a row's menu; closing it refocuses the row.
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { CSSProperties, KeyboardEvent, ReactNode } from 'react'
+import type { CSSProperties, KeyboardEvent, PointerEvent as ReactPointerEvent, ReactNode } from 'react'
 import type { BranchEntry, BranchesValue, GitError } from '../../shared/protocol.ts'
 import { useT } from '../i18n.tsx'
 import { Button } from '../ui/Button.tsx'
@@ -46,6 +47,10 @@ export interface BranchPanelProps {
   error?: GitError | null
   /** 当前日志选中/定位的 ref，用于高亮行。 */
   selectedRef?: string | null
+  /** Wide 档左栏宽度（px），默认 {@link BRANCH_PANEL_DEFAULT_WIDTH}。 */
+  width?: number
+  /** Wide 档拖拽/键盘调宽；不传时没有分隔条。 */
+  onWidthChange?: (width: number) => void
   /** Wide 档左栏是否收起。 */
   collapsed?: boolean
   onToggleCollapse?: () => void
@@ -63,6 +68,22 @@ export interface BranchPanelProps {
   actionContext?: BranchActionContext
   /** 菜单里除复制/跳转/过滤外的动作；`trigger` 是右键的那一行（关闭菜单后焦点回到它）。 */
   onAction?: (id: BranchActionId, entry: BranchEntry, trigger: FocusTarget | null) => void
+}
+
+export const BRANCH_PANEL_DEFAULT_WIDTH = 240
+export const BRANCH_PANEL_MIN_WIDTH = 180
+export const BRANCH_PANEL_MAX_WIDTH = 600
+/** 键盘调整宽度的步长。 */
+const WIDTH_STEP = 16
+
+/** 把左栏宽度夹在 [MIN, min(MAX, 容器宽度的一半)] 内；容器宽度未知（或未布局为 0）时只用 MAX。 */
+export function clampBranchPanelWidth(width: number, containerWidth?: number): number {
+  if (!Number.isFinite(width)) return BRANCH_PANEL_DEFAULT_WIDTH
+  const half = containerWidth !== undefined && Number.isFinite(containerWidth) && containerWidth > 0
+    ? Math.floor(containerWidth / 2)
+    : Number.POSITIVE_INFINITY
+  const max = Math.max(BRANCH_PANEL_MIN_WIDTH, Math.min(BRANCH_PANEL_MAX_WIDTH, half))
+  return Math.min(max, Math.max(BRANCH_PANEL_MIN_WIDTH, Math.round(width)))
 }
 
 const READ_ONLY_CONTEXT: BranchActionContext = { writable: false, operation: null, current: null, dirty: false }
@@ -108,9 +129,17 @@ export function BranchPanel(props: BranchPanelProps): ReactNode {
     )
   }
   if (mode === 'wide') {
+    const width = clampBranchPanelWidth(props.width ?? BRANCH_PANEL_DEFAULT_WIDTH)
     return (
-      <aside className={`${css.panel} ${css.wide}`} data-mode="wide" data-collapsed="false" aria-label={t('branch.panel')}>
+      <aside
+        className={`${css.panel} ${css.wide}`}
+        style={{ width: `${width}px` }}
+        data-mode="wide"
+        data-collapsed="false"
+        aria-label={t('branch.panel')}
+      >
         <BranchPanelBody {...props} />
+        {props.onWidthChange === undefined ? null : <WidthResizer width={width} onWidthChange={props.onWidthChange} />}
       </aside>
     )
   }
@@ -136,6 +165,63 @@ export function BranchPanel(props: BranchPanelProps): ReactNode {
         <BranchPanelBody {...props} />
       </div>
     </div>
+  )
+}
+
+/** 左栏右缘的分隔条：拖拽或 ←/→ 调宽（同控制台抽屉的拖高）。 */
+function WidthResizer({ width, onWidthChange }: { width: number; onWidthChange: (width: number) => void }): ReactNode {
+  const t = useT()
+  const stopResize = useRef<(() => void) | null>(null)
+  useEffect(() => () => stopResize.current?.(), [])
+  // The aside sits in the log page body; half of that row is the most the panel may take.
+  const containerWidth = (element: HTMLElement): number | undefined =>
+    element.parentElement?.parentElement?.parentElement?.clientWidth
+
+  const startResize = (event: ReactPointerEvent<HTMLDivElement>): void => {
+    event.preventDefault()
+    stopResize.current?.()
+    const startX = event.clientX
+    const container = containerWidth(event.currentTarget)
+    const onMove = (move: PointerEvent): void => {
+      onWidthChange(clampBranchPanelWidth(width + (move.clientX - startX), container))
+    }
+    const stop = (): void => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', stop)
+      window.removeEventListener('pointercancel', stop)
+      document.body.style.removeProperty('cursor')
+      if (stopResize.current === stop) stopResize.current = null
+    }
+    stopResize.current = stop
+    document.body.style.cursor = 'col-resize'
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', stop)
+    window.addEventListener('pointercancel', stop)
+  }
+
+  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
+    const container = containerWidth(event.currentTarget)
+    if (event.key === 'ArrowRight') onWidthChange(clampBranchPanelWidth(width + WIDTH_STEP, container))
+    else if (event.key === 'ArrowLeft') onWidthChange(clampBranchPanelWidth(width - WIDTH_STEP, container))
+    else if (event.key === 'Home') onWidthChange(BRANCH_PANEL_DEFAULT_WIDTH)
+    else return
+    event.preventDefault()
+  }
+
+  return (
+    <div
+      role="separator"
+      aria-orientation="vertical"
+      aria-label={t('branch.resize')}
+      aria-valuenow={width}
+      aria-valuemin={BRANCH_PANEL_MIN_WIDTH}
+      aria-valuemax={BRANCH_PANEL_MAX_WIDTH}
+      tabIndex={0}
+      className={css.resizer}
+      onPointerDown={startResize}
+      onDoubleClick={() => onWidthChange(BRANCH_PANEL_DEFAULT_WIDTH)}
+      onKeyDown={onKeyDown}
+    />
   )
 }
 
@@ -432,7 +518,7 @@ function BranchRowView({ group, row, tabIndex, selected, onToggleDirectory, onCl
       <span className={css.name}>{row.label}</span>
       {row.detached ? <span className={css.detachedNote}>{t('branch.detachedNote')}</span> : null}
       {row.current ? <span className={css.srOnly}>{t('branch.current')}</span> : null}
-      {row.upstream === undefined ? null : <span className={css.upstream}>{row.upstream}</span>}
+      {row.upstream === undefined ? null : <span className={css.upstream} title={row.upstream}>{row.upstream}</span>}
       {aheadBehind === '' ? null : <span className={css.aheadBehind}>{aheadBehind}</span>}
     </div>
   )

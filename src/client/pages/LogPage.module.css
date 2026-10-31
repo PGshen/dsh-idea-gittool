@@ -46,11 +46,6 @@
     flex-direction: row;
   }
 
-  .sidebar {
-    width: 220px;
-    border-right: 0.5px solid var(--dsw-alias-border-l2);
-  }
-
   .detail {
     width: 360px;
     max-height: none;

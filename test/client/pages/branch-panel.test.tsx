@@ -2,7 +2,7 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { branchActions } from '../../../src/client/pages/branch-actions.ts'
-import { BranchContextMenu, BranchPanel, drawerEscapeAction } from '../../../src/client/pages/BranchPanel.tsx'
+import { BRANCH_PANEL_DEFAULT_WIDTH, BRANCH_PANEL_MAX_WIDTH, BRANCH_PANEL_MIN_WIDTH, BranchContextMenu, BranchPanel, clampBranchPanelWidth, drawerEscapeAction } from '../../../src/client/pages/BranchPanel.tsx'
 import type { BranchPanelProps } from '../../../src/client/pages/BranchPanel.tsx'
 import { DEFAULT_COLLAPSED_GROUPS } from '../../../src/client/pages/branch-store.ts'
 import { withLocale } from '../i18n-helpers.tsx'
@@ -158,6 +158,36 @@ describe('BranchPanel 响应式三档', () => {
   it('Wide 底部有收起入口', () => {
     const html = render({ onToggleCollapse: () => {} })
     expect(html).toContain('收起')
+  })
+
+  it('Wide 档按 width 设宽，并在右缘提供可调宽的分隔条', () => {
+    const html = render({ width: 320, onWidthChange: () => {} })
+    expect(html).toContain('width:320px')
+    expect(html).toContain('role="separator"')
+    expect(html).toContain('aria-orientation="vertical"')
+    expect(html).toContain('aria-valuenow="320"')
+    expect(html).toContain('aria-label="调整分支面板宽度"')
+  })
+
+  it('没有 onWidthChange 时不渲染分隔条；抽屉档也没有', () => {
+    expect(render()).not.toContain('role="separator"')
+    expect(render({ mode: 'standard', onWidthChange: () => {} })).not.toContain('aria-orientation="vertical"')
+  })
+
+  it('上游名带 title，被截断时仍能看到全名', () => {
+    expect(render()).toContain('title="origin/main"')
+  })
+})
+
+describe('clampBranchPanelWidth', () => {
+  it('夹在 [MIN, min(MAX, 容器一半)] 内，非法值回默认', () => {
+    expect(clampBranchPanelWidth(10)).toBe(BRANCH_PANEL_MIN_WIDTH)
+    expect(clampBranchPanelWidth(10_000)).toBe(BRANCH_PANEL_MAX_WIDTH)
+    expect(clampBranchPanelWidth(300.6)).toBe(301)
+    expect(clampBranchPanelWidth(500, 800)).toBe(400)
+    expect(clampBranchPanelWidth(500, 200)).toBe(BRANCH_PANEL_MIN_WIDTH)
+    expect(clampBranchPanelWidth(Number.NaN)).toBe(BRANCH_PANEL_DEFAULT_WIDTH)
+    expect(clampBranchPanelWidth(300, 0)).toBe(300)
   })
 })
 

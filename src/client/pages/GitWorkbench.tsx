@@ -56,7 +56,7 @@ import type { WorkbenchIntent } from '../workbench-intents.ts'
 import { createFileHistoryStore } from '../store/file-history-store.ts'
 import { createLogStore } from '../store/log-store.ts'
 import { ActionNotice } from './ActionNotice.tsx'
-import { BranchPanel } from './BranchPanel.tsx'
+import { BRANCH_PANEL_DEFAULT_WIDTH, BranchPanel } from './BranchPanel.tsx'
 import { BranchSheet } from './BranchSheets.tsx'
 import { BranchesPage } from './BranchesPage.tsx'
 import { SmartCheckoutSheet } from './SmartCheckoutSheet.tsx'
@@ -345,6 +345,7 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
   // B2: right-click menu of a commit detail file row.
   const [fileMenu, setFileMenu] = useState<{ file: CommitFileEntry; parentSha: string | undefined; anchor: MenuAnchor } | null>(null)
   const [consoleHeight, setConsoleHeight] = useState(CONSOLE_DEFAULT_HEIGHT)
+  const [branchPanelWidth, setBranchPanelWidth] = useState(BRANCH_PANEL_DEFAULT_WIDTH)
   const [refreshing, setRefreshing] = useState(false)
 
   // 侧栏数据请求序号：并发时只采用最后一次发出的结果，卸载后不再写状态（评审 M1）。
@@ -780,6 +781,8 @@ export function GitWorkbench(props: GitWorkbenchProps): ReactNode {
       loading={branches.loading}
       error={branches.error}
       collapsed={branches.wideCollapsed}
+      width={branchPanelWidth}
+      onWidthChange={setBranchPanelWidth}
       // 传完整 ref 名：目标不在当前视图时，跳转失败提示可以建议「双击过滤到该分支」。
       onNavigate={entry => { navigateTo(entry.ref === 'HEAD' ? entry.sha : entry.ref) }}
       onFilter={entry => { logStore.setFilter({ branches: [entry.name] }) }}

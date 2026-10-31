@@ -139,3 +139,25 @@ describe('Branches page tree (DOM)', () => {
     expect(tree.querySelectorAll('[data-row-menu][tabindex="0"]')).toHaveLength(0)
   })
 })
+
+describe('branch panel width (DOM)', () => {
+  function WidthHarness(): ReactElement {
+    const [width, setWidth] = useState(240)
+    return <Harness width={width} onWidthChange={setWidth} />
+  }
+
+  it('the separator resizes with ←/→ and Home restores the default', () => {
+    view = render(withLocale(<WidthHarness />) as ReactElement)
+    const aside = view.container.querySelector<HTMLElement>('aside') as HTMLElement
+    const separator = () => view?.container.querySelector<HTMLElement>('[role="separator"]') as HTMLElement
+    focus(separator())
+    press('ArrowRight', separator())
+    expect(aside.style.width).toBe('256px')
+    expect(separator().getAttribute('aria-valuenow')).toBe('256')
+    press('ArrowLeft', separator())
+    press('ArrowLeft', separator())
+    expect(aside.style.width).toBe('224px')
+    press('Home', separator())
+    expect(aside.style.width).toBe('240px')
+  })
+})

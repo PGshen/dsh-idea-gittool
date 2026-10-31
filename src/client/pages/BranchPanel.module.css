@@ -10,11 +10,28 @@
 }
 
 .wide {
-  width: 240px;
-  min-width: 220px;
-  max-width: 280px;
+  position: relative;
+  flex: none;
   height: 100%;
   border-right: 0.5px solid var(--dsw-alias-border-l2);
+}
+
+/* 右缘拖拽条：盖住边框两侧各 3px。 */
+.resizer {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  bottom: 0;
+  z-index: 1;
+  width: 6px;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.resizer:hover,
+.resizer:focus-visible {
+  background: var(--dsw-alias-border-l2);
+  outline-offset: calc(-1 * var(--dsw-focus-ring-width));
 }
 
 .collapsedRail {
@@ -186,6 +203,7 @@
 }
 
 .name {
+  flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -196,12 +214,23 @@
   font-size: 11px;
 }
 
-.upstream,
 .count {
   flex: none;
   margin-left: auto;
   color: var(--dsw-alias-label-tertiary);
   font-size: 11px;
+}
+
+/* 上游名先让位：收缩权重远大于分支名，窄栏时截断上游而不是把分支名挤没。 */
+.upstream {
+  flex: 0 1000 auto;
+  min-width: 0;
+  margin-left: auto;
+  padding-left: 8px;
+  overflow: hidden;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 11px;
+  text-overflow: ellipsis;
 }
 
 .upstream + .aheadBehind {

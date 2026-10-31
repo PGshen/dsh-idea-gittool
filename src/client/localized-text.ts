@@ -1,8 +1,9 @@
 // React-free half of the client i18n: translator type, `{name}` interpolation and LocalizedText.
 // Stores and pure helpers import this file; components use i18n.tsx (context + useT).
 import type { WritePolicyValue } from '../shared/protocol.ts'
-import { READ_ONLY_REASON_KEY } from './locales.ts'
+import { READ_ONLY_REASON_KEY, en, zh } from './locales.ts'
 import type { GitWorkbenchKey } from './locales.ts'
+import type { Language } from './settings.ts'
 
 /** Placeholder values for `{name}` slots in a dictionary template. */
 export type TextParams = Record<string, unknown>
@@ -29,6 +30,18 @@ export function interpolate(template: string, params?: TextParams): string {
 /** Build a translator over one complete dictionary (tests, and the fallback context value). */
 export function createTranslator(dictionary: Readonly<Record<GitWorkbenchKey, string>>): Translate {
   return (key, params) => interpolate(dictionary[key], params)
+}
+
+const pinned: Partial<Record<Exclude<Language, 'auto'>, Translate>> = {}
+
+/**
+ * The translator for the language setting: `auto` keeps the DSH one, `zh`/`en` pin a dictionary.
+ * Pinned translators are built once, so their identity only changes with the setting.
+ */
+export function translatorFor(language: Language, dsh: Translate): Translate {
+  if (language === 'auto') return dsh
+  pinned[language] ??= createTranslator(language === 'zh' ? zh : en)
+  return pinned[language]
 }
 
 /** Shorthand for building a LocalizedText. */

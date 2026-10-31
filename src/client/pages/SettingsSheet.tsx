@@ -5,6 +5,7 @@ import type { ReactNode, Ref } from 'react'
 import { useT } from '../i18n.tsx'
 import type { Translate } from '../i18n.tsx'
 import {
+  LANGUAGES,
   LOG_PAGE_SIZES,
   REFRESH_INTERVAL_MAX_SEC,
   REFRESH_INTERVAL_MIN_SEC,
@@ -15,15 +16,17 @@ import {
 import type { WorkbenchSettings } from '../settings.ts'
 import type { GitExecutableInfo } from '../../shared/protocol.ts'
 import { GitPathField } from '../git-missing.tsx'
+import { LANGUAGE_NATIVE_NAMES } from '../locales/settings.ts'
 import { Button } from '../ui/Button.tsx'
 import { SheetFrame, escapeHandler, useInitialFocus } from './integrate-parts.tsx'
 import css from './SettingsSheet.module.css'
 
 type SwitchName = 'autoRefresh' | 'compact' | 'autoOpenConflicts' | 'mergeAutoApplyNonConflicting' | 'blameRenderer'
-type ChoiceName = 'refreshIntervalSec' | 'diffMode' | 'logPageSize' | 'afterCommit' | 'dateFormat'
+type ChoiceName = 'language' | 'refreshIntervalSec' | 'diffMode' | 'logPageSize' | 'afterCommit' | 'dateFormat'
 export type SettingControl = SwitchName | ChoiceName
 
 const CHOICES: Readonly<Record<ChoiceName, readonly string[]>> = {
+  language: LANGUAGES,
   refreshIntervalSec: Array.from({ length: REFRESH_INTERVAL_MAX_SEC - REFRESH_INTERVAL_MIN_SEC + 1 }, (_, i) => String(REFRESH_INTERVAL_MIN_SEC + i)),
   diffMode: ['unified', 'split'],
   logPageSize: LOG_PAGE_SIZES.map(String),
@@ -117,6 +120,7 @@ export function SettingsSheetView({
     <SheetFrame dataKind="settings" title={title} label={title} rootRef={rootRef} onCancel={onClose} onKeyDown={escapeHandler(false, onClose)}>
       <div className={css.body}>
         <section className={css.group}>
+          {choice('language', t('settings.language'), value => (value === 'zh' || value === 'en' ? LANGUAGE_NATIVE_NAMES[value] : t('settings.language.auto')))}
           {toggle('autoRefresh', t('settings.autoRefresh'), undefined, true)}
           {choice('refreshIntervalSec', t('settings.refreshInterval'), value => t('settings.seconds', { n: value }), { disabled: !settings.autoRefresh })}
         </section>

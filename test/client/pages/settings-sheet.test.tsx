@@ -56,7 +56,7 @@ describe('SettingsSheetView', () => {
     const html = render()
     expect(html).toContain('role="dialog"')
     expect(html).toContain('data-integrate-sheet="settings"')
-    for (const name of ['autoRefresh', 'refreshIntervalSec', 'diffMode', 'logPageSize', 'afterCommit', 'dateFormat', 'compact', 'autoOpenConflicts', 'mergeAutoApplyNonConflicting', 'blameRenderer']) {
+    for (const name of ['language', 'autoRefresh', 'refreshIntervalSec', 'diffMode', 'logPageSize', 'afterCommit', 'dateFormat', 'compact', 'autoOpenConflicts', 'mergeAutoApplyNonConflicting', 'blameRenderer']) {
       expect(html, name).toContain(`data-setting="${name}"`)
     }
     expect(html).not.toContain('data-setting="changelistGrouping"')
@@ -110,6 +110,17 @@ describe('SettingsSheetView', () => {
     expect(html).toContain('默认显示 Blame')
   })
 
+  it('offers following DSH, Chinese and English, each named in its own language', () => {
+    const html = render()
+    const options = /data-setting="language"[^>]*>(.*?)<\/select>/.exec(html)?.[1] ?? ''
+    expect([...options.matchAll(/<option value="(\w+)"/g)].map(m => m[1])).toEqual(['auto', 'zh', 'en'])
+    expect(options).toContain('跟随 DSH')
+    expect(options).toContain('中文')
+    expect(options).toContain('English')
+    expect(html).toMatch(/<option value="auto" selected="">/)
+    expect(render({ settings: { ...DEFAULT_SETTINGS, language: 'en' } })).toMatch(/<option value="en" selected="">/)
+  })
+
   it('renders in English', () => {
     const html = render({}, enT)
     expect(html).toContain('Settings')
@@ -126,6 +137,7 @@ describe('settingsPatchFor', () => {
     expect(settingsPatchFor('afterCommit', 'log')).toEqual({ afterCommit: 'log' })
     expect(settingsPatchFor('dateFormat', 'relative')).toEqual({ dateFormat: 'relative' })
     expect(settingsPatchFor('blameRenderer', true)).toEqual({ blameRenderer: true })
+    expect(settingsPatchFor('language', 'en')).toEqual({ language: 'en' })
   })
 
   it('drops values outside the allowed set', () => {
@@ -133,6 +145,7 @@ describe('settingsPatchFor', () => {
     expect(settingsPatchFor('refreshIntervalSec', 'x')).toEqual({})
     expect(settingsPatchFor('diffMode', 'sideways')).toEqual({})
     expect(settingsPatchFor('compact', 'yes')).toEqual({})
+    expect(settingsPatchFor('language', 'fr')).toEqual({})
   })
 })
 

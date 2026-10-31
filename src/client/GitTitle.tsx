@@ -6,6 +6,7 @@ import { IconBranchOutlineMedium } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { BootstrapValue } from '../shared/protocol.ts'
 import type { BootstrapCache } from './bootstrap-cache.ts'
+import { useLocalizedT } from './i18n.tsx'
 import css from './GitTitle.module.css'
 import { OPERATION_KEY } from './locales.ts'
 import type { Translate } from './localized-text.ts'
@@ -69,7 +70,8 @@ export interface GitTitleInjected {
 }
 
 export function GitTitle(props: PropsRuntime<'sidebar.right.pane.tab.title'> & PropsLocale<'gitWorkbench'> & GitTitleInjected): ReactNode {
-  const { useTabInfo, bootstrapCache, sessionId, t } = props
+  const { useTabInfo, bootstrapCache, sessionId } = props
+  const t = useLocalizedT(props.t)
   const { tab } = useTabInfo()
   if (bootstrapCache === undefined) return <GitTitleView title={tab.title} dot={null} />
   return <TitleWithDot title={tab.title} cache={bootstrapCache} sessionId={sessionId} t={t} />

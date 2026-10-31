@@ -1,8 +1,13 @@
 // B4a 设置弹层（设计 §13）与可选 Git Blame 渲染器。
 
+/** Language names in their own language, the same in every UI language (not dictionary copy). */
+export const LANGUAGE_NATIVE_NAMES = { zh: '中文', en: 'English' } as const
+
 export const zhSettings = {
   'repo.settings': '设置…',
   'settings.title': '设置',
+  'settings.language': '显示语言',
+  'settings.language.auto': '跟随 DSH',
   'settings.storageNote': '设置保存在本浏览器中，对这台电脑上的所有仓库生效。',
   'settings.autoRefresh': '自动刷新',
   'settings.refreshInterval': '刷新间隔',
@@ -65,6 +70,8 @@ export const zhSettings = {
 export const enSettings = {
   'repo.settings': 'Settings…',
   'settings.title': 'Settings',
+  'settings.language': 'Display language',
+  'settings.language.auto': 'Follow DSH',
   'settings.storageNote': 'Settings are stored in this browser and apply to every repository on this computer.',
   'settings.autoRefresh': 'Auto refresh',
   'settings.refreshInterval': 'Refresh interval',

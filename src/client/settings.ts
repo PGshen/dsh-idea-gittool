@@ -13,6 +13,8 @@ export type DiffMode = 'unified' | 'split'
 export type LogPageSize = 50 | 100 | 200
 export type AfterCommit = 'stay' | 'log'
 export type DateFormat = 'absolute' | 'relative'
+/** Workbench display language: `auto` follows the DSH locale. */
+export type Language = 'auto' | 'zh' | 'en'
 
 export interface WorkbenchSettings {
   autoRefresh: boolean
@@ -32,6 +34,7 @@ export interface WorkbenchSettings {
   changelistGrouping: boolean
   /** B4d: absolute path of the git the Host should run; null → git on the Host's PATH. */
   gitPath: string | null
+  language: Language
 }
 
 export const DEFAULT_SETTINGS: Readonly<WorkbenchSettings> = Object.freeze({
@@ -47,11 +50,13 @@ export const DEFAULT_SETTINGS: Readonly<WorkbenchSettings> = Object.freeze({
   blameRenderer: false,
   changelistGrouping: false,
   gitPath: null,
+  language: 'auto',
 })
 
 export const REFRESH_INTERVAL_MIN_SEC = 1
 export const REFRESH_INTERVAL_MAX_SEC = 10
 export const LOG_PAGE_SIZES: readonly LogPageSize[] = [50, 100, 200]
+export const LANGUAGES: readonly Language[] = ['auto', 'zh', 'en']
 
 function oneOf<T>(value: unknown, allowed: readonly T[], fallback: T): T {
   return allowed.includes(value as T) ? value as T : fallback
@@ -94,6 +99,7 @@ export function parseSettings(raw: unknown): WorkbenchSettings {
     blameRenderer: bool(source.blameRenderer, d.blameRenderer),
     changelistGrouping: bool(source.changelistGrouping, d.changelistGrouping),
     gitPath: typeof source.gitPath === 'string' && isAbsoluteGitPath(source.gitPath) ? source.gitPath : null,
+    language: oneOf(source.language, LANGUAGES, d.language),
   }
 }
 

@@ -45,6 +45,7 @@ describe('parseSettings', () => {
       blameRenderer: false,
       changelistGrouping: false,
       gitPath: null,
+      language: 'auto',
     })
     for (const raw of [undefined, null, 'x', 3, [1]]) expect(parseSettings(raw), String(raw)).toEqual(DEFAULT_SETTINGS)
   })
@@ -61,6 +62,7 @@ describe('parseSettings', () => {
       mergeAutoApplyNonConflicting: 'true',
       blameRenderer: {},
       changelistGrouping: 'yes',
+      language: 'fr',
     })
     expect(parsed).toEqual(DEFAULT_SETTINGS)
   })
@@ -79,6 +81,7 @@ describe('parseSettings', () => {
       blameRenderer: true,
       changelistGrouping: true,
       gitPath: '/opt/git/bin/git',
+      language: 'en',
     })
     expect(parsed).toEqual({
       autoRefresh: false,
@@ -93,8 +96,10 @@ describe('parseSettings', () => {
       blameRenderer: true,
       changelistGrouping: true,
       gitPath: '/opt/git/bin/git',
+      language: 'en',
     })
     expect(parseSettings({ logPageSize: 50 }).logPageSize).toBe(50)
+    expect(parseSettings({ language: 'zh' }).language).toBe('zh')
   })
 
   it('rounds and clamps the refresh interval to 1..10 seconds', () => {

@@ -7,6 +7,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-documentpreview/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import type {} from '@deepseek-ai/dsh-client-ui-slots'
+import { localizedTranslator } from './i18n.tsx'
 import { BLAME_RENDERER_ID, BlameRendererBody, bindBlameRenderer, blameRendererDefinition } from './blame-renderer.tsx'
 import { createBootstrapCache } from './bootstrap-cache.ts'
 import { GIT_ID, GIT_KIND, gitDefinition } from './definition.tsx'
@@ -28,7 +29,8 @@ const NS = 'gitWorkbench'
 export const inject = ['slots', 'locale', 'sidebarRightTabs', 'sidebarRight', 'shortcuts']
 
 export function apply(ctx: ClientContext): void {
-  const t = ctx.locale.bind(NS)
+  // Labels outside React (tab type, guide card, shortcut) follow the language setting too.
+  const t = localizedTranslator(ctx.locale.bind(NS))
   const gitClient = createGitClient(ctx)
   const bootstrapCache = createBootstrapCache(gitClient)
 

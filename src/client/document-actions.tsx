@@ -11,6 +11,7 @@ import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots
 // Loads the SlotMap declaration for 'sidebar.right.tab.document.actions'.
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-documentpreview/client'
 import css from './document-actions.module.css'
+import { useLocalizedT } from './i18n.tsx'
 import { render, text } from './localized-text.ts'
 import type { LocalizedText, Translate } from './localized-text.ts'
 import type { WorkbenchIntent } from './workbench-intents.ts'
@@ -238,7 +239,8 @@ function normalizeSeparators(path: string): string {
  * @returns the status badge followed by the document actions.
  */
 export function DocumentActions(props: DocumentActionsProps): ReactNode {
-  const { absolutePath, openBlame, openInGit, statusFor, repoRootFor, useStatus, t } = props
+  const { absolutePath, openBlame, openInGit, statusFor, repoRootFor, useStatus } = props
+  const t = useLocalizedT(props.t)
   const [failure, setFailure] = useState<LocalizedText | null>(null)
   const [compact, setCompact] = useState(false)
   const rowRef = useRef<HTMLDivElement | null>(null)
